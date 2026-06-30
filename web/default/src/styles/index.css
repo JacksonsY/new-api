@@ -78,6 +78,47 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 
+/* ── 九紫离火 brand utilities ─────────────────────────────────────────────
+ * Authored utilities (not Tailwind-generated) that consume the brand tokens
+ * from theme.css. They follow the active light/dark values automatically.
+ * Hover behavior is baked into the class (rather than relying on Tailwind
+ * `hover:` variants, which only generate for known utilities). */
+@layer components {
+  .text-gradient-lihuo {
+    background-image: var(--gradient-lihuo);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .bg-gradient-lihuo {
+    background-image: var(--gradient-lihuo);
+  }
+  .border-gradient-lihuo {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--card), var(--card)) padding-box,
+      var(--gradient-lihuo) border-box;
+  }
+  .shadow-glow-violet {
+    box-shadow: var(--glow-violet);
+  }
+  .shadow-glow-ember {
+    box-shadow: var(--glow-ember);
+  }
+  /* 离火 CTA fill — reserved for primary conversions (recharge / upgrade). */
+  .btn-cta {
+    background-image: var(--gradient-lihuo);
+    color: #fff;
+    box-shadow: var(--glow-ember);
+  }
+  .btn-cta:hover {
+    box-shadow:
+      var(--glow-ember),
+      var(--glow-violet);
+    filter: brightness(1.05);
+  }
+}
+
 /* Vercel Geist-style skeleton shimmer */
 .skeleton-shimmer {
   background: linear-gradient(

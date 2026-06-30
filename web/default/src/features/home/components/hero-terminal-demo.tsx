@@ -56,10 +56,11 @@ const ACCENT_CLASSES: Record<
       'bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400',
   },
   blue: {
-    activeText: 'text-blue-600 dark:text-blue-400',
-    activeBorder: 'border-blue-500 dark:border-blue-400',
+    // 离火 ember accent (was blue — off-brand for the 九紫离火 spectrum)
+    activeText: 'text-[var(--brand-ember)]',
+    activeBorder: 'border-[var(--brand-ember)]',
     badge:
-      'bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400',
+      'bg-[color-mix(in_oklch,var(--brand-ember)_12%,transparent)] text-[var(--brand-ember)]',
   },
   violet: {
     activeText: 'text-violet-600 dark:text-violet-400',

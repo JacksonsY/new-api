@@ -600,7 +600,7 @@ export function SubscriptionPlansCard({
                       </Tooltip>
                     ) : (
                       <Button
-                        variant='outline'
+                        variant='cta'
                         className='w-full'
                         onClick={() => {
                           setSelectedPlan(p)

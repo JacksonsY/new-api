@@ -71,7 +71,9 @@ export function SystemBrand(props: SystemBrandProps) {
             className='size-full rounded-md object-cover'
           />
         </div>
-        <span className='max-w-[12rem] truncate'>{name}</span>
+        <span className='text-gradient-lihuo max-w-[12rem] truncate font-semibold'>
+          {name}
+        </span>
       </Link>
     )
   }
@@ -92,7 +94,9 @@ export function SystemBrand(props: SystemBrandProps) {
             />
           </div>
           <div className='grid flex-1 text-start text-sm leading-tight group-data-[collapsible=icon]:hidden'>
-            <span className='truncate font-semibold'>{name}</span>
+            <span className='text-gradient-lihuo truncate font-semibold'>
+              {name}
+            </span>
             <span className='truncate text-xs'>{version}</span>
           </div>
         </SidebarMenuButton>

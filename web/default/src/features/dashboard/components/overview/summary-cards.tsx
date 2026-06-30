@@ -285,7 +285,7 @@ export function SummaryCards() {
               </span>
             </div>
 
-            <div className='font-mono text-2xl font-semibold tracking-tight'>
+            <div className='text-gradient-lihuo font-mono text-2xl font-semibold tracking-tight'>
               {formatQuota(remainQuota)}
             </div>
 
@@ -335,7 +335,11 @@ export function SummaryCards() {
             </div>
           </div>
 
-          <Button className='justify-between' render={<Link to='/wallet' />}>
+          <Button
+            variant='cta'
+            className='justify-between'
+            render={<Link to='/wallet' />}
+          >
             <span>{t('Wallet')}</span>
             <ArrowRight data-icon='inline-end' />
           </Button>

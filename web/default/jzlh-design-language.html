@@ -1,0 +1,1429 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>九紫离火 · 设计语言 / Design Language — jzlh99.com</title>
+    <style>
+      /* =========================================================================
+         九紫离火 · Design Language
+         品牌：九紫离火   域名：jzlh99.com
+         体系基座：mirror 了 web/default 的 shadcn / Tailwind v4 OKLCH 令牌
+         （--background / --primary / --card / --chart-* / --radius ...）
+         以便此设计语言可 1:1 落地为 theme-preset='jzlh'。
+         ----------------------------------------------------------------------
+         令牌策略：
+           :root        → 浅色（对应 web/default 的 :root）
+           html.dark    → 深色（对应 web/default 的 .dark）—— 本品牌深色优先
+         ========================================================================= */
+
+      /* ---------- 浅色（light，= 真实代码里的 :root） ---------- */
+      :root {
+        /* 画布 / 文本 / 容器 */
+        --background: oklch(0.995 0.003 320);
+        --foreground: oklch(0.175 0.022 312);
+        --card: oklch(1 0 0);
+        --card-foreground: oklch(0.175 0.022 312);
+        --popover: oklch(1 0 0);
+        --muted: oklch(0.965 0.008 320);
+        --muted-foreground: oklch(0.475 0.03 312);
+
+        /* 语义色 */
+        --primary: oklch(0.515 0.235 305); /* 九紫（浅色更深以压白底） */
+        --primary-foreground: oklch(0.995 0 0);
+        --secondary: oklch(0.95 0.03 312);
+        --secondary-foreground: oklch(0.3 0.07 312);
+        --accent: oklch(0.95 0.035 312);
+        --accent-foreground: oklch(0.22 0.06 312);
+        --destructive: oklch(0.58 0.22 18);
+        --destructive-foreground: oklch(0.995 0 0);
+        --success: oklch(0.6 0.15 162);
+        --success-foreground: oklch(0.995 0 0);
+        --warning: oklch(0.72 0.16 75);
+        --warning-foreground: oklch(0.16 0 0);
+        --info: oklch(0.56 0.16 248);
+        --info-foreground: oklch(0.995 0 0);
+
+        --border: oklch(0.9 0.012 312);
+        --input: oklch(0.9 0.012 312);
+        --ring: oklch(0.515 0.235 305);
+
+        /* 品牌专属色（九紫离火谱） */
+        --brand-violet: oklch(0.515 0.235 305);
+        --brand-magenta: oklch(0.58 0.225 342);
+        --brand-ember: oklch(0.575 0.225 30);
+        --brand-flame: oklch(0.68 0.18 52);
+        --brand-gold: oklch(0.745 0.155 80);
+
+        /* 数据色 */
+        --chart-1: oklch(0.515 0.235 305);
+        --chart-2: oklch(0.58 0.225 342);
+        --chart-3: oklch(0.585 0.225 28);
+        --chart-4: oklch(0.68 0.18 52);
+        --chart-5: oklch(0.755 0.15 82);
+
+        /* 侧栏 */
+        --sidebar: oklch(0.975 0.006 312);
+        --sidebar-foreground: oklch(0.2 0.02 312);
+
+        --radius: 1rem;
+        --font-sans: 'Public Sans', ui-sans-serif, system-ui, -apple-system,
+          'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        --font-serif: 'Lora', 'Noto Serif SC', 'Songti SC', Georgia, 'STSong',
+          serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code',
+          Menlo, Consolas, monospace;
+
+        /* 信号渐变 */
+        --gradient-lihuo: linear-gradient(
+          135deg,
+          oklch(0.55 0.24 298) 0%,
+          oklch(0.6 0.235 332) 34%,
+          oklch(0.62 0.225 24) 66%,
+          oklch(0.78 0.16 80) 100%
+        );
+        --glow-violet: 0 10px 34px -12px oklch(0.55 0.24 305 / 0.45);
+        --glow-ember: 0 8px 26px -10px oklch(0.62 0.22 32 / 0.4);
+      }
+
+      /* ---------- 深色（dark，= 真实代码里的 .dark，品牌主画布） ---------- */
+      html.dark {
+        --background: oklch(0.185 0.014 312); /* 玄夜：偏紫近黑 */
+        --foreground: oklch(0.965 0.006 95);
+        --card: oklch(0.225 0.016 312);
+        --card-foreground: oklch(0.965 0.006 95);
+        --popover: oklch(0.245 0.018 312);
+        --muted: oklch(0.275 0.014 312);
+        --muted-foreground: oklch(0.74 0.022 312);
+
+        --primary: oklch(0.66 0.215 305); /* 九紫：暗底上发光 */
+        --primary-foreground: oklch(0.99 0 0);
+        --secondary: oklch(0.335 0.05 312);
+        --secondary-foreground: oklch(0.96 0.012 312);
+        --accent: oklch(0.36 0.06 312);
+        --accent-foreground: oklch(0.985 0 0);
+        --destructive: oklch(0.66 0.21 18);
+        --destructive-foreground: oklch(0.995 0 0);
+        --success: oklch(0.72 0.17 162);
+        --success-foreground: oklch(0.16 0 0);
+        --warning: oklch(0.8 0.16 80);
+        --warning-foreground: oklch(0.16 0 0);
+        --info: oklch(0.68 0.16 248);
+        --info-foreground: oklch(0.16 0 0);
+
+        --border: oklch(0.83 0.05 312 / 13%);
+        --input: oklch(0.83 0.05 312 / 18%);
+        --ring: oklch(0.66 0.215 305);
+
+        --brand-violet: oklch(0.66 0.215 305);
+        --brand-magenta: oklch(0.66 0.22 340);
+        --brand-ember: oklch(0.64 0.225 30);
+        --brand-flame: oklch(0.72 0.19 50);
+        --brand-gold: oklch(0.82 0.155 82);
+
+        --chart-1: oklch(0.66 0.215 305);
+        --chart-2: oklch(0.66 0.22 340);
+        --chart-3: oklch(0.64 0.225 28);
+        --chart-4: oklch(0.72 0.19 50);
+        --chart-5: oklch(0.82 0.155 82);
+
+        --sidebar: oklch(0.165 0.014 312);
+        --sidebar-foreground: oklch(0.95 0.01 312);
+
+        --gradient-lihuo: linear-gradient(
+          135deg,
+          oklch(0.58 0.24 300) 0%,
+          oklch(0.64 0.235 332) 33%,
+          oklch(0.64 0.225 24) 64%,
+          oklch(0.82 0.16 80) 100%
+        );
+        --glow-violet: 0 12px 40px -12px oklch(0.6 0.24 305 / 0.6);
+        --glow-ember: 0 10px 30px -10px oklch(0.66 0.22 32 / 0.45);
+      }
+
+      /* ---------- 基座 ---------- */
+      * {
+        box-sizing: border-box;
+        border-color: var(--border);
+      }
+      html {
+        scrollbar-width: thin;
+        scrollbar-color: var(--border) transparent;
+      }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: var(--font-sans);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        font-feature-settings: 'cv05', 'ss01';
+      }
+      /* 深色画布的离火/九紫氤氲 */
+      html.dark body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        background:
+          radial-gradient(
+            55% 70% at 50% -8%,
+            oklch(0.5 0.2 320 / 0.28),
+            transparent 60%
+          ),
+          radial-gradient(
+            42% 50% at 88% 6%,
+            oklch(0.6 0.2 35 / 0.16),
+            transparent 55%
+          );
+      }
+      .wrap {
+        position: relative;
+        z-index: 1;
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 0 24px 120px;
+      }
+      a {
+        color: var(--primary);
+        text-decoration: none;
+      }
+
+      /* ---------- 顶部条 ---------- */
+      .topnav {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 24px;
+        background: color-mix(in oklch, var(--background) 78%, transparent);
+        backdrop-filter: blur(14px) saturate(1.4);
+        border-bottom: 1px solid var(--border);
+      }
+      .topnav .mark {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+      }
+      .flame-dot {
+        width: 22px;
+        height: 22px;
+        border-radius: 7px;
+        background: var(--gradient-lihuo);
+        box-shadow: var(--glow-ember);
+      }
+      .topnav nav {
+        display: flex;
+        gap: 18px;
+        margin-left: auto;
+        font-size: 13px;
+      }
+      .topnav nav a {
+        color: var(--muted-foreground);
+      }
+      .topnav nav a:hover {
+        color: var(--foreground);
+      }
+      .toggle {
+        font-family: var(--font-sans);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--foreground);
+        background: var(--secondary);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px 14px;
+        cursor: pointer;
+      }
+
+      /* ---------- 区块通用 ---------- */
+      section {
+        margin-top: 72px;
+        scroll-margin-top: 72px;
+      }
+      .eyebrow {
+        font-size: 12px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--brand-flame);
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: var(--font-serif);
+        letter-spacing: -0.01em;
+        margin: 0 0 8px;
+      }
+      h2 {
+        font-size: 30px;
+        line-height: 1.2;
+      }
+      h3 {
+        font-size: 18px;
+        font-family: var(--font-sans);
+        font-weight: 700;
+      }
+      .lead {
+        color: var(--muted-foreground);
+        max-width: 64ch;
+        margin: 0 0 24px;
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+      .cols-2 {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .cols-3 {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .cols-4 {
+        grid-template-columns: repeat(4, 1fr);
+      }
+      @media (max-width: 760px) {
+        .cols-2,
+        .cols-3,
+        .cols-4 {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      /* ---------- 1. Masthead ---------- */
+      .hero {
+        margin-top: 36px;
+        padding: 56px 44px;
+        border-radius: calc(var(--radius) * 1.8);
+        border: 1px solid var(--border);
+        position: relative;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            120% 140% at 0% 0%,
+            oklch(0.5 0.2 312 / 0.16),
+            transparent 50%
+          ),
+          var(--card);
+      }
+      .hero::after {
+        content: '';
+        position: absolute;
+        right: -80px;
+        top: -80px;
+        width: 360px;
+        height: 360px;
+        background: var(--gradient-lihuo);
+        filter: blur(70px);
+        opacity: 0.45;
+        border-radius: 50%;
+      }
+      .hero .zh {
+        font-family: var(--font-serif);
+        font-size: clamp(44px, 8vw, 88px);
+        line-height: 1;
+        margin: 0;
+        background: var(--gradient-lihuo);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        letter-spacing: 0.04em;
+      }
+      .hero .en {
+        font-size: 14px;
+        letter-spacing: 0.42em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+        margin: 14px 0 0;
+      }
+      .hero .domain {
+        position: relative;
+        margin-top: 24px;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        color: var(--brand-gold);
+      }
+      .hero .tag {
+        position: relative;
+        margin-top: 18px;
+        max-width: 52ch;
+        color: var(--foreground);
+        opacity: 0.86;
+      }
+
+      /* ---------- 色板 ---------- */
+      .ramp {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        border-radius: var(--radius);
+        overflow: hidden;
+        border: 1px solid var(--border);
+      }
+      .ramp > div {
+        height: 96px;
+        display: flex;
+        align-items: flex-end;
+        padding: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #fff;
+        text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+      }
+      .swatch {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        background: var(--card);
+      }
+      .swatch .chip {
+        height: 72px;
+      }
+      .swatch .meta {
+        padding: 10px 12px;
+      }
+      .swatch .name {
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .swatch .val {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--muted-foreground);
+        word-break: break-all;
+      }
+      .swatch .var {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--brand-violet);
+      }
+
+      /* ---------- 卡片 ---------- */
+      .card {
+        background: var(--card);
+        color: var(--card-foreground);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+      }
+      .card .ct {
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+      .card .cd {
+        color: var(--muted-foreground);
+        font-size: 14px;
+      }
+      .glass {
+        background: color-mix(in oklch, var(--card) 55%, transparent);
+        backdrop-filter: blur(16px);
+        border: 1px solid color-mix(in oklch, var(--brand-violet) 22%, var(--border));
+      }
+      .grad-border {
+        position: relative;
+        background: var(--card);
+        border: 1px solid transparent;
+        background-clip: padding-box;
+      }
+      .grad-border::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background: var(--gradient-lihuo);
+        -webkit-mask:
+          linear-gradient(#fff 0 0) content-box,
+          linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
+      }
+      .stat .label {
+        font-size: 12px;
+        color: var(--muted-foreground);
+        letter-spacing: 0.04em;
+      }
+      .stat .num {
+        font-family: var(--font-serif);
+        font-size: 36px;
+        font-weight: 600;
+        line-height: 1.1;
+        margin: 4px 0;
+        background: var(--gradient-lihuo);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .stat .delta {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--success);
+      }
+      /* 九运 品牌提示条 */
+      .callout {
+        position: relative;
+        padding: 16px 18px 16px 20px;
+        border-radius: var(--radius);
+        background: color-mix(in oklch, var(--brand-violet) 8%, var(--card));
+        border: 1px solid color-mix(in oklch, var(--brand-violet) 26%, var(--border));
+        overflow: hidden;
+      }
+      .callout::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 4px;
+        background: var(--gradient-lihuo);
+      }
+      .callout .ct {
+        font-weight: 700;
+        margin-bottom: 2px;
+      }
+      .callout .cd {
+        font-size: 14px;
+        color: var(--muted-foreground);
+      }
+
+      /* ---------- 按钮 ---------- */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--font-sans);
+        font-size: 14px;
+        font-weight: 600;
+        padding: 10px 18px;
+        border-radius: calc(var(--radius) * 0.7);
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          box-shadow 0.2s ease,
+          background 0.2s ease;
+      }
+      .btn:active {
+        transform: scale(0.98);
+      }
+      .btn-primary {
+        background: var(--primary);
+        color: var(--primary-foreground);
+      }
+      .btn-primary:hover {
+        box-shadow: var(--glow-violet);
+      }
+      .btn-cta {
+        color: #fff;
+        background: var(--gradient-lihuo);
+        box-shadow: var(--glow-ember);
+      }
+      .btn-cta:hover {
+        box-shadow:
+          var(--glow-ember),
+          var(--glow-violet);
+      }
+      .btn-secondary {
+        background: var(--secondary);
+        color: var(--secondary-foreground);
+      }
+      .btn-outline {
+        background: transparent;
+        border-color: var(--border);
+        color: var(--foreground);
+      }
+      .btn-outline:hover {
+        border-color: var(--primary);
+        color: var(--primary);
+      }
+      .btn-ghost {
+        background: transparent;
+        color: var(--muted-foreground);
+      }
+      .btn-ghost:hover {
+        background: var(--accent);
+        color: var(--accent-foreground);
+      }
+      .btn-destructive {
+        background: var(--destructive);
+        color: var(--destructive-foreground);
+      }
+      .btn[disabled] {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn-sm {
+        font-size: 12px;
+        padding: 7px 12px;
+      }
+      .btn-lg {
+        font-size: 15px;
+        padding: 13px 24px;
+      }
+
+      /* ---------- 徽标 / 标签 ---------- */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 3px 10px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+      }
+      .badge::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .badge-success {
+        color: var(--success);
+        background: color-mix(in oklch, var(--success) 14%, transparent);
+      }
+      .badge-warning {
+        color: var(--warning);
+        background: color-mix(in oklch, var(--warning) 16%, transparent);
+      }
+      .badge-danger {
+        color: var(--destructive);
+        background: color-mix(in oklch, var(--destructive) 14%, transparent);
+      }
+      .badge-info {
+        color: var(--info);
+        background: color-mix(in oklch, var(--info) 14%, transparent);
+      }
+      .badge-brand {
+        color: #fff;
+        background: var(--gradient-lihuo);
+      }
+      .badge-brand::before {
+        display: none;
+      }
+      .tag-model {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        padding: 3px 9px;
+        border-radius: 7px;
+        background: var(--secondary);
+        color: var(--secondary-foreground);
+        border: 1px solid var(--border);
+      }
+
+      /* ---------- 表单 ---------- */
+      .field {
+        margin-bottom: 14px;
+      }
+      .field label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .input {
+        width: 100%;
+        font-family: var(--font-sans);
+        font-size: 14px;
+        color: var(--foreground);
+        background: var(--background);
+        border: 1px solid var(--input);
+        border-radius: calc(var(--radius) * 0.7);
+        padding: 10px 12px;
+        outline: none;
+      }
+      .input:focus {
+        border-color: var(--ring);
+        box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 32%, transparent);
+      }
+      .input::placeholder {
+        color: var(--muted-foreground);
+      }
+      .switch {
+        width: 42px;
+        height: 24px;
+        border-radius: 999px;
+        background: var(--gradient-lihuo);
+        position: relative;
+        display: inline-block;
+      }
+      .switch::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #fff;
+      }
+
+      /* ---------- 表格 ---------- */
+      table.data {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      table.data th {
+        text-align: left;
+        font-weight: 600;
+        color: var(--muted-foreground);
+        padding: 10px 14px;
+        background: color-mix(in oklch, var(--foreground) 4%, var(--card));
+        border-bottom: 1px solid var(--border);
+      }
+      table.data td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border);
+        font-variant-numeric: tabular-nums;
+      }
+      table.data tr:hover td {
+        background: color-mix(in oklch, var(--primary) 5%, transparent);
+      }
+
+      /* ---------- 侧栏 / 顶栏 演示 ---------- */
+      .appshell {
+        display: grid;
+        grid-template-columns: 232px 1fr;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        min-height: 280px;
+      }
+      .sidebar {
+        background: var(--sidebar);
+        color: var(--sidebar-foreground);
+        padding: 16px 12px;
+        border-right: 1px solid var(--border);
+      }
+      .sidebar .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 700;
+        padding: 4px 8px 16px;
+      }
+      .sidebar .sec {
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+        padding: 14px 8px 6px;
+      }
+      .navitem {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        border-radius: calc(var(--radius) * 0.6);
+        font-size: 14px;
+        color: var(--muted-foreground);
+        margin-bottom: 2px;
+      }
+      .navitem.active {
+        color: var(--primary);
+        font-weight: 600;
+        background: color-mix(in oklch, var(--primary) 14%, transparent);
+      }
+      .navitem.active .ember {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--gradient-lihuo);
+        box-shadow: var(--glow-ember);
+        margin-left: auto;
+      }
+      .navitem .ico {
+        width: 16px;
+        height: 16px;
+        border-radius: 5px;
+        background: currentColor;
+        opacity: 0.5;
+      }
+      .navitem.active .ico {
+        opacity: 1;
+      }
+      .appmain {
+        background: var(--background);
+        padding: 18px;
+      }
+      .appbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 16px;
+      }
+      .avatar {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--gradient-lihuo);
+        margin-left: auto;
+      }
+
+      /* ---------- 排版标尺 ---------- */
+      .type-row {
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .type-row .spec {
+        width: 130px;
+        flex: none;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--muted-foreground);
+      }
+      .mono {
+        font-family: var(--font-mono);
+      }
+      .serif {
+        font-family: var(--font-serif);
+      }
+
+      /* ---------- 代码 / API Key ---------- */
+      .codeblock {
+        background: oklch(0.16 0.014 312);
+        color: oklch(0.92 0.01 312);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px 18px;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        overflow-x: auto;
+      }
+      .codeblock .k {
+        color: var(--brand-magenta);
+      }
+      .codeblock .s {
+        color: var(--brand-gold);
+      }
+      .codeblock .c {
+        color: var(--muted-foreground);
+      }
+      .keyline {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        background: var(--secondary);
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) * 0.7);
+        padding: 9px 12px;
+      }
+      .keyline .dots {
+        color: var(--brand-violet);
+        letter-spacing: 2px;
+      }
+
+      /* ---------- 进度 / 圆角 / 阴影 ---------- */
+      .progress {
+        height: 8px;
+        border-radius: 999px;
+        background: var(--secondary);
+        overflow: hidden;
+      }
+      .progress > i {
+        display: block;
+        height: 100%;
+        width: 64%;
+        background: var(--gradient-lihuo);
+      }
+      .radius-demo {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        height: 64px;
+        background: color-mix(in oklch, var(--primary) 10%, var(--card));
+        border: 1px solid var(--border);
+        color: var(--muted-foreground);
+        font-size: 11px;
+        font-family: var(--font-mono);
+        padding-bottom: 6px;
+      }
+      .elev-demo {
+        height: 64px;
+        border-radius: var(--radius);
+        background: var(--card);
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-family: var(--font-mono);
+        color: var(--muted-foreground);
+      }
+
+      .note {
+        font-size: 12px;
+        color: var(--muted-foreground);
+        margin-top: 10px;
+      }
+      code.inline {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        background: var(--secondary);
+        padding: 1px 6px;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topnav">
+      <div class="mark"><span class="flame-dot"></span> 九紫离火</div>
+      <nav>
+        <a href="#philosophy">理念</a>
+        <a href="#color">色彩</a>
+        <a href="#gradient">渐变·辉光</a>
+        <a href="#type">字体</a>
+        <a href="#tokens">圆角·层级</a>
+        <a href="#components">组件</a>
+        <a href="#impl">落地</a>
+      </nav>
+      <button class="toggle" id="toggle">◐ 浅/深</button>
+    </div>
+
+    <div class="wrap">
+      <!-- ============ Masthead ============ -->
+      <div class="hero">
+        <p class="zh">九紫离火</p>
+        <p class="en">Nine&nbsp;Purple&nbsp;·&nbsp;Li&nbsp;Fire</p>
+        <p class="domain">jzlh99.com</p>
+        <p class="tag">
+          三元九运，离火当令。以「九紫」为体、以「离火」为用——紫气为底蕴，焰火为能量。一套服务于
+          AI 网关控制台的深色优先设计语言。
+        </p>
+      </div>
+
+      <!-- ============ 1. 理念 ============ -->
+      <section id="philosophy">
+        <div class="eyebrow">01 — 设计理念 Philosophy</div>
+        <h2>紫为体，火为用</h2>
+        <p class="lead">
+          品牌名取自三元九运的「九紫离火运」。设计上把它拆成两股力：<b>九紫</b>是沉稳、神秘、高级感的主色（主按钮、链接、焦点环、品牌识别）；<b>离火</b>是行动与能量的信号（充值/开通等关键转化、强调辉光、数据高光）。二者之间用一条「紫→绛→焰→金」的信号渐变贯穿，是整套语言的灵魂。
+        </p>
+        <div class="grid cols-3">
+          <div class="card">
+            <div class="ct">深色优先</div>
+            <div class="cd">
+              玄夜近黑、微偏紫的画布让离火的辉光真正「燃」起来；浅色作为同源对偶提供给偏好亮色的用户。
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">克制的能量</div>
+            <div class="cd">
+              渐变与辉光只用在品牌时刻与关键转化上，数据密集界面保持冷静，避免「玄学」沦为花哨。
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">与 new-api 同源</div>
+            <div class="cd">
+              全部令牌沿用现有 shadcn / Tailwind v4 变量名，作为一个 theme-preset 落地，可随上游持续更新。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2. 色彩 ============ -->
+      <section id="color">
+        <div class="eyebrow">02 — 色彩 Color</div>
+        <h2>九紫离火谱</h2>
+        <p class="lead">
+          主色谱由紫到火五段流动，既是品牌识别，也是数据可视化（<code class="inline"
+            >--chart-1…5</code
+          >）的天然顺序色阶。下方色值即深色模式下的 OKLCH 令牌。
+        </p>
+        <div class="ramp">
+          <div style="background: var(--chart-1)">九紫 305</div>
+          <div style="background: var(--chart-2)">绛紫 340</div>
+          <div style="background: var(--chart-3)">离火 28</div>
+          <div style="background: var(--chart-4)">焰橙 50</div>
+          <div style="background: var(--chart-5)">流金 82</div>
+        </div>
+
+        <h3 style="margin-top: 32px">语义令牌 Semantic tokens</h3>
+        <p class="note">
+          直接映射 <code class="inline">web/default/src/styles/theme.css</code> 的变量名；切换上方
+          ◐ 可对比浅/深两套取值。
+        </p>
+        <div class="grid cols-4" style="margin-top: 14px">
+          <div class="swatch">
+            <div class="chip" style="background: var(--primary)"></div>
+            <div class="meta">
+              <div class="name">Primary · 九紫</div>
+              <div class="var">--primary</div>
+              <div class="val">oklch(.66 .215 305)</div>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: var(--secondary)"></div>
+            <div class="meta">
+              <div class="name">Secondary</div>
+              <div class="var">--secondary</div>
+              <div class="val">柔紫表面</div>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: var(--accent)"></div>
+            <div class="meta">
+              <div class="name">Accent / hover</div>
+              <div class="var">--accent</div>
+              <div class="val">悬浮表面</div>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: var(--muted)"></div>
+            <div class="meta">
+              <div class="name">Muted</div>
+              <div class="var">--muted</div>
+              <div class="val">次要背景</div>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: var(--success)"></div>
+            <div class="meta">
+              <div class="name">Success</div>
+              <div class="var">--success</div>
+              <div class="val">正常 / 成功</div>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: var(--warning)"></div>
+            <div class="meta">
+              <div class="name">Warning</div>
+              <div class="var">--warning</div>
+              <div class="val">限速 / 告警</div>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: var(--destructive)"></div>
+            <div class="meta">
+              <div class="name">Destructive</div>
+              <div class="var">--destructive</div>
+              <div class="val">封禁 / 危险</div>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="chip" style="background: var(--info)"></div>
+            <div class="meta">
+              <div class="name">Info</div>
+              <div class="var">--info</div>
+              <div class="val">提示 / Beta</div>
+            </div>
+          </div>
+        </div>
+        <p class="note">
+          ⚠︎ <b>离火 ≠ 危险</b>：品牌火色（<code class="inline">--brand-ember</code> 色相
+          28–30）偏暖橙，<code class="inline">--destructive</code> 色相 18
+          偏冷红，二者刻意拉开，避免「充值按钮」和「删除按钮」撞色。
+        </p>
+      </section>
+
+      <!-- ============ 3. 渐变·辉光 ============ -->
+      <section id="gradient">
+        <div class="eyebrow">03 — 渐变与辉光 Gradient &amp; Glow</div>
+        <h2>离火渐变</h2>
+        <p class="lead">
+          唯一的品牌渐变 <code class="inline">--gradient-lihuo</code>。用于：CTA
+          填充、品牌徽标、统计数字、渐变描边、激活态焰点。<b>不要</b>用作大面积背景或正文容器。
+        </p>
+        <div class="grid cols-2">
+          <div class="card" style="padding: 0; overflow: hidden">
+            <div style="height: 120px; background: var(--gradient-lihuo)"></div>
+            <div style="padding: 14px 18px">
+              <div class="ct">--gradient-lihuo</div>
+              <div class="note" style="margin: 0">
+                135° · 九紫 → 绛 → 离火 → 流金
+              </div>
+            </div>
+          </div>
+          <div
+            class="card"
+            style="display: flex; align-items: center; justify-content: center; gap: 28px"
+          >
+            <div style="text-align: center">
+              <div
+                style="width: 84px; height: 84px; border-radius: 22px; background: var(--gradient-lihuo); box-shadow: var(--glow-ember); margin: 0 auto 10px"
+              ></div>
+              <div class="note" style="margin: 0">--glow-ember</div>
+            </div>
+            <div style="text-align: center">
+              <div
+                style="width: 84px; height: 84px; border-radius: 22px; background: var(--primary); box-shadow: var(--glow-violet); margin: 0 auto 10px"
+              ></div>
+              <div class="note" style="margin: 0">--glow-violet</div>
+            </div>
+          </div>
+        </div>
+        <div class="grid cols-3" style="margin-top: 16px">
+          <div class="card">
+            <div class="ct" style="background: var(--gradient-lihuo); -webkit-background-clip: text; background-clip: text; color: transparent; font-size: 24px; font-family: var(--font-serif)">
+              ¥1,280.40
+            </div>
+            <div class="note" style="margin: 4px 0 0">渐变文字 · 统计数字</div>
+          </div>
+          <div class="card grad-border">
+            <div class="ct">渐变描边卡片</div>
+            <div class="cd">.grad-border — 用于强调/付费卡位</div>
+          </div>
+          <div class="callout">
+            <div class="ct">🔥 九运提示</div>
+            <div class="cd">品牌语气提示条，左侧离火竖线 + 微紫底。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 4. 字体 ============ -->
+      <section id="type">
+        <div class="eyebrow">04 — 字体 Typography</div>
+        <h2>双轴字体</h2>
+        <p class="lead">
+          沿用现有字体轴：<b>Public Sans</b> 承载 UI 与正文（清晰、现代）；<b>Lora</b>
+          + CJK 衬线（思源宋体 / 宋体）承载品牌标题与营销大字，给「九紫离火」以分量与东方气质。等宽用于
+          Key、代码与数字。
+        </p>
+        <div class="card">
+          <div class="type-row">
+            <div class="spec">Display / serif</div>
+            <div class="serif" style="font-size: 44px; line-height: 1">九紫离火</div>
+          </div>
+          <div class="type-row">
+            <div class="spec">H1 · 32 / serif</div>
+            <div class="serif" style="font-size: 32px">统一 AI 接口网关</div>
+          </div>
+          <div class="type-row">
+            <div class="spec">H2 · 24 / sans</div>
+            <div style="font-size: 24px; font-weight: 700">控制台总览</div>
+          </div>
+          <div class="type-row">
+            <div class="spec">Body · 15 / sans</div>
+            <div style="font-size: 15px">
+              正文采用 Public Sans，行高 1.6，长文可读、数据界面克制。
+            </div>
+          </div>
+          <div class="type-row">
+            <div class="spec">Small · 13</div>
+            <div style="font-size: 13px; color: var(--muted-foreground)">
+              辅助说明 / 表头 / 时间戳
+            </div>
+          </div>
+          <div class="type-row">
+            <div class="spec">Mono · 13</div>
+            <div class="mono" style="font-size: 13px">
+              sk-jzlh-•••• · 2,048 tokens · ¥0.0042
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 5. 圆角·间距·层级 ============ -->
+      <section id="tokens">
+        <div class="eyebrow">05 — 圆角 · 间距 · 层级</div>
+        <h2>形体令牌</h2>
+        <p class="lead">
+          基准圆角 <code class="inline">--radius: 1rem</code>，按现有
+          <code class="inline">--radius-sm…4xl</code> 的 calc 比例派生。间距走
+          4px 栅格。层级以「边框 + 微阴影 + 玻璃」三档表达，深色下叠加辉光。
+        </p>
+        <h3>圆角阶梯</h3>
+        <div class="grid cols-4" style="margin-top: 12px">
+          <div class="radius-demo" style="border-radius: calc(var(--radius) * 0.6)">
+            sm ·.6
+          </div>
+          <div class="radius-demo" style="border-radius: var(--radius)">lg · 1rem</div>
+          <div class="radius-demo" style="border-radius: calc(var(--radius) * 1.8)">
+            2xl ·1.8
+          </div>
+          <div class="radius-demo" style="border-radius: 999px">full</div>
+        </div>
+        <h3 style="margin-top: 24px">层级 Elevation</h3>
+        <div class="grid cols-3" style="margin-top: 12px">
+          <div class="elev-demo">边框 (flat)</div>
+          <div class="elev-demo" style="box-shadow: 0 4px 12px rgb(0 0 0 / 0.18)">
+            微阴影 (card hover)
+          </div>
+          <div class="elev-demo glass">玻璃 (glass)</div>
+        </div>
+      </section>
+
+      <!-- ============ 6. 组件 ============ -->
+      <section id="components">
+        <div class="eyebrow">06 — 组件 Components</div>
+        <h2>组件规格</h2>
+        <p class="lead">以下为关键组件在本设计语言下的形态。命名与槽位对齐 shadcn / Base UI，便于直接改皮。</p>
+
+        <h3>按钮 Buttons</h3>
+        <div
+          class="card"
+          style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center"
+        >
+          <button class="btn btn-cta btn-lg">🔥 立即开通</button>
+          <button class="btn btn-primary">主操作</button>
+          <button class="btn btn-secondary">次操作</button>
+          <button class="btn btn-outline">描边</button>
+          <button class="btn btn-ghost">幽灵</button>
+          <button class="btn btn-destructive">删除</button>
+          <button class="btn btn-primary" disabled>禁用</button>
+          <button class="btn btn-secondary btn-sm">小号</button>
+        </div>
+        <p class="note">
+          离火渐变按钮（<code class="inline">.btn-cta</code>）专留给「充值 / 开通 /
+          升级」等核心转化，全站克制使用，确保它一出现就抓眼。
+        </p>
+
+        <h3 style="margin-top: 28px">标签 Badges</h3>
+        <div
+          class="card"
+          style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center"
+        >
+          <span class="badge badge-success">正常</span>
+          <span class="badge badge-warning">限速</span>
+          <span class="badge badge-danger">已封禁</span>
+          <span class="badge badge-info">Beta</span>
+          <span class="badge badge-brand">九运 · VIP</span>
+          <span class="tag-model">gpt-4o</span>
+          <span class="tag-model">claude-opus-4</span>
+          <span class="tag-model">gemini-2.5-pro</span>
+        </div>
+
+        <h3 style="margin-top: 28px">表单 Forms</h3>
+        <div class="grid cols-2">
+          <div class="card">
+            <div class="field">
+              <label>令牌名称</label>
+              <input class="input" placeholder="例如：生产环境-主站" />
+            </div>
+            <div class="field">
+              <label>分组</label>
+              <input class="input" value="默认分组" />
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span class="switch"></span>
+              <span style="font-size: 14px">启用流式响应</span>
+            </div>
+          </div>
+          <div class="card" style="display: flex; flex-direction: column; gap: 12px">
+            <div class="ct">API Key</div>
+            <div class="keyline">
+              <span class="dots">sk-jzlh-</span>••••••••••••••••3f9a
+              <button class="btn btn-ghost btn-sm" style="margin-left: auto">复制</button>
+            </div>
+            <div class="codeblock">
+<span class="c"># cURL · jzlh99.com</span>
+curl https://api.jzlh99.com/v1/chat/completions \
+  -H <span class="s">"Authorization: Bearer $JZLH_KEY"</span> \
+  -d <span class="s">'{"<span class="k">model</span>":"gpt-4o","<span class="k">stream</span>":true}'</span>
+            </div>
+          </div>
+        </div>
+
+        <h3 style="margin-top: 28px">指标卡 Stat cards</h3>
+        <div class="grid cols-4">
+          <div class="card stat">
+            <div class="label">今日消耗</div>
+            <div class="num">¥128.40</div>
+            <div class="delta">▲ 12.4%</div>
+          </div>
+          <div class="card stat">
+            <div class="label">调用次数</div>
+            <div class="num">8,642</div>
+            <div class="delta">▲ 3.1%</div>
+          </div>
+          <div class="card stat">
+            <div class="label">活跃令牌</div>
+            <div class="num">24</div>
+            <div class="delta" style="color: var(--muted-foreground)">— 持平</div>
+          </div>
+          <div class="card stat grad-border">
+            <div class="label">剩余额度</div>
+            <div class="num">¥3,200</div>
+            <div class="delta" style="color: var(--warning)">▼ 偏低</div>
+          </div>
+        </div>
+
+        <h3 style="margin-top: 28px">提示 Alerts</h3>
+        <div class="grid cols-2">
+          <div class="callout">
+            <div class="ct">🔥 离火当令</div>
+            <div class="cd">九运期间新用户注册即送 ¥10 体验额度。</div>
+          </div>
+          <div
+            class="card"
+            style="border-color: color-mix(in oklch, var(--warning) 40%, var(--border)); background: color-mix(in oklch, var(--warning) 8%, var(--card))"
+          >
+            <div class="ct" style="color: var(--warning)">⚠ 额度预警</div>
+            <div class="cd">主令牌剩余额度低于 10%，请及时充值以免中断。</div>
+          </div>
+        </div>
+
+        <h3 style="margin-top: 28px">数据表格 Table</h3>
+        <div class="card" style="padding: 0; overflow: hidden">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>状态</th>
+                <th>已用 / 总额</th>
+                <th>用量</th>
+                <th>创建时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>生产环境-主站</td>
+                <td><span class="badge badge-success">正常</span></td>
+                <td class="mono">¥680 / ¥1000</td>
+                <td>
+                  <div class="progress"><i></i></div>
+                </td>
+                <td>2026-06-12</td>
+              </tr>
+              <tr>
+                <td>测试-沙箱</td>
+                <td><span class="badge badge-warning">限速</span></td>
+                <td class="mono">¥92 / ¥100</td>
+                <td>
+                  <div class="progress"><i style="width: 92%"></i></div>
+                </td>
+                <td>2026-05-30</td>
+              </tr>
+              <tr>
+                <td>临时-爬虫</td>
+                <td><span class="badge badge-danger">已封禁</span></td>
+                <td class="mono">¥50 / ¥50</td>
+                <td>
+                  <div class="progress"><i style="width: 100%"></i></div>
+                </td>
+                <td>2026-04-18</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="margin-top: 28px">应用骨架 App shell</h3>
+        <div class="appshell">
+          <aside class="sidebar">
+            <div class="brand"><span class="flame-dot"></span> 九紫离火</div>
+            <div class="navitem active">
+              <span class="ico"></span> 总览 <span class="ember"></span>
+            </div>
+            <div class="navitem"><span class="ico"></span> 对话 Playground</div>
+            <div class="navitem"><span class="ico"></span> 令牌管理</div>
+            <div class="sec">运营</div>
+            <div class="navitem"><span class="ico"></span> 渠道</div>
+            <div class="navitem"><span class="ico"></span> 用量日志</div>
+            <div class="navitem"><span class="ico"></span> 钱包充值</div>
+          </aside>
+          <main class="appmain">
+            <div class="appbar">
+              <strong>控制台总览</strong>
+              <span class="badge badge-brand" style="margin-left: 8px">九运</span>
+              <div class="avatar"></div>
+            </div>
+            <div class="grid cols-3">
+              <div class="card stat">
+                <div class="label">余额</div>
+                <div class="num">¥3,200</div>
+              </div>
+              <div class="card stat">
+                <div class="label">今日</div>
+                <div class="num">¥128</div>
+              </div>
+              <div class="card stat">
+                <div class="label">RPM</div>
+                <div class="num">142</div>
+              </div>
+            </div>
+            <div style="margin-top: 14px; display: flex; gap: 10px">
+              <button class="btn btn-cta">🔥 充值</button>
+              <button class="btn btn-outline">新建令牌</button>
+            </div>
+          </main>
+        </div>
+      </section>
+
+      <!-- ============ 7. 落地 ============ -->
+      <section id="impl">
+        <div class="eyebrow">07 — 落地映射 Implementation</div>
+        <h2>如何接入 web/default</h2>
+        <p class="lead">
+          这套语言不是另起炉灶，而是作为一个 <b>theme-preset</b> 接入现有体系，因此能随上游
+          new-api 持续合并更新。两处改动即可点亮品牌：
+        </p>
+        <div class="card">
+          <div class="ct">① 注册预设 — <code class="inline">src/lib/theme-customization.ts</code></div>
+          <div class="codeblock" style="margin-top: 10px">
+<span class="c">// 加入 THEME_PRESETS 数组</span>
+{ <span class="k">value</span>: <span class="s">'jzlh'</span>,
+  <span class="k">name</span>: <span class="s">'九紫离火 · Nine Purple Li Fire'</span>,
+  <span class="k">swatches</span>: [<span class="s">'oklch(0.66 0.215 305)'</span>, <span class="s">'oklch(0.64 0.225 30)'</span>] }
+          </div>
+        </div>
+        <div class="card" style="margin-top: 14px">
+          <div class="ct">② 定义令牌 — <code class="inline">src/styles/theme-presets.css</code></div>
+          <div class="codeblock" style="margin-top: 10px">
+[<span class="k">data-theme-preset</span>=<span class="s">'jzlh'</span>] {        <span class="c">/* 浅色 */</span>
+  --primary: oklch(0.515 0.235 305);
+  --secondary: oklch(0.95 0.03 312);
+  --ring: oklch(0.515 0.235 305);
+  --chart-1: …; --chart-2: …; <span class="c">/* 九紫离火谱 */</span>
+  --radius: 1rem;
+}
+.dark [<span class="k">data-theme-preset</span>=<span class="s">'jzlh'</span>] {  <span class="c">/* 深色（主画布） */</span>
+  --primary: oklch(0.66 0.215 305);
+  --background: oklch(0.185 0.014 312);  <span class="c">/* 玄夜偏紫 */</span>
+  …
+}
+          </div>
+          <p class="note">
+            渐变与辉光（<code class="inline">--gradient-lihuo</code> /
+            <code class="inline">--glow-*</code>）作为新增品牌变量加在同一处；
+            <code class="inline">.btn-cta</code> 等品牌类放进
+            <code class="inline">styles/index.css</code> 的
+            <code class="inline">@layer components</code>。
+          </p>
+        </div>
+        <div class="card" style="margin-top: 14px">
+          <div class="ct">③ 品牌化收尾（覆盖 web/default 全量时）</div>
+          <div class="cd" style="margin-top: 6px">
+            <code class="inline">public/logo.png</code> + <code class="inline">favicon.ico</code> 换新；
+            <code class="inline">index.html</code> 的 <code class="inline">&lt;title&gt;</code> /
+            <code class="inline">theme-color</code>；登录/注册（<code class="inline">routes/(auth)</code>）、
+            落地页（<code class="inline">features/home</code>）、定价（<code class="inline">features/pricing</code>）的
+            hero 用离火渐变；侧栏激活态焰点。<b>注意：</b>保留
+            <code class="inline">new-api / QuantumNous</code> 的版权头与开源署名（项目政策保护项，不可移除）。
+          </div>
+        </div>
+
+        <div class="callout" style="margin-top: 22px">
+          <div class="ct">下一步</div>
+          <div class="cd">
+            确认此设计语言后，我可以：(a) 直接写出 <code class="inline">jzlh</code>
+            预设的完整 CSS 与注册改动；(b) 逐页改造登录页 / 落地页 / 控制台外壳。你说先做哪块。
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      // 镜像真实应用的 .dark 机制：切换 <html> 上的 dark 类
+      const t = document.getElementById('toggle')
+      t.addEventListener('click', () => {
+        document.documentElement.classList.toggle('dark')
+        const isDark = document.documentElement.classList.contains('dark')
+        t.textContent = isDark ? '◑ 深色' : '◐ 浅色'
+      })
+    </script>
+  </body>
+</html>

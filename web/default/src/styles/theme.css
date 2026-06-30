@@ -100,48 +100,70 @@ For commercial licensing, please contact support@quantumnous.com
    * in theme-presets.css. Default mirrors `--font-sans` so behavior is
    * identical when no font preference is set. */
   --font-body: var(--font-sans);
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --background: oklch(0.995 0.003 320);
+  --foreground: oklch(0.175 0.022 312);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.175 0.022 312);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.13 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.95 0 0);
-  --secondary-foreground: oklch(0.145 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.49 0 0);
-  --accent: oklch(0.95 0 0);
-  --accent-foreground: oklch(0.145 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --success: oklch(0.596 0.145 163.225);
-  --success-foreground: oklch(0.985 0 0);
-  --warning: oklch(0.681 0.162 75.834);
-  --warning-foreground: oklch(0.145 0 0);
-  --info: oklch(0.588 0.158 241.966);
-  --info-foreground: oklch(0.985 0 0);
-  --neutral: oklch(0.708 0 0);
-  --neutral-foreground: oklch(0.145 0 0);
-  --border: oklch(0.93 0 0);
-  --input: oklch(0.93 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.975 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.13 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.92 0 0);
-  --sidebar-accent-foreground: oklch(0.145 0 0);
-  --sidebar-border: oklch(0.93 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-  --skeleton-base: oklch(0.97 0 0);
-  --skeleton-highlight: oklch(0.985 0 0);
+  --popover-foreground: oklch(0.175 0.022 312);
+  /* 九紫 — violet brand primary (deepened for contrast on the light canvas) */
+  --primary: oklch(0.515 0.235 305);
+  --primary-foreground: oklch(0.995 0 0);
+  --secondary: oklch(0.95 0.03 312);
+  --secondary-foreground: oklch(0.28 0.06 312);
+  --muted: oklch(0.965 0.008 320);
+  --muted-foreground: oklch(0.475 0.03 312);
+  --accent: oklch(0.95 0.035 312);
+  --accent-foreground: oklch(0.22 0.06 312);
+  /* Danger red sits at hue 18 — kept cooler than the ember accent (hue ~30)
+   * so a "delete" action never reads like the "recharge" CTA. */
+  --destructive: oklch(0.58 0.22 18);
+  --destructive-foreground: oklch(0.995 0 0);
+  --success: oklch(0.6 0.15 162);
+  --success-foreground: oklch(0.995 0 0);
+  --warning: oklch(0.72 0.16 75);
+  --warning-foreground: oklch(0.16 0 0);
+  --info: oklch(0.56 0.16 248);
+  --info-foreground: oklch(0.995 0 0);
+  --neutral: oklch(0.55 0.02 312);
+  --neutral-foreground: oklch(0.16 0.02 312);
+  --border: oklch(0.9 0.012 312);
+  --input: oklch(0.9 0.012 312);
+  --ring: oklch(0.515 0.235 305);
+  /* 九紫离火谱 — the brand spectrum doubles as the sequential chart palette */
+  --chart-1: oklch(0.515 0.235 305);
+  --chart-2: oklch(0.58 0.225 342);
+  --chart-3: oklch(0.585 0.225 28);
+  --chart-4: oklch(0.68 0.18 52);
+  --chart-5: oklch(0.755 0.15 82);
+  --sidebar: oklch(0.975 0.006 312);
+  --sidebar-foreground: oklch(0.2 0.02 312);
+  --sidebar-primary: oklch(0.515 0.235 305);
+  --sidebar-primary-foreground: oklch(0.995 0 0);
+  --sidebar-accent: oklch(0.95 0.03 312);
+  --sidebar-accent-foreground: oklch(0.22 0.06 312);
+  --sidebar-border: oklch(0.9 0.012 312);
+  --sidebar-ring: oklch(0.515 0.235 305);
+  --skeleton-base: oklch(0.96 0.008 320);
+  --skeleton-highlight: oklch(0.985 0.004 320);
+
+  /* ── 九紫离火 brand tokens ──────────────────────────────────────────────
+   * Exposed globally (not just under a preset) so brand utilities and the
+   * CTA button variant can reference them regardless of the active theme. */
+  --brand-violet: oklch(0.515 0.235 305);
+  --brand-magenta: oklch(0.58 0.225 342);
+  --brand-ember: oklch(0.575 0.225 30);
+  --brand-flame: oklch(0.68 0.18 52);
+  --brand-gold: oklch(0.745 0.155 80);
+  --gradient-lihuo: linear-gradient(
+    135deg,
+    oklch(0.55 0.24 298) 0%,
+    oklch(0.6 0.235 332) 34%,
+    oklch(0.62 0.225 24) 66%,
+    oklch(0.78 0.16 80) 100%
+  );
+  --glow-violet: 0 10px 34px -12px oklch(0.55 0.24 305 / 0.45);
+  --glow-ember: 0 8px 26px -10px oklch(0.62 0.22 32 / 0.4);
   --table-row: var(--background);
   --table-header: color-mix(
     in oklch,
@@ -171,49 +193,65 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .dark {
-  /* OpenAI-like dark mode with a crisp charcoal canvas. */
-  --background: oklch(0.235 0 0);
-  --foreground: oklch(0.965 0 0);
-  --card: oklch(0.285 0 0);
-  --card-foreground: oklch(0.965 0 0);
-  --popover: oklch(0.305 0 0);
-  --popover-foreground: oklch(0.965 0 0);
-  --primary: oklch(0.965 0 0);
-  --primary-foreground: oklch(0.155 0 0);
-  --secondary: oklch(0.335 0 0);
-  --secondary-foreground: oklch(0.965 0 0);
-  --muted: oklch(0.305 0 0);
-  --muted-foreground: oklch(0.78 0 0);
-  --accent: oklch(0.365 0 0);
+  /* 玄夜 — a deep, faintly violet near-black so the 离火 accents truly glow. */
+  --background: oklch(0.185 0.014 312);
+  --foreground: oklch(0.965 0.006 95);
+  --card: oklch(0.225 0.016 312);
+  --card-foreground: oklch(0.965 0.006 95);
+  --popover: oklch(0.245 0.018 312);
+  --popover-foreground: oklch(0.965 0.006 95);
+  --primary: oklch(0.66 0.215 305);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.335 0.05 312);
+  --secondary-foreground: oklch(0.96 0.012 312);
+  --muted: oklch(0.275 0.014 312);
+  --muted-foreground: oklch(0.74 0.022 312);
+  --accent: oklch(0.36 0.06 312);
   --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --success: oklch(0.696 0.17 162.48);
-  --success-foreground: oklch(0.145 0 0);
-  --warning: oklch(0.769 0.188 70.08);
-  --warning-foreground: oklch(0.145 0 0);
-  --info: oklch(0.68 0.17 237.323);
-  --info-foreground: oklch(0.145 0 0);
-  --neutral: oklch(0.76 0 0);
-  --neutral-foreground: oklch(0.155 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 17%);
-  --ring: oklch(0.68 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.225 0 0);
-  --sidebar-foreground: oklch(0.95 0 0);
-  --sidebar-primary: oklch(0.965 0 0);
-  --sidebar-primary-foreground: oklch(0.155 0 0);
-  --sidebar-accent: oklch(0.355 0 0);
+  --destructive: oklch(0.66 0.21 18);
+  --destructive-foreground: oklch(0.995 0 0);
+  --success: oklch(0.72 0.17 162);
+  --success-foreground: oklch(0.16 0 0);
+  --warning: oklch(0.8 0.16 80);
+  --warning-foreground: oklch(0.16 0 0);
+  --info: oklch(0.68 0.16 248);
+  --info-foreground: oklch(0.16 0 0);
+  --neutral: oklch(0.76 0.015 312);
+  --neutral-foreground: oklch(0.16 0.02 312);
+  --border: oklch(0.83 0.05 312 / 13%);
+  --input: oklch(0.83 0.05 312 / 18%);
+  --ring: oklch(0.66 0.215 305);
+  --chart-1: oklch(0.66 0.215 305);
+  --chart-2: oklch(0.66 0.22 340);
+  --chart-3: oklch(0.64 0.225 28);
+  --chart-4: oklch(0.72 0.19 50);
+  --chart-5: oklch(0.82 0.155 82);
+  --sidebar: oklch(0.165 0.014 312);
+  --sidebar-foreground: oklch(0.95 0.01 312);
+  --sidebar-primary: oklch(0.66 0.215 305);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.355 0.05 312);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 11%);
-  --sidebar-ring: oklch(0.68 0 0);
-  --skeleton-base: oklch(0.335 0 0);
-  --skeleton-highlight: oklch(0.44 0 0);
+  --sidebar-border: oklch(0.83 0.05 312 / 11%);
+  --sidebar-ring: oklch(0.66 0.215 305);
+  --skeleton-base: oklch(0.305 0.016 312);
+  --skeleton-highlight: oklch(0.4 0.018 312);
+
+  /* ── 九紫离火 brand tokens (dark) — brighter ramp + stronger glow ──────── */
+  --brand-violet: oklch(0.66 0.215 305);
+  --brand-magenta: oklch(0.66 0.22 340);
+  --brand-ember: oklch(0.64 0.225 30);
+  --brand-flame: oklch(0.72 0.19 50);
+  --brand-gold: oklch(0.82 0.155 82);
+  --gradient-lihuo: linear-gradient(
+    135deg,
+    oklch(0.58 0.24 300) 0%,
+    oklch(0.64 0.235 332) 33%,
+    oklch(0.64 0.225 24) 64%,
+    oklch(0.82 0.16 80) 100%
+  );
+  --glow-violet: 0 12px 40px -12px oklch(0.6 0.24 305 / 0.6);
+  --glow-ember: 0 10px 30px -10px oklch(0.66 0.22 32 / 0.45);
   --table-row: var(--background);
   --table-header: color-mix(
     in oklch,
