@@ -50,15 +50,16 @@ interface StatCardProps {
   action?: ReactNode
 }
 
+// 九紫离火谱: rose→九紫 violet (chart-1), teal→离火 ember (chart-3).
 const TONE_CLASSES: Record<StatCardTone, string> = {
-  rose: 'from-rose-500/80 via-rose-300/70 to-rose-200/20 dark:from-rose-400/70 dark:via-rose-500/30 dark:to-rose-500/5',
-  teal: 'from-teal-500/80 via-teal-300/70 to-teal-200/20 dark:from-teal-400/70 dark:via-teal-500/30 dark:to-teal-500/5',
+  rose: 'from-chart-1/80 via-chart-1/40 to-chart-1/5 dark:from-chart-1/70 dark:via-chart-1/30 dark:to-chart-1/5',
+  teal: 'from-chart-3/80 via-chart-3/40 to-chart-3/5 dark:from-chart-3/70 dark:via-chart-3/30 dark:to-chart-3/5',
   gray: 'from-muted-foreground/50 via-muted-foreground/20 to-transparent dark:from-muted-foreground/40 dark:via-muted-foreground/20',
 }
 
 const LINE_TONE_CLASSES: Record<StatCardTone, string> = {
-  rose: 'text-warning',
-  teal: 'text-primary',
+  rose: 'text-chart-1',
+  teal: 'text-chart-3',
   gray: 'text-muted-foreground',
 }
 

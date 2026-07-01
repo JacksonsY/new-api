@@ -1,0 +1,550 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/* =========================================================================
+   九紫离火 · 「离火・白」 Premium Landing — White-Fire design system
+   A bespoke, light-first marketing surface. Scoped under `.pf` so it is
+   fully independent of the app theme tokens (always reads white/premium,
+   regardless of the app's light/dark mode). The 离火 gradient is the only
+   color event on an otherwise Apple-white canvas — scarcity = luxury.
+   ========================================================================= */
+
+.pf {
+  /* fire spectrum (fixed for the landing) */
+  --pf-violet: #7c3aed;
+  --pf-magenta: #c81e9e;
+  --pf-ember: #f0452e;
+  --pf-gold: #f6b43e;
+  --pf-grad: linear-gradient(
+    115deg,
+    #7c3aed 0%,
+    #c81e9e 34%,
+    #f0452e 66%,
+    #f6b43e 100%
+  );
+  --pf-grad-soft: linear-gradient(115deg, #8b5cf6, #e0489e, #fb6a3c, #f6b43e);
+
+  /* ink + surfaces */
+  --pf-bg: #ffffff;
+  --pf-bg-2: #faf9fc;
+  --pf-ink: #0c0a14;
+  --pf-ink-2: #443f55;
+  --pf-muted: #6a6480;
+  --pf-line: rgba(18, 12, 38, 0.08);
+  --pf-line-2: rgba(18, 12, 38, 0.12);
+
+  /* liquid glass */
+  --pf-glass-bg: rgba(255, 255, 255, 0.62);
+  --pf-glass-brd: rgba(255, 255, 255, 0.7);
+  --pf-glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 18px 50px -24px rgba(54, 22, 92, 0.32);
+
+  position: relative;
+  width: 100%;
+  overflow-x: clip;
+  background: var(--pf-bg);
+  color: var(--pf-ink);
+  font-family:
+    'Public Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'ss01', 'cv05';
+  /* keep the landing visually light even if app is in .dark */
+  color-scheme: light;
+}
+
+/* Lenis smooth-scroll plumbing */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* ── Atmosphere ─────────────────────────────────────────────────────────── */
+/* Aurora wash — soft fire blooms drifting on white */
+.pf-aurora {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.pf-aurora::before,
+.pf-aurora::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.5;
+  will-change: transform;
+}
+.pf-aurora::before {
+  width: 52vw;
+  height: 52vw;
+  top: -16vw;
+  left: -8vw;
+  background: radial-gradient(
+    circle,
+    rgba(124, 58, 237, 0.5),
+    transparent 62%
+  );
+  animation: pf-drift-a 22s ease-in-out infinite alternate;
+}
+.pf-aurora::after {
+  width: 46vw;
+  height: 46vw;
+  top: -10vw;
+  right: -10vw;
+  background: radial-gradient(circle, rgba(240, 69, 46, 0.34), transparent 60%);
+  animation: pf-drift-b 26s ease-in-out infinite alternate;
+}
+@keyframes pf-drift-a {
+  to {
+    transform: translate3d(8vw, 6vw, 0) scale(1.12);
+  }
+}
+@keyframes pf-drift-b {
+  to {
+    transform: translate3d(-7vw, 5vw, 0) scale(1.08);
+  }
+}
+
+/* Ultrafine grain */
+.pf-grain {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.04;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* faint hairline grid, masked to fade */
+.pf-grid {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(18, 12, 38, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(18, 12, 38, 0.045) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(
+    ellipse 70% 55% at 50% 30%,
+    #000 10%,
+    transparent 75%
+  );
+  mask-image: radial-gradient(
+    ellipse 70% 55% at 50% 30%,
+    #000 10%,
+    transparent 75%
+  );
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────── */
+.pf-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--pf-muted);
+}
+.pf-display {
+  font-weight: 720;
+  letter-spacing: -0.035em;
+  line-height: 0.96;
+  font-size: clamp(2.7rem, 7.6vw, 6.4rem);
+  color: var(--pf-ink);
+}
+.pf-h2 {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.04;
+  font-size: clamp(2rem, 4.6vw, 3.5rem);
+  color: var(--pf-ink);
+}
+.pf-lead {
+  color: var(--pf-ink-2);
+  font-size: clamp(1.02rem, 1.5vw, 1.2rem);
+  line-height: 1.62;
+  /* Balance line lengths so CJK paragraphs don't orphan a 1–2 char last line */
+  text-wrap: balance;
+}
+.pf-fire-text {
+  background: var(--pf-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.pf-seal {
+  font-family: var(--font-serif, 'Lora', 'Songti SC', serif);
+}
+
+/* ── Liquid glass ───────────────────────────────────────────────────────── */
+.pf-glass {
+  background: var(--pf-glass-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(1.7);
+  backdrop-filter: blur(20px) saturate(1.7);
+  border: 1px solid var(--pf-glass-brd);
+  box-shadow: var(--pf-glass-shadow);
+}
+.pf-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.66);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid var(--pf-line);
+  border-radius: 22px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 22px 48px -30px rgba(40, 16, 70, 0.4);
+  transition:
+    transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.5s ease;
+}
+.pf-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--pf-line-2);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 30px 60px -28px rgba(80, 24, 120, 0.34);
+}
+/* gradient hairline ring on emphasis cards */
+.pf-card-fire::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--pf-grad);
+  opacity: 0.6;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.pf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.8rem 1.4rem;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.3s ease,
+    background 0.3s ease;
+  white-space: nowrap;
+}
+.pf-btn:active {
+  transform: scale(0.975);
+}
+.pf-btn-fire {
+  color: #fff;
+  background: var(--pf-grad);
+  background-size: 140% 140%;
+  /* refined glow — tight enough that the button doesn't look inflated or
+     float on a different elevation than the secondary button next to it */
+  box-shadow:
+    0 6px 18px -8px rgba(200, 30, 120, 0.4),
+    0 2px 6px -3px rgba(240, 69, 46, 0.28);
+}
+.pf-btn-fire:hover {
+  background-position: 100% 50%;
+  box-shadow:
+    0 12px 30px -10px rgba(200, 30, 120, 0.5),
+    0 4px 12px -5px rgba(124, 58, 237, 0.4);
+}
+.pf-btn-ghost {
+  /* solid white + matching soft shadow so it reads as a real secondary
+     button on the same elevation, not a faint empty outline */
+  color: var(--pf-ink);
+  background: #fff;
+  border-color: var(--pf-line-2);
+  box-shadow:
+    0 1px 2px rgba(18, 12, 38, 0.04),
+    0 8px 20px -14px rgba(40, 16, 70, 0.28);
+}
+.pf-btn-ghost:hover {
+  border-color: var(--pf-violet);
+  color: var(--pf-violet);
+}
+
+.pf-btn-sm {
+  padding: 0.5rem 1.05rem;
+  font-size: 0.85rem;
+}
+.pf-navlink {
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 550;
+  color: var(--pf-ink-2);
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+}
+.pf-navlink:hover {
+  color: var(--pf-ink);
+  background: rgba(18, 12, 38, 0.05);
+}
+.pf-footlink {
+  font-size: 0.875rem;
+  color: var(--pf-muted);
+  transition: color 0.2s ease;
+}
+.pf-footlink:hover {
+  color: var(--pf-ink);
+}
+/* Partner wall logos — grayscale + muted by default, full color on hover */
+.pf-partner {
+  filter: grayscale(1);
+  opacity: 0.6;
+  transition:
+    filter 0.3s ease,
+    opacity 0.3s ease;
+}
+.pf-partner:hover {
+  filter: grayscale(0);
+  opacity: 1;
+}
+
+/* World-map glowing 离火 nodes */
+.pf-node {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  background: var(--pf-grad);
+  box-shadow: 0 0 8px 1px rgba(240, 69, 46, 0.5);
+  z-index: 2;
+}
+.pf-node::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: var(--pf-grad);
+  animation: pf-ping 2.6s ease-out infinite;
+  animation-delay: var(--d, 0s);
+}
+@keyframes pf-ping {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-node::after {
+    animation: none;
+  }
+}
+
+/* ── Routing diagram (one key → every provider) ─────────────────────────── */
+/* Frosted node chip used for the app card and every provider spoke. */
+.pf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--pf-line-2);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 10px 24px -16px rgba(40, 16, 70, 0.4);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--pf-ink);
+  white-space: nowrap;
+}
+/* faint resting connector */
+.pf-spoke {
+  fill: none;
+  stroke: rgba(18, 12, 38, 0.1);
+  stroke-width: 2;
+}
+/* fire packets travelling hub → provider along the same path */
+.pf-flow {
+  fill: none;
+  stroke: url(#pfFlow);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 5 26;
+  animation: pf-flow-dash 1.5s linear infinite;
+}
+@keyframes pf-flow-dash {
+  to {
+    stroke-dashoffset: -31;
+  }
+}
+/* the gateway core — gradient disc with a layered fire glow */
+.pf-hub {
+  background: var(--pf-grad);
+  box-shadow:
+    0 0 0 8px rgba(124, 58, 237, 0.06),
+    0 14px 40px -10px rgba(200, 30, 120, 0.5),
+    0 0 60px -6px rgba(240, 69, 46, 0.4);
+  animation: pf-breathe 6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-flow,
+  .pf-hub {
+    animation: none;
+  }
+}
+
+/* Re-scope app theme tokens to light premium *inside* the landing, so any
+   token-based descendant (Footer, shadcn Button) renders light regardless of
+   the app's active dark mode. Custom properties resolve from the nearest
+   ancestor, so these win for the whole `.pf` subtree. */
+.pf {
+  --background: #ffffff;
+  --foreground: #0c0a14;
+  --card: #ffffff;
+  --card-foreground: #0c0a14;
+  --popover: #ffffff;
+  --popover-foreground: #0c0a14;
+  --muted: #f5f4f8;
+  --muted-foreground: #6a6480;
+  --secondary: #f2eefb;
+  --secondary-foreground: #2a2440;
+  --accent: #f1ecfb;
+  --accent-foreground: #2a2440;
+  --border: rgba(18, 12, 38, 0.08);
+  --input: rgba(18, 12, 38, 0.12);
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --ring: #7c3aed;
+}
+
+/* ── Pills / chips ──────────────────────────────────────────────────────── */
+.pf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.34rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--pf-line-2);
+  color: var(--pf-ink-2);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+/* ── Marquee ────────────────────────────────────────────────────────────── */
+.pf-marquee {
+  display: flex;
+  width: max-content;
+  animation: pf-marquee 38s linear infinite;
+}
+.pf-marquee-track:hover .pf-marquee {
+  animation-play-state: paused;
+}
+@keyframes pf-marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.pf-fade-x {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 12%,
+    #000 88%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 12%,
+    #000 88%,
+    transparent
+  );
+}
+
+/* ── 3D core fallback (no WebGL / reduced motion) ──────────────────────── */
+.pf-core-fallback {
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle at 36% 30%,
+      rgba(255, 255, 255, 0.9),
+      transparent 38%
+    ),
+    var(--pf-grad);
+  box-shadow:
+    0 30px 90px -20px rgba(150, 30, 110, 0.45),
+    0 0 120px -10px rgba(240, 69, 46, 0.35);
+  animation: pf-breathe 6s ease-in-out infinite;
+}
+@keyframes pf-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+/* reveal base state (GSAP animates from these via useLayoutEffect → no FOUC) */
+.pf-reveal {
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-aurora::before,
+  .pf-aurora::after,
+  .pf-marquee,
+  .pf-core-fallback {
+    animation: none !important;
+  }
+}

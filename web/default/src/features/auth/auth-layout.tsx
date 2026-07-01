@@ -31,6 +31,15 @@ export function AuthLayout({ children }: AuthLayoutProps) {
 
   return (
     <div className='relative grid h-svh max-w-none'>
+      {/* 离火 brand ambiance — subtle violet/ember bloom behind the sign-in card */}
+      <div
+        aria-hidden
+        className='pointer-events-none absolute inset-0 -z-10'
+        style={{
+          background:
+            'radial-gradient(60% 55% at 50% -5%, oklch(0.6 0.22 312 / 22%) 0%, transparent 60%), radial-gradient(45% 45% at 88% 8%, oklch(0.64 0.2 35 / 14%) 0%, transparent 55%)',
+        }}
+      />
       <Link
         to='/'
         className='absolute top-4 left-4 z-10 flex items-center gap-2 transition-opacity hover:opacity-80 sm:top-8 sm:left-8'
@@ -49,7 +58,9 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         {loading ? (
           <Skeleton className='h-6 w-24' />
         ) : (
-          <h1 className='text-xl font-medium'>{systemName}</h1>
+          <h1 className='text-gradient-lihuo text-xl font-semibold'>
+            {systemName}
+          </h1>
         )}
       </Link>
       <div className='container flex items-center pt-16 sm:pt-0'>

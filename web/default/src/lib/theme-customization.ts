@@ -25,9 +25,13 @@ For commercial licensing, please contact support@quantumnous.com
 
 export const THEME_PRESETS = [
   {
+    // 九紫离火 (Nine Purple Li Fire) — the product's default brand identity.
+    // The `default` preset writes no `data-theme-preset` attribute, so the base
+    // `:root` / `.dark` tokens in theme.css carry the brand out of the box.
+    // Swatches preview the 九紫 (violet primary) → 离火 (ember) signature pair.
     value: 'default',
-    name: 'Default',
-    swatches: ['oklch(0.13 0 0)', 'oklch(0.95 0 0)'],
+    name: '九紫离火',
+    swatches: ['oklch(0.66 0.215 305)', 'oklch(0.64 0.225 30)'],
   },
   {
     // Inspired by Anthropic's official brand language: warm cream canvas
