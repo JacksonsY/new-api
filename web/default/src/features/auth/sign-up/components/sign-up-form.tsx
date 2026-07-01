@@ -354,7 +354,8 @@ export function SignUpForm({
         {/* Submit Button */}
         <Button
           type='submit'
-          className='mt-2 w-full justify-center gap-2'
+          variant='cta'
+          className='mt-2 h-11 w-full justify-center gap-2 rounded-lg text-[0.95rem]'
           disabled={
             isLoading ||
             (requiresLegalConsent && !agreedToLegal) ||

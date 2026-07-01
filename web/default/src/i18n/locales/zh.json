@@ -1930,7 +1930,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相关项目",
     "footer.defaultCopyright": "版权所有。",
-    "footer.new\u0061pi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
+    "footer.newapi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "对于 2025 年 5 月 10 日之后添加的渠道，在部署时无需从模型名称中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "对于私有部署，格式为：https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "强制返回语法合法的 JSON",
@@ -4997,6 +4997,8 @@
     "the platform runs on": "主流模型",
     "Every model,": "每一个模型",
     "one gateway.": "同一个网关",
-    "Powered by": "技术支持"
+    "Powered by": "技术支持",
+    "Support Email": "客服邮箱",
+    "Support Phone": "客服电话"
   }
 }

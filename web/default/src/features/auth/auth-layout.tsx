@@ -20,53 +20,51 @@ import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { Skeleton } from '@/components/ui/skeleton'
+import '@/features/home/premium/premium.css'
 
 type AuthLayoutProps = {
   children: React.ReactNode
 }
 
+// Centered glass card on the 「离火・白」 premium surface — identical atmosphere
+// to the landing page (aurora + hairline grid + grain), always white regardless
+// of the app's active light/dark theme (`.pf` re-scopes tokens + color-scheme).
 export function AuthLayout({ children }: AuthLayoutProps) {
   const { t } = useTranslation()
   const { systemName, logo, loading } = useSystemConfig()
 
   return (
-    <div className='relative grid h-svh max-w-none'>
-      {/* 离火 brand ambiance — subtle violet/ember bloom behind the sign-in card */}
-      <div
-        aria-hidden
-        className='pointer-events-none absolute inset-0 -z-10'
-        style={{
-          background:
-            'radial-gradient(60% 55% at 50% -5%, oklch(0.6 0.22 312 / 22%) 0%, transparent 60%), radial-gradient(45% 45% at 88% 8%, oklch(0.64 0.2 35 / 14%) 0%, transparent 55%)',
-        }}
-      />
-      <Link
-        to='/'
-        className='absolute top-4 left-4 z-10 flex items-center gap-2 transition-opacity hover:opacity-80 sm:top-8 sm:left-8'
-      >
-        <div className='relative h-8 w-8'>
+    <div className='pf relative flex min-h-svh flex-col items-center justify-center px-4 py-10'>
+      <div className='pf-aurora' aria-hidden />
+      <div className='pf-grid' aria-hidden />
+      <div className='pf-grain' aria-hidden />
+
+      <div className='relative z-10 flex w-full max-w-[420px] flex-col items-center'>
+        {/* Brand wordmark above the card */}
+        <Link
+          to='/'
+          className='mb-8 flex items-center gap-2.5 transition-opacity hover:opacity-80'
+        >
           {loading ? (
-            <Skeleton className='absolute inset-0 rounded-full' />
+            <Skeleton className='size-9 rounded-xl' />
           ) : (
             <img
               src={logo}
               alt={t('Logo')}
-              className='h-8 w-8 rounded-full object-cover'
+              className='size-9 rounded-xl object-cover'
             />
           )}
-        </div>
-        {loading ? (
-          <Skeleton className='h-6 w-24' />
-        ) : (
-          <h1 className='text-gradient-lihuo text-xl font-semibold'>
-            {systemName}
-          </h1>
-        )}
-      </Link>
-      <div className='container flex items-center pt-16 sm:pt-0'>
-        <div className='mx-auto flex w-full flex-col justify-center space-y-2 px-4 py-8 sm:w-[480px] sm:p-8'>
-          {children}
-        </div>
+          {loading ? (
+            <Skeleton className='h-6 w-28' />
+          ) : (
+            <span className='pf-fire-text text-2xl font-bold tracking-tight'>
+              {systemName}
+            </span>
+          )}
+        </Link>
+
+        {/* Glass auth card */}
+        <div className='pf-card w-full p-7 sm:p-9'>{children}</div>
       </div>
     </div>
   )

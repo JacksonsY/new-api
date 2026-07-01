@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import { SupportContact } from '@/components/support-contact'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 
@@ -89,6 +90,11 @@ export function PremiumFooter() {
             >
               {t('One key to every model.')}
             </p>
+            <SupportContact
+              className='mt-5'
+              linkClassName='pf-footlink'
+              style={{ color: 'var(--pf-muted)' }}
+            />
           </div>
 
           {/* Link columns */}

@@ -461,6 +461,10 @@ html.lenis body {
   --primary: #7c3aed;
   --primary-foreground: #ffffff;
   --ring: #7c3aed;
+  /* On the premium surface the brand gradient IS the landing gradient, so the
+     `cta` Button (.btn-cta) matches the homepage regardless of the app's
+     active light/dark theme. */
+  --gradient-lihuo: var(--pf-grad);
 }
 
 /* ── Pills / chips ──────────────────────────────────────────────────────── */

@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { SupportContact } from '@/components/support-contact'
 
 interface FooterLink {
   text: string
@@ -231,10 +232,17 @@ export function Footer(props: FooterProps) {
       >
         <div className='mx-auto w-full max-w-6xl px-6 py-5'>
           <div className='bg-muted/20 border-border/50 flex flex-col items-center justify-between gap-4 rounded-2xl border px-4 py-4 backdrop-blur-sm sm:flex-row sm:px-5'>
-            <div
-              className='custom-footer text-muted-foreground min-w-0 text-center text-sm sm:text-left'
-              dangerouslySetInnerHTML={{ __html: footerHtml }}
-            />
+            <div className='flex min-w-0 flex-col items-center gap-2 sm:items-start'>
+              <div
+                className='custom-footer text-muted-foreground text-center text-sm sm:text-left'
+                dangerouslySetInnerHTML={{ __html: footerHtml }}
+              />
+              <SupportContact
+                inline
+                className='text-muted-foreground/70 justify-center text-xs sm:justify-start'
+                linkClassName='hover:text-foreground transition-colors'
+              />
+            </div>
             <div className='border-border/60 text-muted-foreground/45 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-4 text-xs sm:w-auto sm:justify-end sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5'>
               <LegalLinks />
               <ProjectAttribution currentYear={currentYear} inline />
@@ -266,6 +274,10 @@ export function Footer(props: FooterProps) {
             <p className='text-muted-foreground/60 mt-3 max-w-[200px] text-xs leading-relaxed'>
               {t('Powerful API Management Platform')}
             </p>
+            <SupportContact
+              className='text-muted-foreground/70 mt-4 text-xs'
+              linkClassName='hover:text-foreground transition-colors'
+            />
           </div>
 
           {/* Links columns */}
