@@ -4982,6 +4982,21 @@
     "Sign up and generate an API key in the console — free and instant.": "Sign up and generate an API key in the console — free and instant.",
     "Top up a pay-as-you-go balance. Token-accurate metering, no subscription.": "Top up a pay-as-you-go balance. Token-accurate metering, no subscription.",
     "Point & ship": "Point & ship",
-    "Set your base URL to the gateway. Your existing OpenAI, Claude, and Gemini code runs unchanged.": "Set your base URL to the gateway. Your existing OpenAI, Claude, and Gemini code runs unchanged."
+    "Set your base URL to the gateway. Your existing OpenAI, Claude, and Gemini code runs unchanged.": "Set your base URL to the gateway. Your existing OpenAI, Claude, and Gemini code runs unchanged.",
+    "All models, one gateway": "Tous les modèles, une passerelle",
+    "Throughput: High to Low": "Débit : décroissant",
+    "Latency: Low to High": "Latence : croissante",
+    "Success: High to Low": "Succès : décroissant",
+    "Featured models": "Modèles en vedette",
+    "Every major model": "Chaque grand modèle",
+    "behind one key": "avec une seule clé",
+    "providers": "fournisseurs",
+    "One key": "Une clé",
+    "Relative input price across the catalog": "Prix d'entrée relatif sur le catalogue",
+    "The models": "The models",
+    "the platform runs on": "the platform runs on",
+    "Every model,": "Every model,",
+    "one gateway.": "one gateway.",
+    "Powered by": "Powered by"
   }
 }

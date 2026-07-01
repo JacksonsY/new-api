@@ -4982,6 +4982,21 @@
     "Sign up and generate an API key in the console — free and instant.": "サインインしてコンソールで API キーを生成 —— 無料で即時。",
     "Top up a pay-as-you-go balance. Token-accurate metering, no subscription.": "従量課金の残高をチャージ。トークン単位で正確に計量、サブスク不要。",
     "Point & ship": "接続して開始",
-    "Set your base URL to the gateway. Your existing OpenAI, Claude, and Gemini code runs unchanged.": "base URL をゲートウェイに向けるだけ。既存の OpenAI・Claude・Gemini のコードはそのまま動作します。"
+    "Set your base URL to the gateway. Your existing OpenAI, Claude, and Gemini code runs unchanged.": "base URL をゲートウェイに向けるだけ。既存の OpenAI・Claude・Gemini のコードはそのまま動作します。",
+    "All models, one gateway": "すべてのモデルを一つのゲートウェイで",
+    "Throughput: High to Low": "スループット:高い順",
+    "Latency: Low to High": "レイテンシ:低い順",
+    "Success: High to Low": "成功率:高い順",
+    "Featured models": "注目のモデル",
+    "Every major model": "すべての主要モデルを",
+    "behind one key": "一つのキーで",
+    "providers": "プロバイダー",
+    "One key": "一つのキー",
+    "Relative input price across the catalog": "カタログ全体での相対入力価格",
+    "The models": "プラットフォームが",
+    "the platform runs on": "動かす主要モデル",
+    "Every model,": "すべてのモデルを",
+    "one gateway.": "ひとつのゲートウェイへ。",
+    "Powered by": "Powered by"
   }
 }

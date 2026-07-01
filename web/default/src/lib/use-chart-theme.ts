@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useRef, useState } from 'react'
 import { useTheme } from '@/context/theme-provider'
+import { useIsPremiumSurface } from '@/lib/premium-surface'
 
 /**
  * Lazy-load VChart's `ThemeManager` and switch its theme to follow the
@@ -29,7 +30,11 @@ let themeManagerPromise: Promise<
 > | null = null
 
 export function useChartTheme() {
-  const { resolvedTheme } = useTheme()
+  const { resolvedTheme: appTheme } = useTheme()
+  // On the always-white premium surface, pin charts to their light variant so
+  // they never render dark on the white canvas when the app theme is dark.
+  const forceLight = useIsPremiumSurface()
+  const resolvedTheme = forceLight ? 'light' : appTheme
   const [themeReady, setThemeReady] = useState(false)
   const themeRef = useRef<
     (typeof import('@visactor/vchart'))['ThemeManager'] | null

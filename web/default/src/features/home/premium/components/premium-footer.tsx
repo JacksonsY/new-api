@@ -19,29 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
-function GithubMark() {
-  return (
-    <svg
-      viewBox='0 0 16 16'
-      width='14'
-      height='14'
-      fill='currentColor'
-      aria-hidden='true'
-    >
-      <path d='M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z' />
-    </svg>
-  )
-}
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
-
-// Project attribution key is assembled at runtime (matches footer.tsx) so the
-// protected `newapi` identifier stays obfuscated in source.
-const ATTRIBUTION_KEY = [
-  'footer',
-  'new' + 'api',
-  'projectAttributionSuffix',
-].join('.')
 
 type FootLink = { label: string; to?: string; href?: string }
 
@@ -110,15 +89,6 @@ export function PremiumFooter() {
             >
               {t('One key to every model.')}
             </p>
-            <a
-              href='https://github.com/QuantumNous/new-api'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='pf-pill mt-5 inline-flex'
-            >
-              <GithubMark />
-              GitHub
-            </a>
           </div>
 
           {/* Link columns */}
@@ -163,7 +133,7 @@ export function PremiumFooter() {
             &copy; {year} {brand}
           </span>
           <span style={{ opacity: 0.85 }}>
-            &copy; {year}{' '}
+            {t('Powered by')}{' '}
             <a
               href='https://github.com/QuantumNous/new-api'
               target='_blank'
@@ -173,7 +143,6 @@ export function PremiumFooter() {
             >
               {t('New API')}
             </a>
-            . {t(ATTRIBUTION_KEY)}
           </span>
         </div>
       </div>

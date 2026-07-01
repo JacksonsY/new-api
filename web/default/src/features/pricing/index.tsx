@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { PublicLayout } from '@/components/layout'
+import { PremiumPublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
 import {
   LoadingSkeleton,
@@ -146,43 +146,30 @@ export function Pricing() {
 
   if (isLoading) {
     return (
-      <PublicLayout showMainContainer={false}>
-        <div className='mx-auto w-full max-w-[1800px] px-3 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 xl:px-8'>
+      <PremiumPublicLayout showMainContainer={false}>
+        <div className='mx-auto w-full max-w-[1800px] px-3 pt-24 pb-8 sm:px-6 sm:pt-28 sm:pb-10 xl:px-8'>
           <LoadingSkeleton viewMode={viewMode} />
         </div>
-      </PublicLayout>
+      </PremiumPublicLayout>
     )
   }
 
   return (
-    <PublicLayout showMainContainer={false}>
+    <PremiumPublicLayout showMainContainer={false}>
       <div className='relative'>
-        <div
-          aria-hidden
-          className='pointer-events-none absolute inset-x-0 top-0 h-[600px] opacity-20 dark:opacity-[0.10]'
-          style={{
-            background: [
-              'radial-gradient(ellipse 60% 50% at 20% 20%, oklch(0.72 0.18 250 / 80%) 0%, transparent 70%)',
-              'radial-gradient(ellipse 50% 40% at 80% 15%, oklch(0.65 0.15 200 / 60%) 0%, transparent 70%)',
-              'radial-gradient(ellipse 40% 35% at 50% 70%, oklch(0.70 0.12 280 / 40%) 0%, transparent 70%)',
-            ].join(', '),
-            maskImage:
-              'linear-gradient(to bottom, black 40%, transparent 100%)',
-            WebkitMaskImage:
-              'linear-gradient(to bottom, black 40%, transparent 100%)',
-          }}
-        />
-        <PageTransition className='relative mx-auto w-full max-w-[1800px] px-3 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 xl:px-8'>
-          <header className='mx-auto mb-5 max-w-3xl pt-5 text-center sm:mb-10 sm:pt-10'>
-            <h1 className='text-[clamp(2rem,5.5vw,3.5rem)] leading-[1.15] font-bold tracking-tight'>
-              {t('Model Square')}
+        <PageTransition className='relative mx-auto w-full max-w-[1800px] px-3 pt-24 pb-8 sm:px-6 sm:pt-28 sm:pb-10 xl:px-8'>
+          <header className='mx-auto mb-6 max-w-3xl pt-4 text-center sm:mb-10 sm:pt-8'>
+            <p className='pf-eyebrow justify-center'>{t('Model Square')}</p>
+            <h1 className='pf-display mt-3 !text-[clamp(2.2rem,5.5vw,3.6rem)]'>
+              {t('Every model,')}{' '}
+              <span className='pf-fire-text'>{t('one gateway.')}</span>
             </h1>
-            <p className='text-muted-foreground/80 mt-3 text-sm sm:mt-4 sm:text-base'>
+            <p className='text-muted-foreground/80 mt-4 text-sm sm:text-base'>
               {t('This site currently has {{count}} models enabled', {
                 count: models?.length || 0,
               })}
             </p>
-            <p className='text-muted-foreground/60 mx-auto mt-2 max-w-2xl text-xs leading-relaxed sm:text-sm'>
+            <p className='pf-lead mx-auto mt-2 max-w-2xl !text-[0.92rem]'>
               {t(
                 'Discover curated AI models, compare pricing and capabilities, and choose the right model for every scenario.'
               )}
@@ -280,6 +267,6 @@ export function Pricing() {
           )}
         </PageTransition>
       </div>
-    </PublicLayout>
+    </PremiumPublicLayout>
   )
 }

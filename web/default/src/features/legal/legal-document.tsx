@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Markdown } from '@/components/ui/markdown'
 import { Skeleton } from '@/components/ui/skeleton'
-import { PublicLayout } from '@/components/layout'
+import { PremiumPublicLayout } from '@/components/layout'
 import type { LegalDocumentResponse } from './types'
 
 type LegalDocumentProps = {
@@ -67,21 +67,21 @@ export function LegalDocument({
 
   if (isLoading) {
     return (
-      <PublicLayout>
-        <div className='mx-auto flex max-w-4xl flex-col gap-4 py-12'>
+      <PremiumPublicLayout>
+        <div className='mx-auto flex max-w-4xl flex-col gap-4 pt-24 pb-12'>
           <Skeleton className='h-8 w-[45%]' />
           <Skeleton className='h-4 w-full' />
           <Skeleton className='h-4 w-[90%]' />
           <Skeleton className='h-4 w-[80%]' />
         </div>
-      </PublicLayout>
+      </PremiumPublicLayout>
     )
   }
 
   if (!success || !hasContent) {
     return (
-      <PublicLayout>
-        <div className='mx-auto max-w-2xl py-12'>
+      <PremiumPublicLayout>
+        <div className='mx-auto max-w-2xl pt-24 pb-12'>
           <Card className='border-dashed'>
             <CardHeader className='flex flex-row items-center gap-4'>
               <div className='bg-muted rounded-lg p-2'>
@@ -96,14 +96,14 @@ export function LegalDocument({
             </CardHeader>
           </Card>
         </div>
-      </PublicLayout>
+      </PremiumPublicLayout>
     )
   }
 
   if (isUrl) {
     return (
-      <PublicLayout>
-        <div className='mx-auto max-w-2xl py-12'>
+      <PremiumPublicLayout>
+        <div className='mx-auto max-w-2xl pt-24 pb-12'>
           <Card>
             <CardHeader>
               <CardTitle>{title}</CardTitle>
@@ -128,28 +128,29 @@ export function LegalDocument({
             </CardContent>
           </Card>
         </div>
-      </PublicLayout>
+      </PremiumPublicLayout>
     )
   }
 
   return (
-    <PublicLayout>
-      <div className='mx-auto max-w-4xl space-y-6 py-12'>
-        <div className='space-y-2'>
-          <h1 className='text-3xl font-semibold tracking-tight'>{title}</h1>
+    <PremiumPublicLayout>
+      <div className='mx-auto max-w-4xl space-y-6 pt-24 pb-12'>
+        <div className='space-y-3'>
+          <p className='pf-eyebrow'>{t('Legal')}</p>
+          <h1 className='pf-h2 !text-[clamp(1.9rem,3.4vw,2.75rem)]'>{title}</h1>
         </div>
 
         {isHtml ? (
           <div
-            className='prose prose-neutral dark:prose-invert max-w-none'
+            className='prose prose-neutral max-w-none'
             dangerouslySetInnerHTML={{ __html: rawContent }}
           />
         ) : (
-          <Markdown className='prose-neutral dark:prose-invert max-w-none'>
+          <Markdown className='prose-neutral max-w-none'>
             {rawContent}
           </Markdown>
         )}
       </div>
-    </PublicLayout>
+    </PremiumPublicLayout>
   )
 }

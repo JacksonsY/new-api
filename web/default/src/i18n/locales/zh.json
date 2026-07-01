@@ -4982,6 +4982,21 @@
     "Sign up and generate an API key in the console — free and instant.": "注册后在控制台生成 API 密钥 —— 免费、即时。",
     "Top up a pay-as-you-go balance. Token-accurate metering, no subscription.": "充值按量计费余额。按 token 精确计量,无需订阅。",
     "Point & ship": "接入即用",
-    "Set your base URL to the gateway. Your existing OpenAI, Claude, and Gemini code runs unchanged.": "把 base URL 指向网关。你现有的 OpenAI、Claude、Gemini 代码无需改动。"
+    "Set your base URL to the gateway. Your existing OpenAI, Claude, and Gemini code runs unchanged.": "把 base URL 指向网关。你现有的 OpenAI、Claude、Gemini 代码无需改动。",
+    "All models, one gateway": "Tous les modèles, une passerelle",
+    "Throughput: High to Low": "Débit : décroissant",
+    "Latency: Low to High": "Latence : croissante",
+    "Success: High to Low": "Succès : décroissant",
+    "Featured models": "Modèles en vedette",
+    "Every major model": "Chaque grand modèle",
+    "behind one key": "avec une seule clé",
+    "providers": "fournisseurs",
+    "One key": "Une clé",
+    "Relative input price across the catalog": "Prix d'entrée relatif sur le catalogue",
+    "The models": "平台都在用的",
+    "the platform runs on": "主流模型",
+    "Every model,": "每一个模型",
+    "one gateway.": "同一个网关",
+    "Powered by": "技术支持"
   }
 }
