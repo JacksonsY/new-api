@@ -253,11 +253,7 @@ For commercial licensing, please contact support@quantumnous.com
   --glow-violet: 0 12px 40px -12px oklch(0.6 0.24 305 / 0.6);
   --glow-ember: 0 10px 30px -10px oklch(0.66 0.22 32 / 0.45);
   --table-row: var(--background);
-  --table-header: color-mix(
-    in oklch,
-    var(--foreground) 6%,
-    var(--background)
-  );
+  --table-header: color-mix(in oklch, var(--foreground) 6%, var(--background));
   --table-header-hover: color-mix(
     in oklch,
     var(--foreground) 9%,

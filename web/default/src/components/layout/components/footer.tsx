@@ -16,13 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Fragment, useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
+import { Fragment, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { cn } from '@/lib/utils'
+
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { SupportContact } from '@/components/support-contact'
+import { cn } from '@/lib/utils'
 
 interface FooterLink {
   text: string

@@ -19,11 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { FileWarning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+
+import { PremiumPublicLayout } from '@/components/layout'
+import { RichContent } from '@/components/rich-content'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Markdown } from '@/components/ui/markdown'
 import { Skeleton } from '@/components/ui/skeleton'
-import { PremiumPublicLayout } from '@/components/layout'
+import { isHttpUrl, isLikelyHtml } from '@/lib/content-format'
+
 import type { LegalDocumentResponse } from './types'
 
 type LegalDocumentProps = {
@@ -31,19 +34,6 @@ type LegalDocumentProps = {
   queryKey: string
   fetchDocument: () => Promise<LegalDocumentResponse>
   emptyMessage: string
-}
-
-function isValidUrl(value: string) {
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
-function isLikelyHtml(value: string) {
-  return /<\/?[a-z][\s\S]*>/i.test(value)
 }
 
 export function LegalDocument({
@@ -61,8 +51,8 @@ export function LegalDocument({
 
   const rawContent = data?.data?.trim() ?? ''
   const hasContent = rawContent.length > 0
-  const isUrl = hasContent && isValidUrl(rawContent)
-  const isHtml = hasContent && !isUrl && isLikelyHtml(rawContent)
+  const isUrl = hasContent && isHttpUrl(rawContent)
+  const contentIsHtml = hasContent && isLikelyHtml(rawContent)
   const success = data?.success ?? false
 
   if (isLoading) {
@@ -133,24 +123,28 @@ export function LegalDocument({
   }
 
   return (
-    <PremiumPublicLayout>
-      <div className='mx-auto max-w-4xl space-y-6 pt-24 pb-12'>
-        <div className='space-y-3'>
-          <p className='pf-eyebrow'>{t('Legal')}</p>
-          <h1 className='pf-h2 !text-[clamp(1.9rem,3.4vw,2.75rem)]'>{title}</h1>
-        </div>
+    <PremiumPublicLayout
+      showMainContainer={!contentIsHtml}
+      showFooter={!contentIsHtml}
+    >
+      {contentIsHtml ? (
+        <RichContent mode='html' htmlVariant='isolated' content={rawContent} />
+      ) : (
+        <div className='mx-auto max-w-4xl space-y-6 pt-24 pb-12'>
+          <div className='space-y-3'>
+            <p className='pf-eyebrow'>{t('Legal')}</p>
+            <h1 className='pf-h2 !text-[clamp(1.9rem,3.4vw,2.75rem)]'>
+              {title}
+            </h1>
+          </div>
 
-        {isHtml ? (
-          <div
-            className='prose prose-neutral max-w-none'
-            dangerouslySetInnerHTML={{ __html: rawContent }}
+          <RichContent
+            mode='markdown'
+            content={rawContent}
+            className='prose-neutral max-w-none'
           />
-        ) : (
-          <Markdown className='prose-neutral max-w-none'>
-            {rawContent}
-          </Markdown>
-        )}
-      </div>
+        </div>
+      )}
     </PremiumPublicLayout>
   )
 }
