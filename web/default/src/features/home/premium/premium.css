@@ -552,3 +552,127 @@ html.lenis body {
     animation: none !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   离火·白 — DARK VARIANT (玄夜). Activates only under the app theme toggle
+   (`html.dark`, set on <html> by the theme provider). Every rule below is
+   ADDITIVE and higher-specificity (`html.dark .pf*` = 0,2,1 beats `.pf*` =
+   0,1,0), so LIGHT mode stays byte-for-byte unchanged — no light rule above
+   is edited. The fire spectrum (--pf-violet/magenta/ember/gold/--pf-grad/
+   --pf-grad-soft/--gradient-lihuo) is intentionally NOT redeclared, so the
+   brand color event is identical in both modes. App/shadcn tokens mirror
+   theme.css `.dark` verbatim so token-based descendants (footer, Buttons,
+   popovers, charts) match the rest of the app in dark.
+   ───────────────────────────────────────────────────────────────────────── */
+html.dark .pf {
+  color-scheme: dark;
+
+  /* bespoke .pf tokens — 玄夜 canvas, warm off-white ink, additive hairlines */
+  --pf-bg: oklch(0.185 0.014 312);
+  --pf-bg-2: oklch(0.21 0.015 312);
+  --pf-ink: oklch(0.965 0.006 95);
+  --pf-ink-2: oklch(0.84 0.02 312);
+  --pf-muted: oklch(0.74 0.022 312);
+  --pf-line: oklch(0.83 0.05 312 / 16%);
+  --pf-line-2: oklch(0.83 0.05 312 / 22%);
+
+  /* liquid glass — dark violet-tinted translucent, dim inset, deep drop */
+  --pf-glass-bg: oklch(0.225 0.016 312 / 0.6);
+  --pf-glass-brd: oklch(0.83 0.05 312 / 22%);
+  --pf-glass-shadow:
+    0 1px 0 oklch(0.83 0.05 312 / 0.08) inset,
+    0 18px 50px -24px oklch(0.12 0.02 312 / 0.7);
+
+  /* re-scoped app/shadcn tokens — mirror theme.css .dark verbatim */
+  --background: oklch(0.185 0.014 312);
+  --foreground: oklch(0.965 0.006 95);
+  --card: oklch(0.225 0.016 312);
+  --card-foreground: oklch(0.965 0.006 95);
+  --popover: oklch(0.245 0.018 312);
+  --popover-foreground: oklch(0.965 0.006 95);
+  --muted: oklch(0.275 0.014 312);
+  --muted-foreground: oklch(0.74 0.022 312);
+  --secondary: oklch(0.335 0.05 312);
+  --secondary-foreground: oklch(0.96 0.012 312);
+  --accent: oklch(0.36 0.06 312);
+  --accent-foreground: oklch(0.985 0 0);
+  --border: oklch(0.83 0.05 312 / 13%);
+  --input: oklch(0.83 0.05 312 / 18%);
+  --primary: oklch(0.66 0.215 305);
+  --primary-foreground: oklch(0.99 0 0);
+  --ring: oklch(0.66 0.215 305);
+}
+
+/* ── Dark component overrides (only rules with baked-in white/dark-ink
+   literals that bypass the tokens above) ─────────────────────────────────── */
+
+/* Grain: `multiply` darkens to ~black on 玄夜 (invisible) → `screen` lets the
+   light noise register. */
+html.dark .pf-grain {
+  mix-blend-mode: screen;
+  opacity: 0.05;
+}
+
+/* Hairline grid: dark-ink 4.5% lines vanish on 玄夜 → additive light-violet.
+   (The radial fade mask is alpha-based and needs no change.) */
+html.dark .pf-grid {
+  background-image:
+    linear-gradient(oklch(0.83 0.05 312 / 5%) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.83 0.05 312 / 5%) 1px, transparent 1px);
+}
+
+/* Card: 66% white fill + white inset highlight → tinted dark glass + deep drop.
+   (Border flips via --pf-line.) */
+html.dark .pf-card {
+  background: oklch(0.25 0.016 312 / 0.72);
+  box-shadow:
+    0 1px 0 oklch(0.97 0.01 95 / 0.06) inset,
+    0 22px 48px -30px oklch(0.04 0.01 312 / 0.7);
+}
+html.dark .pf-card:hover {
+  box-shadow:
+    0 1px 0 oklch(0.97 0.01 95 / 0.06) inset,
+    0 30px 60px -28px oklch(0.04 0.01 312 / 0.6);
+}
+
+/* Ghost/secondary button: solid #fff → subtle light frost; light-tuned shadows
+   deepened. (color/border flip via --pf-ink / --pf-line-2.) */
+html.dark .pf-btn-ghost {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 1px 2px oklch(0.12 0.02 312 / 0.3),
+    0 8px 20px -14px oklch(0.12 0.02 312 / 0.5);
+}
+
+/* Routing-diagram chip: 90% white tile → opaque dark tile (must stay opaque
+   over the busy diagram). */
+html.dark .pf-chip {
+  background: oklch(0.245 0.018 312 / 0.92);
+  box-shadow:
+    0 1px 0 oklch(0.83 0.05 312 / 0.07) inset,
+    0 10px 24px -16px oklch(0.12 0.02 312 / 0.55);
+}
+
+/* Frosted pill/tag: 82% white → dark popover tint. */
+html.dark .pf-pill {
+  background: oklch(0.245 0.018 312 / 0.85);
+}
+
+/* Nav hover wash: 5% near-black (dark-on-dark, no affordance) → light-on-dark. */
+html.dark .pf-navlink:hover {
+  background: oklch(0.965 0.006 95 / 6%);
+}
+
+/* Resting routing connector: 10% dark-ink stroke invisible on 玄夜 → additive
+   light-violet so hub → provider spokes stay visible. */
+html.dark .pf-spoke {
+  stroke: oklch(0.83 0.05 312 / 12%);
+}
+
+/* Aurora: `screen` makes the fire blooms glow additively over 玄夜 instead of
+   sitting muddy. */
+html.dark .pf-aurora::before,
+html.dark .pf-aurora::after {
+  opacity: 0.55;
+  mix-blend-mode: screen;
+}

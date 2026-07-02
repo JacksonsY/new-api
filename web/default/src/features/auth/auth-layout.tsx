@@ -28,8 +28,8 @@ type AuthLayoutProps = {
 }
 
 // Centered glass card on the 「离火・白」 premium surface — identical atmosphere
-// to the landing page (aurora + hairline grid + grain), always white regardless
-// of the app's active light/dark theme (`.pf` re-scopes tokens + color-scheme).
+// to the landing page (aurora + hairline grid + grain), following the app's
+// light/dark theme (`.pf` = light 离火·白, `html.dark .pf` = 玄夜 dark variant).
 export function AuthLayout({ children }: AuthLayoutProps) {
   const { t } = useTranslation()
   const { systemName, logo, loading } = useSystemConfig()

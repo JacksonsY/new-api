@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { PremiumFooter } from '@/features/home/premium/components/premium-footer'
 import '@/features/home/premium/premium.css'
-import { PremiumSurfaceProvider } from '@/lib/premium-surface'
 import type { TopNavLink } from '../types'
 import { PublicHeader, type PublicHeaderProps } from './public-header'
 
@@ -40,43 +39,42 @@ type PremiumPublicLayoutProps = {
 }
 
 /**
- * The public shell for the `离火・白` premium surface — the same light-first,
- * white-fire canvas as the landing page (`.pf` design system + aurora / grid /
- * grain atmosphere + shared header/footer), reused across the public pages
- * (Model Square, Rankings, About, legal) so they read as one brand family.
- * Always white regardless of the app's active light/dark theme.
+ * The public shell for the `离火・白` premium surface — the same fire canvas as
+ * the landing page (`.pf` design system + aurora / grid / grain atmosphere +
+ * shared header/footer), reused across the public pages (Model Square,
+ * Rankings, About, legal) so they read as one brand family. Follows the app's
+ * active light/dark theme — `.pf` renders the light 离火·白 surface, and
+ * `html.dark .pf` renders the 玄夜 dark variant.
  */
 export function PremiumPublicLayout(props: PremiumPublicLayoutProps) {
   const { showMainContainer = false, showFooter = true } = props
 
   return (
-    <PremiumSurfaceProvider>
-      <div className='pf min-h-svh'>
-        <div className='pf-aurora' />
-        <div className='pf-grid' />
-        <div className='pf-grain' />
+    <div className='pf min-h-svh'>
+      <div className='pf-aurora' />
+      <div className='pf-grid' />
+      <div className='pf-grain' />
 
-        <PublicHeader
-          navContent={props.navContent}
-          navLinks={props.navLinks}
-          showThemeSwitch={props.showThemeSwitch}
-          showAuthButtons={props.showAuthButtons}
-          showNotifications={props.showNotifications}
-          logo={props.logo}
-          siteName={props.siteName}
-          {...props.headerProps}
-        />
+      <PublicHeader
+        navContent={props.navContent}
+        navLinks={props.navLinks}
+        showThemeSwitch={props.showThemeSwitch}
+        showAuthButtons={props.showAuthButtons}
+        showNotifications={props.showNotifications}
+        logo={props.logo}
+        siteName={props.siteName}
+        {...props.headerProps}
+      />
 
-        {showMainContainer ? (
-          <main className='relative z-10 mx-auto w-full max-w-5xl px-4 pt-24 pb-12 sm:px-6'>
-            {props.children}
-          </main>
-        ) : (
-          <main className='relative z-10'>{props.children}</main>
-        )}
+      {showMainContainer ? (
+        <main className='relative z-10 mx-auto w-full max-w-5xl px-4 pt-24 pb-12 sm:px-6'>
+          {props.children}
+        </main>
+      ) : (
+        <main className='relative z-10'>{props.children}</main>
+      )}
 
-        {showFooter && <PremiumFooter />}
-      </div>
-    </PremiumSurfaceProvider>
+      {showFooter && <PremiumFooter />}
+    </div>
   )
 }

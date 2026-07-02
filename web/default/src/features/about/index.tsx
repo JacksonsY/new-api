@@ -165,7 +165,7 @@ export function About() {
           mode='html'
           htmlVariant='isolated'
           content={rawContent}
-          className='prose-neutral max-w-none'
+          className='prose-neutral dark:prose-invert max-w-none'
         />
       </PremiumPublicLayout>
     )
@@ -177,7 +177,7 @@ export function About() {
         <RichContent
           mode='markdown'
           content={rawContent}
-          className='prose-neutral max-w-none'
+          className='prose-neutral dark:prose-invert max-w-none'
         />
       </div>
     </PremiumPublicLayout>
