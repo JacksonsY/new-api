@@ -86,6 +86,7 @@ export function UserAuthForm({
     setTurnstileToken,
     validateTurnstile,
   } = useTurnstile()
+  const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
   const { handleLoginSuccess, redirectTo2FA } = useAuthRedirect()
 
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
@@ -283,6 +284,15 @@ export function UserAuthForm({
     }
   }
 
+  const legalConsent = (
+    <LegalConsent
+      status={status}
+      checked={agreedToLegal}
+      onCheckedChange={setAgreedToLegal}
+      className='mt-1'
+    />
+  )
+
   const alternativeLoginMethods = (
     <>
       {passkeyLoginEnabled && (
@@ -372,35 +382,36 @@ export function UserAuthForm({
               )}
             />
 
-            {/* Submit Button */}
-            <Button
-              type='submit'
-              variant='cta'
-              className='mt-2 h-11 w-full justify-center gap-2 rounded-lg text-[0.95rem]'
-              disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
-            >
-              {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
-              {t('Sign in')}
-            </Button>
-
             {/* Turnstile */}
             {isTurnstileEnabled && (
-              <div className='mt-2'>
+              <div className='mt-2 flex justify-center'>
                 <Turnstile
                   siteKey={turnstileSiteKey}
                   onVerify={setTurnstileToken}
                 />
               </div>
             )}
+
+            {legalConsent}
+
+            {/* Submit Button */}
+            <Button
+              type='submit'
+              variant='cta'
+              className='mt-2 h-11 w-full justify-center gap-2 rounded-lg text-[0.95rem]'
+              disabled={
+                isLoading ||
+                (requiresLegalConsent && !agreedToLegal) ||
+                !turnstileReady
+              }
+            >
+              {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
+              {t('Sign in')}
+            </Button>
           </>
         )}
 
-        <LegalConsent
-          status={status}
-          checked={agreedToLegal}
-          onCheckedChange={setAgreedToLegal}
-          className='mt-1'
-        />
+        {!passwordLoginEnabled && legalConsent}
 
         {!hasAlternativeLogin && alternativeLoginMethods}
       </form>
