@@ -28,7 +28,7 @@ const withdrawalsSearchSchema = z.object({
   pageSize: z.number().optional().catch(undefined),
   filter: z.string().optional().catch(''),
   status: z
-    .array(z.enum(['1', '2', '3']))
+    .array(z.enum(['1', '2', '3', '4', '5']))
     .optional()
     .catch([]),
 })

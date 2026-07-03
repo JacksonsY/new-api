@@ -21,8 +21,15 @@ import i18next from 'i18next'
 import { toast } from 'sonner'
 
 export function handleServerError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  const status =
+    error instanceof AxiosError
+      ? error.response?.status
+      : error && typeof error === 'object' && 'status' in error
+        ? (error as { status?: unknown }).status
+        : undefined
   // eslint-disable-next-line no-console
-  console.log(error)
+  console.log('[server error]', { message, status })
 
   let errMsg = i18next.t('Something went wrong!')
 

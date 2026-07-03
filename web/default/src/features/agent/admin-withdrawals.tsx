@@ -20,7 +20,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { type ColumnDef, type Row } from '@tanstack/react-table'
 import { Check, Copy as CopyIcon, Settings, Undo2, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -375,14 +375,14 @@ function WithdrawSettingsDialog({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    if (!open) return
+  const loadSettings = useCallback(() => {
     setLoading(true)
     getWithdrawSettings()
       .then((res) => {
         if (res.success && res.data) {
           setMinAmount(String(quotaUnitsToDollars(res.data.minQuota)))
-          setFeePercent(String(res.data.feeRate * 100))
+          // 与 wallet.tsx 的费率展示一致，避免浮点噪声(如 1.4999999999998)。
+          setFeePercent(String(Number((res.data.feeRate * 100).toFixed(1))))
           setMaxPending(String(res.data.maxPending))
         } else {
           toast.error(res.message || t('Failed to load'))
@@ -390,7 +390,12 @@ function WithdrawSettingsDialog({
       })
       .catch(() => toast.error(t('Failed to load')))
       .finally(() => setLoading(false))
-  }, [open, t])
+  }, [t])
+
+  useEffect(() => {
+    if (!open) return
+    loadSettings()
+  }, [open, loadSettings])
 
   async function onSave() {
     const minVal = parseFloat(minAmount)
@@ -418,6 +423,20 @@ function WithdrawSettingsDialog({
       if (res.success) {
         toast.success(t('Saved'))
         onOpenChange(false)
+      } else if (res.data && res.data.appliedKeys.length > 0) {
+        // 逐项写入部分成功：指明生效/失败项,并回读实际配置刷新表单。
+        const labelOf: Record<string, string> = {
+          minQuota: t('Minimum withdrawal amount'),
+          feeRate: t('Withdrawal fee rate'),
+          maxPending: t('Max pending requests per agent'),
+        }
+        toast.error(
+          t('Partially saved. Applied: {{applied}}; failed: {{failed}}', {
+            applied: res.data.appliedKeys.map((k) => labelOf[k]).join(', '),
+            failed: res.data.failedKeys.map((k) => labelOf[k]).join(', '),
+          })
+        )
+        loadSettings()
       } else {
         toast.error(res.message || t('Failed'))
       }
@@ -704,17 +723,23 @@ function RowActions({
 }
 
 // PayoutCell 实付金额 = 申请额 − 手续费；有汇率快照时按申请时汇率折算 ¥，
-// 消除"按什么时点汇率结算"的争议。
+// 消除"按什么时点汇率结算"的争议。折算假设 quota 基准为 USD，显示货币非 USD
+// 时该折算不成立，隐藏折算行避免误导。
 function PayoutCell({ w }: { w: Withdrawal }) {
+  const { t } = useTranslation()
   const payout = w.amount - w.fee
-  const { config } = getCurrencyDisplay()
+  const { config, meta } = getCurrencyDisplay()
+  const isUsdDisplay = meta.kind === 'currency' && meta.symbol === '$'
   const usd = payout / config.quotaPerUnit
   const cny = w.exchange_rate ? usd * w.exchange_rate : 0
   return (
     <div className='whitespace-nowrap'>
       <span className='font-semibold tabular-nums'>{formatQuota(payout)}</span>
-      {cny > 0 && (
-        <span className='text-muted-foreground ml-1 text-xs tabular-nums'>
+      {cny > 0 && isUsdDisplay && (
+        <span
+          className='text-muted-foreground ml-1 text-xs tabular-nums'
+          title={t('Converted at the exchange rate when requested')}
+        >
           ≈ ¥{cny.toFixed(2)}
         </span>
       )}
@@ -747,18 +772,26 @@ function PayeeAccountCell({ account }: { account: string }) {
 }
 
 // WaitingHint 未决单的已等待时长提示；超过 3 天转警示色，帮最老的单浮出水面。
+// 每分钟 tick 一次，页面长开时时长也会自动推进。
 function WaitingHint({ w }: { w: Withdrawal }) {
   const { t } = useTranslation()
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
   if (
     w.status !== WITHDRAWAL_STATUS.PENDING &&
     w.status !== WITHDRAWAL_STATUS.PROCESSING
   ) {
     return null
   }
-  const hours = Math.floor((Date.now() / 1000 - w.created_at) / 3600)
+  const hours = Math.floor((now / 1000 - w.created_at) / 3600)
   if (hours < 1) return null
   const text =
-    hours >= 24 ? `${Math.floor(hours / 24)} ${t('days')}` : `${hours} h`
+    hours >= 24
+      ? `${Math.floor(hours / 24)}d ${hours % 24}h`
+      : `${hours} h`
   return (
     <div
       className={

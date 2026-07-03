@@ -178,20 +178,42 @@ export async function getWithdrawSettings(): Promise<
   }
 }
 
-// option 端点单次只改一个 key，逐项 PUT。
+export interface WithdrawSettingsUpdateResult {
+  appliedKeys: (keyof WithdrawSettings)[]
+  failedKeys: (keyof WithdrawSettings)[]
+}
+
+// option 端点单次只改一个 key，逐项 PUT。不中途短路：每项都尝试写入,
+// 返回已生效/失败的项,便于调用方提示并回读实际配置。
 export async function updateWithdrawSettings(
   s: WithdrawSettings
-): Promise<ApiEnvelope<null>> {
-  const entries: [string, string][] = [
-    ['AgentWithdrawMinQuota', String(Math.round(s.minQuota))],
-    ['AgentWithdrawFeeRate', String(s.feeRate)],
-    ['AgentWithdrawMaxPending', String(Math.round(s.maxPending))],
+): Promise<ApiEnvelope<WithdrawSettingsUpdateResult>> {
+  const entries: [keyof WithdrawSettings, string, string][] = [
+    ['minQuota', 'AgentWithdrawMinQuota', String(Math.round(s.minQuota))],
+    ['feeRate', 'AgentWithdrawFeeRate', String(s.feeRate)],
+    [
+      'maxPending',
+      'AgentWithdrawMaxPending',
+      String(Math.round(s.maxPending)),
+    ],
   ]
-  for (const [key, value] of entries) {
-    const res = await api.put('/api/option/', { key, value })
-    if (!res.data?.success) {
-      return { success: false, message: res.data?.message }
+  const result: WithdrawSettingsUpdateResult = {
+    appliedKeys: [],
+    failedKeys: [],
+  }
+  let message: string | undefined
+  for (const [field, key, value] of entries) {
+    try {
+      const res = await api.put('/api/option/', { key, value })
+      if (res.data?.success) {
+        result.appliedKeys.push(field)
+      } else {
+        result.failedKeys.push(field)
+        message = message || res.data?.message
+      }
+    } catch {
+      result.failedKeys.push(field)
     }
   }
-  return { success: true }
+  return { success: result.failedKeys.length === 0, message, data: result }
 }

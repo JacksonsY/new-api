@@ -5259,6 +5259,12 @@
     "Downstream Users": "Downstream Users",
     "Edit Commission Rate": "Edit Commission Rate",
     "{{count}} agents revoked": "{{count}} agents revoked",
-    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "{{count}} selected users will lose agent access. Accumulated commission balance is kept."
+    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "{{count}} selected users will lose agent access. Accumulated commission balance is kept.",
+    "Revoked {{success}} agents, {{failed}} failed": "Revoked {{success}} agents, {{failed}} failed",
+    "Amount must be a positive number with up to 2 decimals": "Amount must be a positive number with up to 2 decimals",
+    "Partially saved. Applied: {{applied}}; failed: {{failed}}": "Partially saved. Applied: {{applied}}; failed: {{failed}}",
+    "Converted at the exchange rate when requested": "Converted at the exchange rate when requested",
+    "This will send your API key to a third-party site. Do you want to continue?": "This will send your API key to a third-party site. Do you want to continue?",
+    "Failed to calculate payment amount": "Failed to calculate payment amount"
   }
 }

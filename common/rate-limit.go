@@ -8,21 +8,20 @@ import (
 type InMemoryRateLimiter struct {
 	store              map[string]*[]int64
 	mutex              sync.Mutex
+	initOnce           sync.Once
 	expirationDuration time.Duration
 }
 
 func (l *InMemoryRateLimiter) Init(expirationDuration time.Duration) {
-	if l.store == nil {
+	l.initOnce.Do(func() {
 		l.mutex.Lock()
-		if l.store == nil {
-			l.store = make(map[string]*[]int64)
-			l.expirationDuration = expirationDuration
-			if expirationDuration > 0 {
-				go l.clearExpiredItems()
-			}
+		defer l.mutex.Unlock()
+		l.store = make(map[string]*[]int64)
+		l.expirationDuration = expirationDuration
+		if expirationDuration > 0 {
+			go l.clearExpiredItems()
 		}
-		l.mutex.Unlock()
-	}
+	})
 }
 
 func (l *InMemoryRateLimiter) clearExpiredItems() {

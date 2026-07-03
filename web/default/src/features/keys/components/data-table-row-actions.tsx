@@ -48,7 +48,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useChatPresets } from '@/features/chat/hooks/use-chat-presets'
-import { resolveChatUrl, type ChatPreset } from '@/features/chat/lib/chat-links'
+import {
+  chatLinkRequiresApiKey,
+  resolveChatUrl,
+  type ChatPreset,
+} from '@/features/chat/lib/chat-links'
 import { sendToFluent } from '@/features/chat/lib/send-to-fluent'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
@@ -137,6 +141,19 @@ export function DataTableRowActions<TData>({
             )
           )
         }
+        return
+      }
+
+      if (
+        preset.type === 'web' &&
+        chatLinkRequiresApiKey(preset.url) &&
+        typeof window !== 'undefined' &&
+        !window.confirm(
+          t(
+            'This will send your API key to a third-party site. Do you want to continue?'
+          )
+        )
+      ) {
         return
       }
 

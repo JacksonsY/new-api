@@ -41,8 +41,15 @@ func TelegramBind(c *gin.Context) {
 	}
 
 	session := sessions.Default(c)
-	id := session.Get("id")
-	user := model.User{Id: id.(int)}
+	id, ok := session.Get("id").(int)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "无权进行此操作，请先登录",
+		})
+		return
+	}
+	user := model.User{Id: id}
 	if err := user.FillUserById(); err != nil {
 		c.JSON(200, gin.H{
 			"message": err.Error(),

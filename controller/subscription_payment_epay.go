@@ -75,7 +75,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 
-	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
+	tradeNo := fmt.Sprintf("%s%d", common.GetRandomSecureString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("SUBUSR%dNO%s", userId, tradeNo)
 
 	client := GetEpayClient()

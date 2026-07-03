@@ -235,10 +235,16 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			data := scanner.Text()
 			logger.LogDebug(c, "stream scanner data: %s", data)
 
+			// 先处理裸 [DONE] 行（无 "data: " 前缀），再剥前缀
+			if strings.HasPrefix(strings.TrimSpace(data), "[DONE]") {
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+				logger.LogDebug(c, "received bare [DONE], stopping scanner")
+				return
+			}
 			if len(data) < 6 {
 				continue
 			}
-			if data[:5] != "data:" && data[:6] != "[DONE]" {
+			if data[:5] != "data:" {
 				continue
 			}
 			data = data[5:]
@@ -281,6 +287,23 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		// EndReason already set by the goroutine that triggered stopChan
 	case <-c.Request.Context().Done():
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
+	}
+
+	// 流异常结束（超时/扫描器错误）时，向客户端补发一个 SSE error 事件，避免客户端悬挂等待；不影响计费逻辑
+	if reason := info.StreamStatus.EndReason; reason == relaycommon.StreamEndReasonTimeout || reason == relaycommon.StreamEndReasonScannerErr {
+		common.SafeSendBool(stopChan, true) // 先通知各 goroutine 停止，再持写锁串行化写出
+		writeMutex.Lock()
+		errEvent := map[string]any{
+			"error": map[string]any{
+				"message": fmt.Sprintf("stream ended abnormally: %s", reason),
+				"type":    "upstream_stream_error",
+				"code":    string(reason),
+			},
+		}
+		if sendErr := ObjectData(c, errEvent); sendErr != nil {
+			logger.LogDebug(c, "failed to send stream error event: "+sendErr.Error())
+		}
+		writeMutex.Unlock()
 	}
 
 	if info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors() {

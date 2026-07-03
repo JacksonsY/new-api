@@ -44,12 +44,12 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.ResetPassword)
 		// OAuth routes - specific routes must come before :provider wildcard
 		apiRouter.GET("/oauth/state", middleware.CriticalRateLimit(), controller.GenerateOAuthCode)
-		apiRouter.POST("/oauth/email/bind", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.EmailBind)
+		apiRouter.POST("/oauth/email/bind", middleware.CriticalRateLimit(), middleware.UserAuth(), anonymousRequestBodyLimit, controller.EmailBind)
 		// Non-standard OAuth (WeChat, Telegram) - keep original routes
 		apiRouter.GET("/oauth/wechat", middleware.CriticalRateLimit(), controller.WeChatAuth)
-		apiRouter.POST("/oauth/wechat/bind", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.WeChatBind)
+		apiRouter.POST("/oauth/wechat/bind", middleware.CriticalRateLimit(), middleware.UserAuth(), anonymousRequestBodyLimit, controller.WeChatBind)
 		apiRouter.GET("/oauth/telegram/login", middleware.CriticalRateLimit(), controller.TelegramLogin)
-		apiRouter.GET("/oauth/telegram/bind", middleware.CriticalRateLimit(), controller.TelegramBind)
+		apiRouter.GET("/oauth/telegram/bind", middleware.CriticalRateLimit(), middleware.UserAuth(), controller.TelegramBind)
 		// Standard OAuth providers (GitHub, Discord, OIDC, LinuxDO) - unified route
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
@@ -149,10 +149,10 @@ func SetApiRouter(router *gin.Engine) {
 			// >>> jzlh-agent 代理分销（/api/user/agent/*）
 			agentRoute := userRoute.Group("/agent")
 			{
-				// 超管侧：设/撤/列代理
-				agentRoute.POST("/create", middleware.AdminAuth(), controller.CreateAgent)
-				agentRoute.POST("/revoke", middleware.AdminAuth(), controller.RevokeAgent)
-				agentRoute.GET("/list", middleware.AdminAuth(), controller.ListAgents)
+				// 超管侧：设/撤/列代理（涉及分润资金关系，收紧为 Root）
+				agentRoute.POST("/create", middleware.RootAuth(), controller.CreateAgent)
+				agentRoute.POST("/revoke", middleware.RootAuth(), controller.RevokeAgent)
+				agentRoute.GET("/list", middleware.RootAuth(), controller.ListAgents)
 				// 代理自助：名下用户 + 分润流水
 				agentRoute.GET("/users", middleware.UserAuth(), middleware.AgentAuth(), controller.AgentListUsers)
 				agentRoute.GET("/commissions", middleware.UserAuth(), middleware.AgentAuth(), controller.AgentListCommissions)
@@ -161,9 +161,9 @@ func SetApiRouter(router *gin.Engine) {
 				agentRoute.POST("/withdraw", middleware.UserAuth(), middleware.AgentAuth(), controller.CreateWithdrawal)
 				agentRoute.GET("/withdraws", middleware.UserAuth(), middleware.AgentAuth(), controller.AgentListWithdrawals)
 				agentRoute.POST("/withdraw/cancel", middleware.UserAuth(), middleware.AgentAuth(), controller.CancelAgentWithdrawal)
-				// 超管：提现审批
-				agentRoute.GET("/withdraw/all", middleware.AdminAuth(), controller.AdminListWithdrawals)
-				agentRoute.POST("/withdraw/review", middleware.AdminAuth(), controller.ReviewWithdrawal)
+				// 超管：提现审批（资金出口，收紧为 Root）
+				agentRoute.GET("/withdraw/all", middleware.RootAuth(), controller.AdminListWithdrawals)
+				agentRoute.POST("/withdraw/review", middleware.RootAuth(), controller.ReviewWithdrawal)
 			}
 			// <<< jzlh-agent
 		}

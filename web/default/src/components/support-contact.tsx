@@ -22,21 +22,46 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
 // 客服联系方式 — single source of truth for the site-wide footer contact block.
-// 合规要求全站页脚展示有效客服联系方式。以下为占位默认值,部署方上线前请替换
-// 为真实的客服邮箱 / 电话 / 微信(号码留空则该项不展示)。
-export const SUPPORT_CONTACT: {
+// 合规要求全站页脚展示有效客服联系方式。取值优先级：
+// 1) window.__SUPPORT_CONTACT__(部署方可在 index.html / 注入脚本中配置,免重新构建)
+// 2) 构建期环境变量 PUBLIC_SUPPORT_*(rsbuild 注入)
+// 3) 代码内 fallback(号码留空则该项不展示)
+// 占位电话(400-000-0000)会被过滤,不会在生产误展示。
+type SupportContactInfo = {
   email: string
   phone: string
   wechat: string
   wechatQr: string
   qq: string
-} = {
-  email: 'support@jzlh99.com',
-  phone: '400-000-0000',
-  wechat: '', // 留空则不展示;需要时填微信号即可
-  wechatQr: '', // 微信二维码图片 URL,联系悬浮组件 hover 展示
-  qq: '',
 }
+
+declare global {
+  interface Window {
+    __SUPPORT_CONTACT__?: Partial<SupportContactInfo>
+  }
+}
+
+const PLACEHOLDER_PHONE = '400-000-0000'
+
+function resolveSupportContact(): SupportContactInfo {
+  const env = (import.meta as { env?: Record<string, string | undefined> }).env
+  const win =
+    (typeof window !== 'undefined' && window.__SUPPORT_CONTACT__) || {}
+  const contact: SupportContactInfo = {
+    email: win.email ?? env?.PUBLIC_SUPPORT_EMAIL ?? 'support@jzlh99.com',
+    phone: win.phone ?? env?.PUBLIC_SUPPORT_PHONE ?? '',
+    wechat: win.wechat ?? env?.PUBLIC_SUPPORT_WECHAT ?? '',
+    wechatQr: win.wechatQr ?? env?.PUBLIC_SUPPORT_WECHAT_QR ?? '',
+    qq: win.qq ?? env?.PUBLIC_SUPPORT_QQ ?? '',
+  }
+  // 占位电话一律不展示,避免误导用户拨打无效号码。
+  if (contact.phone.trim() === PLACEHOLDER_PHONE) {
+    contact.phone = ''
+  }
+  return contact
+}
+
+export const SUPPORT_CONTACT: SupportContactInfo = resolveSupportContact()
 
 type SupportContactProps = {
   className?: string

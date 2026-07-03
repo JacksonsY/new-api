@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -310,7 +311,9 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", fullRequestURL)
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	// 绑定客户端请求上下文：客户端断开即取消上游请求（流式读取期间取消同样是期望行为）。
+	// 整体超时由 service.InitHttpClient 的 http.Client.Timeout（RELAY_TIMEOUT）控制，无需再派生 WithTimeout。
+	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -340,7 +343,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", fullRequestURL)
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -516,7 +519,8 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.LogError(c, "do request failed: "+err.Error())
+		// url.Error 可能携带完整 URL（含 Vertex API-Key 模式的 key=xxx 查询参数），记日志前脱敏
+		logger.LogError(c, "do request failed: "+common2.MaskSensitiveInfo(err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
@@ -537,13 +541,21 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	// 先读出完整 body，保证 GetBody 每次都能返回可重放的新 reader（重定向/重试时不会拿到已消费的 reader）
+	var bodyBytes []byte
+	if requestBody != nil {
+		bodyBytes, err = io.ReadAll(requestBody)
+		if err != nil {
+			return nil, fmt.Errorf("read request body failed: %w", err)
+		}
+	}
+	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
 	applyUpstreamContentLength(req, info)
 	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(requestBody), nil
+		return io.NopCloser(bytes.NewReader(bodyBytes)), nil
 	}
 
 	err = a.BuildRequestHeader(c, req, info)

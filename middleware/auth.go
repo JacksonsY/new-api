@@ -203,7 +203,7 @@ func AgentAuth() func(c *gin.Context) {
 		id := c.GetInt("id")
 		user, err := model.GetUserById(id, false)
 		if err != nil || user == nil {
-			c.JSON(http.StatusOK, gin.H{"success": false, "message": "用户不存在 / user not found"})
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAgentUserNotFound)})
 			c.Abort()
 			return
 		}
@@ -213,13 +213,33 @@ func AgentAuth() func(c *gin.Context) {
 			return
 		}
 		if user.AgentType == "" {
-			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "无代理权限 / insufficient agent privilege"})
+			// 产品决策：被撤销代理若仍有未提取的分润余额，放行只读查询与提现相关接口，
+			// 让其能把余额提完；其余代理功能（名下用户、分润转额度）继续禁止。
+			if user.CommissionQuota > 0 && isAgentGracePath(c.FullPath()) {
+				c.Set("agent_type", "")
+				c.Next()
+				return
+			}
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege)})
 			c.Abort()
 			return
 		}
 		c.Set("agent_type", user.AgentType)
 		c.Next()
 	}
+}
+
+// isAgentGracePath 列出"被撤销代理但仍有分润余额"时允许访问的接口：
+// 分润流水查询 + 提现（发起/列表/取消）。
+func isAgentGracePath(fullPath string) bool {
+	switch fullPath {
+	case "/api/user/agent/commissions",
+		"/api/user/agent/withdraw",
+		"/api/user/agent/withdraws",
+		"/api/user/agent/withdraw/cancel":
+		return true
+	}
+	return false
 }
 
 func RequirePermission(permission authz.Permission) func(c *gin.Context) {

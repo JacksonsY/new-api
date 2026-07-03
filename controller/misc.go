@@ -278,9 +278,11 @@ func SendEmailVerification(c *gin.Context) {
 	}
 
 	if model.IsEmailAlreadyTaken(email) {
+		// 防邮箱枚举：对已占用邮箱返回与成功一致的模糊响应（不实际发信），
+		// 与 SendPasswordResetEmail 的处理方式保持一致。
 		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "邮箱地址已被占用",
+			"success": true,
+			"message": "",
 		})
 		return
 	}

@@ -1,6 +1,7 @@
 package common
 
 import (
+	"crypto/subtle"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,11 @@ const (
 var verificationMutex sync.Mutex
 var verificationMap map[string]verificationValue
 var verificationMapMaxSize = 10
+
+// verificationMapHardLimit 是验证码 map 的硬上限，防止恶意批量请求
+// 验证码导致内存无限增长。达到上限且清理过期项后仍然超限时，淘汰最旧的一条。
+const verificationMapHardLimit = 100000
+
 var VerificationValidMinutes = 10
 
 func GenerateVerificationCode(length int) string {
@@ -42,6 +48,10 @@ func RegisterVerificationCodeWithKey(key string, code string, purpose string) {
 	if len(verificationMap) > verificationMapMaxSize {
 		removeExpiredPairs()
 	}
+	// 硬上限保护：清理后仍超限则逐出最旧的条目
+	for len(verificationMap) > verificationMapHardLimit {
+		removeOldestPair()
+	}
 }
 
 func VerifyCodeWithKey(key string, code string, purpose string) bool {
@@ -52,7 +62,8 @@ func VerifyCodeWithKey(key string, code string, purpose string) bool {
 	if !okay || int(now.Sub(value.time).Seconds()) >= VerificationValidMinutes*60 {
 		return false
 	}
-	return code == value.code
+	// 常数时间比较，防止基于时序的验证码逐位猜测
+	return subtle.ConstantTimeCompare([]byte(code), []byte(value.code)) == 1
 }
 
 func DeleteKey(key string, purpose string) {
@@ -68,6 +79,21 @@ func removeExpiredPairs() {
 		if int(now.Sub(verificationMap[key].time).Seconds()) >= VerificationValidMinutes*60 {
 			delete(verificationMap, key)
 		}
+	}
+}
+
+// no lock inside, so the caller must lock the verificationMap before calling!
+func removeOldestPair() {
+	var oldestKey string
+	var oldestTime time.Time
+	for key, value := range verificationMap {
+		if oldestKey == "" || value.time.Before(oldestTime) {
+			oldestKey = key
+			oldestTime = value.time
+		}
+	}
+	if oldestKey != "" {
+		delete(verificationMap, oldestKey)
 	}
 }
 

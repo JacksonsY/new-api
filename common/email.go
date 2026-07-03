@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"net/mail"
 	"net/smtp"
 	"slices"
 	"strings"
@@ -85,6 +86,20 @@ func SendEmail(subject string, receiver string, content string) error {
 	}
 	if SMTPServer == "" && SMTPAccount == "" {
 		return fmt.Errorf("SMTP 服务器未配置")
+	}
+	// 防止 SMTP 头注入：receiver 直接拼进邮件头，必须不含 CR/LF，
+	// 且各分段（; 分隔）必须是合法邮箱地址。
+	if strings.ContainsAny(receiver, "\r\n") {
+		return fmt.Errorf("非法收件人地址：包含换行字符")
+	}
+	for _, addr := range strings.Split(receiver, ";") {
+		addr = strings.TrimSpace(addr)
+		if addr == "" {
+			return fmt.Errorf("非法收件人地址：存在空地址")
+		}
+		if _, err := mail.ParseAddress(addr); err != nil {
+			return fmt.Errorf("非法收件人地址 %q: %w", addr, err)
+		}
 	}
 	encodedSubject := fmt.Sprintf("=?UTF-8?B?%s?=", base64.StdEncoding.EncodeToString([]byte(subject)))
 	mail := []byte(fmt.Sprintf("To: %s\r\n"+

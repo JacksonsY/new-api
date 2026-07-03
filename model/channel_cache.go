@@ -275,12 +275,19 @@ func CacheUpdateChannelStatus(id int, status int) {
 		// delete the channel from group2model2channels
 		for group, model2channels := range group2model2channels {
 			for model, channels := range model2channels {
-				for i, channelId := range channels {
+				// jzlh-fix 重建新切片，避免原地 append 截断共享底层数组
+				// (同一底层数组可能被其他读者持有的切片共享，原地写会污染它们)。
+				removed := false
+				filtered := channels[:0:0] // 与 channels 同元素类型、cap 0，append 必然分配新底层数组
+				for _, channelId := range channels {
 					if channelId == id {
-						// remove the channel from the slice
-						group2model2channels[group][model] = append(channels[:i], channels[i+1:]...)
-						break
+						removed = true
+						continue
 					}
+					filtered = append(filtered, channelId)
+				}
+				if removed {
+					group2model2channels[group][model] = filtered
 				}
 			}
 		}

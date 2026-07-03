@@ -6,6 +6,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 
@@ -48,7 +49,13 @@ var (
 	ErrWithdrawalClaimedByOther   = errors.New("withdrawal claimed by another admin")
 	ErrPayoutReferenceRequired    = errors.New("payout reference required")
 	ErrInvalidReviewAction        = errors.New("invalid review action")
+	ErrCannotReviewOwnWithdrawal  = errors.New("cannot review own withdrawal")
+	ErrQuotaOverflow              = errors.New("quota overflow")
 )
+
+// maxQuotaBalance 单账户 quota 余额上限护栏：历史上 quota 列曾是 32 位（type:int），
+// 列放宽后保留为通用防溢出检查，任何转入使余额超过该值时拒绝。
+const maxQuotaBalance = math.MaxInt32
 
 // Withdrawal 代理提现申请单。
 type Withdrawal struct {
@@ -147,8 +154,9 @@ func ConvertCommissionToQuota(userId int, amount int) error {
 		return ErrInvalidConvertAmount
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		// 余额守卫 + 目标 quota 上限护栏（防转入后溢出）
 		res := tx.Model(&User{}).
-			Where("id = ? AND commission_quota >= ?", userId, amount).
+			Where("id = ? AND commission_quota >= ? AND quota <= ?", userId, amount, maxQuotaBalance-amount).
 			Updates(map[string]interface{}{
 				"commission_quota": gorm.Expr("commission_quota - ?", amount),
 				"quota":            gorm.Expr("quota + ?", amount),
@@ -157,7 +165,15 @@ func ConvertCommissionToQuota(userId int, amount int) error {
 			return res.Error
 		}
 		if res.RowsAffected == 0 {
-			return ErrInsufficientCommission
+			// 区分失败原因：余额不足 vs 目标额度将溢出
+			var u User
+			if err := tx.Select("commission_quota", "quota").Where("id = ?", userId).First(&u).Error; err != nil {
+				return err
+			}
+			if u.CommissionQuota < amount {
+				return ErrInsufficientCommission
+			}
+			return ErrQuotaOverflow
 		}
 		return nil
 	})
@@ -248,6 +264,16 @@ func CreateWithdrawal(userId int, amount int, method string, payeeName string, p
 // reject 可从 pending 或打款中直接拒绝并退回余额。
 // 所有状态迁移都用条件 UPDATE 做并发闸门，避免"先读后判再写"竞态。
 func ReviewWithdrawal(id int, action string, adminId int, adminRemark string) error {
+	// 审批人不得处理自己的提现单（管理员兼代理的历史数据/越权兜底）。
+	{
+		var w Withdrawal
+		if err := DB.First(&w, id).Error; err != nil {
+			return err
+		}
+		if w.UserId == adminId {
+			return ErrCannotReviewOwnWithdrawal
+		}
+	}
 	switch action {
 	case "claim":
 		res := DB.Model(&Withdrawal{}).

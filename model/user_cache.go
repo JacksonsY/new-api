@@ -221,7 +221,9 @@ func updateUserQuotaCache(userId int, quota int) error {
 	if !common.RedisEnabled {
 		return nil
 	}
-	return common.RedisHSetField(getUserCacheKey(userId), "Quota", fmt.Sprintf("%d", quota))
+	// 仅当 Quota 字段不存在时初始化写入(HSETNX)：该函数只在 GetUserQuota 回源路径调用，
+	// 无条件 HSET 会把并发 HINCRBY 已落地的增量覆盖掉，造成缓存额度回跳。
+	return common.RedisHSetNXField(getUserCacheKey(userId), "Quota", fmt.Sprintf("%d", quota))
 }
 
 func updateUserGroupCache(userId int, group string) error {

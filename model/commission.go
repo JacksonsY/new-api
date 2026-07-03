@@ -3,6 +3,7 @@ package model
 // jzlh-agent 代理分销：消费分润流水与代理管理（与上游解耦的独立文件，便于合并 upstream）。
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -46,8 +47,25 @@ func EnsureCommissionSourceKeyIndex() {
 		return
 	}
 	if err := DB.Exec("CREATE UNIQUE INDEX " + idx + " ON commissions(source_key)").Error; err != nil {
-		common.SysLog("failed to create commission source_key unique index: " + err.Error())
+		// 唯一索引是分润幂等的最终防线，建不出来必须阻断启动，
+		// 否则并发重放可无限重复入账。
+		common.FatalLog("failed to create commission source_key unique index: " + err.Error())
 	}
+}
+
+// isDuplicateKeyError 判断是否唯一约束冲突（三库错误文案不同，GORM 的
+// ErrDuplicatedKey 翻译依赖 TranslateError 配置，这里同时做字符串兜底）。
+func isDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique constraint") || // PostgreSQL / SQLite "UNIQUE constraint failed"
+		strings.Contains(msg, "duplicate entry") || // MySQL
+		strings.Contains(msg, "duplicate key") // PostgreSQL
 }
 
 // AgentTypeValid 校验代理类型。平台代理只有一种：normal（空串=非代理）。
@@ -142,6 +160,9 @@ func creditAgentCommission(agentId int, fromUserId int, amount int, rate float64
 		return tx.Model(&User{}).Where("id = ?", agentId).Updates(updates).Error
 	})
 	if err != nil {
+		if keyPtr != nil && isDuplicateKeyError(err) {
+			return // 唯一索引兜住的并发重复入账：幂等成功，静默返回
+		}
 		common.SysLog("failed to record agent commission: " + err.Error())
 	}
 }
@@ -240,6 +261,10 @@ func RecordAgentCommissionReversal(fromUserId int, refundedQuota int, sourceKey 
 		keyPtr = &sourceKey
 	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
+		// 回冲不设非负下限：这是二开原作者有测试背书的设计契约
+		// （TestRecordAgentCommissionReversal 断言全额退款可把余额冲负，作为欠账抵扣
+		// 后续分润；TestReversalFallbackToCurrentRate / TestCommissionComplianceGate
+		// 断言无来源键时降级用当前费率、回冲不受合规限制）。故按原始比例无条件扣减。
 		if err := tx.Create(&Commission{
 			AgentId:    agentId,
 			FromUserId: fromUserId,
@@ -256,6 +281,9 @@ func RecordAgentCommissionReversal(fromUserId int, refundedQuota int, sourceKey 
 		}).Error
 	})
 	if err != nil {
+		if keyPtr != nil && isDuplicateKeyError(err) {
+			return // 唯一索引兜住的并发重复回冲：幂等成功，静默返回
+		}
 		common.SysLog("failed to record agent commission reversal: " + err.Error())
 	}
 }

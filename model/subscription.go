@@ -565,7 +565,9 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	var upgradeGroup string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改条件原子 UPDATE 抢占状态迁移，
+		// 赢得迁移的事务才创建订阅并入账，RowsAffected==0 视为已被并发处理（幂等返回）。
+		if err := tx.Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
@@ -576,6 +578,15 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		}
 		if order.Status != common.TopUpStatusPending {
 			return ErrSubscriptionOrderStatusInvalid
+		}
+		claim := tx.Model(&SubscriptionOrder{}).
+			Where("id = ? AND status = ?", order.Id, common.TopUpStatusPending).
+			Update("status", common.TopUpStatusSuccess)
+		if claim.Error != nil {
+			return claim.Error
+		}
+		if claim.RowsAffected == 0 {
+			return nil // 已被并发处理
 		}
 		plan, err := GetSubscriptionPlanById(order.PlanId)
 		if err != nil {
@@ -668,7 +679,8 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改条件原子 UPDATE 抢占状态迁移。
+		if err := tx.Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
@@ -677,9 +689,13 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 		if order.Status != common.TopUpStatusPending {
 			return nil
 		}
-		order.Status = common.TopUpStatusExpired
-		order.CompleteTime = common.GetTimestamp()
-		return tx.Save(&order).Error
+		// RowsAffected==0 表示已被并发处理（如支付回调先到），幂等返回。
+		return tx.Model(&SubscriptionOrder{}).
+			Where("id = ? AND status = ?", order.Id, common.TopUpStatusPending).
+			Updates(map[string]interface{}{
+				"status":        common.TopUpStatusExpired,
+				"complete_time": common.GetTimestamp(),
+			}).Error
 	})
 }
 
@@ -751,16 +767,19 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		}
 
 		var user User
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", userId).First(&user).Error; err != nil {
+		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改余额守卫的条件原子 UPDATE 防并发超扣。
+		if err := tx.Where("id = ?", userId).First(&user).Error; err != nil {
 			return err
 		}
-		if requiredQuota > 0 && user.Quota < requiredQuota {
-			return errors.New("余额不足")
-		}
 		if requiredQuota > 0 {
-			if err := tx.Model(&User{}).Where("id = ?", userId).
-				Update("quota", gorm.Expr("quota - ?", requiredQuota)).Error; err != nil {
-				return err
+			res := tx.Model(&User{}).
+				Where("id = ? AND quota >= ?", userId, requiredQuota).
+				Update("quota", gorm.Expr("quota - ?", requiredQuota))
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return errors.New("余额不足")
 			}
 		}
 
@@ -899,17 +918,23 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改条件原子 UPDATE 抢占状态迁移。
+		if err := tx.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
 		userId = sub.UserId
-		if err := tx.Model(&sub).Updates(map[string]interface{}{
-			"status":     "cancelled",
-			"end_time":   now,
-			"updated_at": now,
-		}).Error; err != nil {
-			return err
+		res := tx.Model(&UserSubscription{}).
+			Where("id = ? AND status = ?", userSubscriptionId, sub.Status).
+			Updates(map[string]interface{}{
+				"status":     "cancelled",
+				"end_time":   now,
+				"updated_at": now,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errors.New("订阅状态已变化，请刷新后重试")
 		}
 		target, err := downgradeUserGroupForSubscriptionTx(tx, &sub, now)
 		if err != nil {
@@ -944,8 +969,8 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+		// jzlh-fix 删除失效的 GORM v1 FOR UPDATE；硬删除本身原子，读取仅用于计算降组。
+		if err := tx.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
 		userId = sub.UserId
@@ -1178,7 +1203,9 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		}
 
 		var subs []UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改为带余量守卫的条件原子 UPDATE
+		// 抢占扣减（RowsAffected==0 视为余量已被并发占用，尝试下一个订阅）。
+		if err := tx.
 			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
 			Order("end_time asc, id asc").
 			Find(&subs).Error; err != nil {
@@ -1203,6 +1230,16 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					continue
 				}
 			}
+			res := tx.Model(&UserSubscription{}).
+				Where("id = ? AND status = ? AND (amount_total <= 0 OR amount_used + ? <= amount_total)",
+					sub.Id, "active", amount).
+				Update("amount_used", gorm.Expr("amount_used + ?", amount))
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				continue // 余量已被并发占用，尝试下一个订阅
+			}
 			record := &SubscriptionPreConsumeRecord{
 				RequestId:          requestId,
 				UserId:             userId,
@@ -1213,6 +1250,11 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := tx.Create(record).Error; err != nil {
 				var dup SubscriptionPreConsumeRecord
 				if err2 := tx.Where("request_id = ?", requestId).First(&dup).Error; err2 == nil {
+					// 同 requestId 已有幂等记录：回退刚才的抢占扣减，按已有记录返回。
+					if rerr := tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).
+						Update("amount_used", gorm.Expr("amount_used - ?", amount)).Error; rerr != nil {
+						return rerr
+					}
 					if dup.Status == "refunded" {
 						return errors.New("subscription pre-consume already refunded")
 					}
@@ -1225,15 +1267,11 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				}
 				return err
 			}
-			sub.AmountUsed += amount
-			if err := tx.Save(&sub).Error; err != nil {
-				return err
-			}
 			returnValue.UserSubscriptionId = sub.Id
 			returnValue.PreConsumed = amount
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = usedBefore
-			returnValue.AmountUsedAfter = sub.AmountUsed
+			returnValue.AmountUsedAfter = usedBefore + amount
 			return nil
 		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
@@ -1251,22 +1289,27 @@ func RefundSubscriptionPreConsume(requestId string) error {
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var record SubscriptionPreConsumeRecord
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("request_id = ?", requestId).First(&record).Error; err != nil {
+		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改条件原子 UPDATE 抢占
+		// consumed→refunded 状态迁移，赢得迁移的事务才回补额度（防并发双重退款）。
+		if err := tx.Where("request_id = ?", requestId).First(&record).Error; err != nil {
 			return err
 		}
 		if record.Status == "refunded" {
 			return nil
 		}
+		res := tx.Model(&SubscriptionPreConsumeRecord{}).
+			Where("id = ? AND status = ?", record.Id, "consumed").
+			Update("status", "refunded")
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil // 已被并发退款
+		}
 		if record.PreConsumed <= 0 {
-			record.Status = "refunded"
-			return tx.Save(&record).Error
+			return nil
 		}
-		if err := PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed); err != nil {
-			return err
-		}
-		record.Status = "refunded"
-		return tx.Save(&record).Error
+		return PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed)
 	})
 }
 
@@ -1294,12 +1337,22 @@ func ResetDueSubscriptions(limit int) (int, error) {
 			continue
 		}
 		err = DB.Transaction(func(tx *gorm.DB) error {
-			var locked UserSubscription
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；先用条件原子 UPDATE 抢占本轮
+			// 重置（把 next_reset_time 清 0 作为占位），RowsAffected==0 视为已被并发重置。
+			claim := tx.Model(&UserSubscription{}).
 				Where("id = ? AND next_reset_time > 0 AND next_reset_time <= ?", subCopy.Id, now).
-				First(&locked).Error; err != nil {
+				Update("next_reset_time", 0)
+			if claim.Error != nil {
+				return claim.Error
+			}
+			if claim.RowsAffected == 0 {
 				return nil
 			}
+			var locked UserSubscription
+			if err := tx.Where("id = ?", subCopy.Id).First(&locked).Error; err != nil {
+				return err
+			}
+			locked.NextResetTime = subCopy.NextResetTime
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &locked, plan, now); err != nil {
 				return err
 			}
@@ -1361,20 +1414,35 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 		return nil
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
+		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改为带守卫的条件原子增量 UPDATE。
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ?", userSubscriptionId).
-			First(&sub).Error; err != nil {
+		if err := tx.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
-		newUsed := sub.AmountUsed + delta
-		if newUsed < 0 {
-			newUsed = 0
+		if delta > 0 {
+			res := tx.Model(&UserSubscription{}).
+				Where("id = ? AND (amount_total <= 0 OR amount_used + ? <= amount_total)", userSubscriptionId, delta).
+				Update("amount_used", gorm.Expr("amount_used + ?", delta))
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return fmt.Errorf("subscription used exceeds total, used=%d total=%d", sub.AmountUsed+delta, sub.AmountTotal)
+			}
+			return nil
 		}
-		if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
-			return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
+		// delta < 0：优先原子扣减；若会扣成负数则钳到 0（保持原有语义）。
+		res := tx.Model(&UserSubscription{}).
+			Where("id = ? AND amount_used + ? >= 0", userSubscriptionId, delta).
+			Update("amount_used", gorm.Expr("amount_used + ?", delta))
+		if res.Error != nil {
+			return res.Error
 		}
-		sub.AmountUsed = newUsed
-		return tx.Save(&sub).Error
+		if res.RowsAffected == 0 {
+			return tx.Model(&UserSubscription{}).
+				Where("id = ?", userSubscriptionId).
+				Update("amount_used", 0).Error
+		}
+		return nil
 	})
 }

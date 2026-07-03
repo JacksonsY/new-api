@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -132,6 +133,9 @@ type vendorAggregate struct {
 var (
 	rankingCacheMu sync.Mutex
 	rankingCache   = map[string]rankingCacheItem{}
+	// rankingBuildGroup 防止缓存击穿：同一 period 的并发重建只执行一次，
+	// 其余请求等待并共享结果。
+	rankingBuildGroup singleflight.Group
 )
 
 func GetRankingsSnapshot(period string) (*RankingsResponse, error) {
@@ -148,19 +152,33 @@ func GetRankingsSnapshot(period string) (*RankingsResponse, error) {
 	}
 	rankingCacheMu.Unlock()
 
-	data, err := buildRankingsSnapshot(config, now)
+	result, err, _ := rankingBuildGroup.Do(config.id, func() (interface{}, error) {
+		// 双重检查：等待期间可能已有其他 goroutine 完成重建
+		buildStart := time.Now()
+		rankingCacheMu.Lock()
+		if item, ok := rankingCache[config.id]; ok && buildStart.Before(item.expiresAt) {
+			rankingCacheMu.Unlock()
+			return item.data, nil
+		}
+		rankingCacheMu.Unlock()
+
+		data, err := buildRankingsSnapshot(config, buildStart)
+		if err != nil {
+			return nil, err
+		}
+
+		rankingCacheMu.Lock()
+		rankingCache[config.id] = rankingCacheItem{
+			expiresAt: buildStart.Add(rankingCacheTTL),
+			data:      data,
+		}
+		rankingCacheMu.Unlock()
+		return data, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	rankingCacheMu.Lock()
-	rankingCache[config.id] = rankingCacheItem{
-		expiresAt: now.Add(rankingCacheTTL),
-		data:      data,
-	}
-	rankingCacheMu.Unlock()
-
-	return data, nil
+	return result.(*RankingsResponse), nil
 }
 
 func rankingConfig(period string) (rankingPeriodConfig, error) {

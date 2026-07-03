@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
 import { useStatus } from '@/hooks/use-status'
@@ -176,7 +177,11 @@ export function Wallet(props: WalletProps) {
       }
 
       // Calculate payment amount and show confirmation dialog
-      await calculatePaymentAmount(topupAmount, method.type)
+      const calculated = await calculatePaymentAmount(topupAmount, method.type)
+      if (!calculated || calculated <= 0) {
+        toast.error(t('Failed to calculate payment amount'))
+        return
+      }
       setConfirmDialogOpen(true)
     } finally {
       setPaymentLoading(null)
@@ -186,6 +191,10 @@ export function Wallet(props: WalletProps) {
   // Handle payment confirmation
   const handlePaymentConfirm = async () => {
     if (!selectedPaymentMethod) return
+    if (!paymentAmount || paymentAmount <= 0) {
+      toast.error(t('Failed to calculate payment amount'))
+      return
+    }
 
     const isPancake = isWaffoPancakePayment(selectedPaymentMethod.type)
     const success = isPancake

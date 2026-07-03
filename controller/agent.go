@@ -51,6 +51,8 @@ var agentErrorI18nKeys = map[error]string{
 	model.ErrWithdrawalClaimedByOther:   i18n.MsgAgentWithdrawalClaimedByOther,
 	model.ErrPayoutReferenceRequired:    i18n.MsgAgentPayoutReferenceRequired,
 	model.ErrInvalidReviewAction:        i18n.MsgAgentInvalidReviewAction,
+	// ErrCannotReviewOwnWithdrawal / ErrQuotaOverflow 暂无独立 i18n key，
+	// 走 apiErrorAgent 的 err.Error() 兜底文案。
 }
 
 // apiErrorAgent 按用户语言返回代理相关错误；未识别的错误（如数据库异常）走原始
@@ -95,8 +97,9 @@ func CreateAgent(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgAgentUserNotFound)
 		return
 	}
-	// 代理是"高级客户"而非管理员：不能把超管设为代理，避免与平台管理权混淆。
-	if target.Role >= common.RoleRootUser {
+	// 代理是"高级客户"而非管理员：管理员及以上（含超管）不能设为代理，
+	// 避免"既当裁判又当运动员"——管理员可自审提现/改费率，与平台管理权必须隔离。
+	if target.Role >= common.RoleAdminUser {
 		common.ApiErrorI18n(c, i18n.MsgAgentCannotSetAdminAsAgent)
 		return
 	}

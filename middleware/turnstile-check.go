@@ -20,6 +20,11 @@ func TurnstileCheck() gin.HandlerFunc {
 			session := sessions.Default(c)
 			turnstileChecked := session.Get("turnstile")
 			if turnstileChecked != nil {
+				// 一次性消费：缓存命中后立即删除，防止一次校验通过后整段会话绕过人机验证。
+				// 保留 Set/一次 Get 的组合是为了兼容"发验证码 + 注册"这类前端复用同一 token 的两步流程
+				//（Cloudflare siteverify 对同一 token 二次校验会失败）。
+				session.Delete("turnstile")
+				_ = session.Save()
 				c.Next()
 				return
 			}

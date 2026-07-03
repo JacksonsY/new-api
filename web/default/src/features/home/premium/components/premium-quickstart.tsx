@@ -108,7 +108,10 @@ export function PremiumQuickstart() {
           >
             <code>
               <span style={{ color: C.dim }}># one endpoint, every model{'\n'}</span>
-              <span style={{ color: C.fn }}>curl</span> https://api.jzlh99.com
+              <span style={{ color: C.fn }}>curl</span>{' '}
+              {typeof window !== 'undefined'
+                ? window.location.origin
+                : 'https://api.jzlh99.com'}
               <span style={{ color: C.str }}>/v1/chat/completions</span> \{'\n'}
               {'  '}-H <span style={{ color: C.str }}>"Authorization: Bearer $JZLH_KEY"</span> \{'\n'}
               {'  '}-d <span style={{ color: C.str }}>{"'{"}</span>

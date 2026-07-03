@@ -22,13 +22,18 @@ func providerParams(name string) map[string]any {
 // GenerateOAuthCode generates a state code for OAuth CSRF protection
 func GenerateOAuthCode(c *gin.Context) {
 	session := sessions.Default(c)
-	state := common.GetRandomString(12)
+	// 使用 crypto/rand 生成 state，防止可预测的 CSRF state
+	state, err := common.GenerateRandomCharsKey(16)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	affCode := c.Query("aff")
 	if affCode != "" {
 		session.Set("aff", affCode)
 	}
 	session.Set("oauth_state", state)
-	err := session.Save()
+	err = session.Save()
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -63,6 +68,9 @@ func HandleOAuth(c *gin.Context) {
 		})
 		return
 	}
+	// state 一次性消费，防止同一 state 在会话内被重放
+	session.Delete("oauth_state")
+	_ = session.Save()
 
 	// 2. Check if user is already logged in (bind flow)
 	username := session.Get("username")

@@ -62,7 +62,14 @@ api.get = ((url: string, config: ApiRequestConfig = {}) => {
   if (disableDuplicate) return originalGet(url, config)
 
   const params = config.params ? JSON.stringify(config.params) : '{}'
-  const key = `${url}?${params}`
+  // Include handler-affecting options in the key so requests that expect
+  // different error handling or response types are not merged together
+  const flags = [
+    config.skipErrorHandler ? 1 : 0,
+    config.skipBusinessError ? 1 : 0,
+    config.responseType ?? '',
+  ].join('|')
+  const key = `${url}?${params}#${flags}`
 
   // Return existing in-flight request if available
   if (inFlightGet.has(key)) return inFlightGet.get(key)!

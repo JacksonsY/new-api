@@ -9,7 +9,9 @@ import (
 func CORS() gin.HandlerFunc {
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = true
-	config.AllowCredentials = true
+	// 该 CORS 仅挂在使用 Authorization 头鉴权的路由上，无 Cookie 需求；
+	// AllowAllOrigins + AllowCredentials 组合存在凭据泄露风险，故关闭凭据。
+	config.AllowCredentials = false
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"*"}
 	return cors.New(config)

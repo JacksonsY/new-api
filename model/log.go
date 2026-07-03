@@ -345,12 +345,15 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	// >>> jzlh-agent 消费分润（异步，不阻塞主链；独立于日志开关）
 	// 幂等键取 request id；必须在 goroutine 外读取，handler 返回后 c 可能被回收。
 	if params.Quota > 0 {
-		sourceKey := ""
 		if rid := c.GetString(common.RequestIdKey); rid != "" {
-			sourceKey = "consume:" + rid
+			sourceKey := "consume:" + rid
+			quota := params.Quota
+			gopool.Go(func() { RecordAgentCommission(userId, quota, sourceKey) })
+		} else {
+			// request id 缺失时没有幂等键，无幂等入账可被重放刷佣：跳过分润并留审计日志。
+			common.SysLog(fmt.Sprintf(
+				"skip agent commission: missing request id (user=%d quota=%d)", userId, params.Quota))
 		}
-		quota := params.Quota
-		gopool.Go(func() { RecordAgentCommission(userId, quota, sourceKey) })
 	}
 	// <<< jzlh-agent
 	if !common.LogConsumeEnabled {
@@ -437,11 +440,20 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 			taskKey = fmt.Sprintf("task:%s:%d:%d", tid, params.LogType, params.Quota)
 		}
 		userId, quota := params.UserId, params.Quota
-		switch params.LogType {
-		case LogTypeConsume:
-			gopool.Go(func() { RecordAgentCommission(userId, quota, taskKey) })
-		case LogTypeRefund:
-			gopool.Go(func() { RecordAgentCommissionReversal(userId, quota, taskKey) })
+		if taskKey == "" {
+			// task_id 缺失时没有幂等键，无幂等入账/回冲可被重复触发：跳过并留审计日志。
+			if params.LogType == LogTypeConsume || params.LogType == LogTypeRefund {
+				common.SysLog(fmt.Sprintf(
+					"skip agent commission settle: missing task_id (user=%d type=%d quota=%d)",
+					userId, params.LogType, quota))
+			}
+		} else {
+			switch params.LogType {
+			case LogTypeConsume:
+				gopool.Go(func() { RecordAgentCommission(userId, quota, taskKey) })
+			case LogTypeRefund:
+				gopool.Go(func() { RecordAgentCommissionReversal(userId, quota, taskKey) })
+			}
 		}
 	}
 	// <<< jzlh-agent

@@ -5253,6 +5253,12 @@
     "Downstream Users": "Привязанные пользователи",
     "Edit Commission Rate": "Изменить ставку комиссии",
     "{{count}} agents revoked": "Отозвано агентов: {{count}}",
-    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "{{count}} выбранных пользователей потеряют статус агента. Накопленный баланс комиссии сохраняется."
+    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "{{count}} выбранных пользователей потеряют статус агента. Накопленный баланс комиссии сохраняется.",
+    "Revoked {{success}} agents, {{failed}} failed": "Отозвано агентов: {{success}}, не удалось: {{failed}}",
+    "Amount must be a positive number with up to 2 decimals": "Сумма должна быть положительным числом, не более 2 знаков после запятой",
+    "Partially saved. Applied: {{applied}}; failed: {{failed}}": "Сохранено частично. Применено: {{applied}}; не удалось: {{failed}}",
+    "Converted at the exchange rate when requested": "Пересчитано по курсу на момент заявки",
+    "This will send your API key to a third-party site. Do you want to continue?": "Это действие отправит ваш API-ключ стороннему сайту. Продолжить?",
+    "Failed to calculate payment amount": "Не удалось рассчитать сумму платежа"
   }
 }

@@ -694,8 +694,22 @@ function AgentsBulkActions({
   async function bulkRevoke() {
     setBusy(true)
     try {
-      await Promise.all(rows.map((r) => adminRevokeAgent(r.original.id)))
-      toast.success(t('{{count}} agents revoked', { count: rows.length }))
+      const results = await Promise.all(
+        rows.map((r) =>
+          adminRevokeAgent(r.original.id).catch(() => ({ success: false }))
+        )
+      )
+      const failed = results.filter((res) => !res.success).length
+      if (failed > 0) {
+        toast.error(
+          t('Revoked {{success}} agents, {{failed}} failed', {
+            success: rows.length - failed,
+            failed,
+          })
+        )
+      } else {
+        toast.success(t('{{count}} agents revoked', { count: rows.length }))
+      }
       table.resetRowSelection()
       setConfirmOpen(false)
       onDone()

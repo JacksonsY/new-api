@@ -200,8 +200,16 @@ export function AgentWallet() {
         ? t('WeChat ID or phone number')
         : t('Bank card number')
 
+  // 与后端 model/withdrawal.go 一致：金额为正数、最多两位小数(quota 为整数存储)。
+  const AMOUNT_RE = /^\d+(\.\d{1,2})?$/
+
   function parseAmount(v: string): number | null {
-    const q = parseQuotaFromDollars(parseFloat(v))
+    const trimmed = v.trim()
+    if (!AMOUNT_RE.test(trimmed)) {
+      toast.error(t('Amount must be a positive number with up to 2 decimals'))
+      return null
+    }
+    const q = parseQuotaFromDollars(parseFloat(trimmed))
     if (!q || q <= 0) {
       toast.error(t('Please enter a valid amount'))
       return null
@@ -251,6 +259,15 @@ export function AgentWallet() {
     return false
   }
 
+  // 回到第 1 页并刷新；cmPage 已是 1 时 effect 不会重跑,需手动加载,避免双请求。
+  function refreshCommissions() {
+    if (cmPage === 1) {
+      loadCommissions(1)
+    } else {
+      setCmPage(1)
+    }
+  }
+
   async function onCancelWithdrawal() {
     if (!cancelTarget) return
     setBusy(true)
@@ -259,8 +276,7 @@ export function AgentWallet() {
       if (res.success) {
         toast.success(t('Withdrawal cancelled'))
         setCancelTarget(null)
-        loadCommissions(1)
-        setCmPage(1)
+        refreshCommissions()
         loadWithdrawals(wdPage)
       } else {
         toast.error(res.message || t('Failed'))
@@ -281,8 +297,7 @@ export function AgentWallet() {
       if (res.success) {
         toast.success(t('Converted to API quota'))
         setConvertAmount('')
-        setCmPage(1)
-        loadCommissions(1)
+        refreshCommissions()
       } else {
         toast.error(res.message || t('Failed'))
       }
@@ -325,10 +340,12 @@ export function AgentWallet() {
         setPayeeName('')
         setPayeeAccount('')
         setRemark('')
-        setCmPage(1)
-        loadCommissions(1)
-        setWdPage(1)
-        loadWithdrawals(1)
+        refreshCommissions()
+        if (wdPage === 1) {
+          loadWithdrawals(1)
+        } else {
+          setWdPage(1)
+        }
       } else {
         toast.error(res.message || t('Failed'))
       }

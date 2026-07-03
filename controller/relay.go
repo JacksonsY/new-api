@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -90,9 +91,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
-			switch relayFormat {
-			case types.RelayFormatOpenAIRealtime:
+			if relayFormat == types.RelayFormatOpenAIRealtime {
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
+				return
+			}
+			// 响应已开始写出时不能再写 JSON 错误体，避免污染已发出的流
+			if c.Writer.Written() {
+				return
+			}
+			switch relayFormat {
 			case types.RelayFormatClaude:
 				c.JSON(newAPIError.StatusCode, gin.H{
 					"type":  "error",
@@ -168,6 +175,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	defer func() {
+		// panic 兜底：确保预扣费返还，并返回 500（不重新 panic，由外层 defer 统一写出错误响应）
+		if r := recover(); r != nil {
+			logger.LogError(c, fmt.Sprintf("relay panic recovered: %v\n%s", r, string(debug.Stack())))
+			newAPIError = types.NewErrorWithStatusCode(fmt.Errorf("internal error: relay panic: %v", r), types.ErrorCodeDoRequestFailed, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
+		}
 		// Only return quota if downstream failed and quota was actually pre-consumed
 		if newAPIError != nil {
 			newAPIError = service.NormalizeViolationFeeError(newAPIError)
@@ -230,6 +242,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.LastError = newAPIError
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+
+		// 响应已开始写出（状态码/正文已发给客户端），禁止重试，直接终止
+		if c.Writer.Written() {
+			logger.LogWarn(c, "response already written to client, abort retry")
+			break
+		}
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break

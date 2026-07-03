@@ -13,6 +13,10 @@ import (
 
 const maxCacheSize = 256
 
+// maxExprLength 限制单条计费表达式的长度（4KB），防止超长表达式
+// 造成编译开销放大与缓存内存膨胀。
+const maxExprLength = 4096
+
 // DefaultExprVersion is used when an expression string has no version prefix.
 const DefaultExprVersion = 1
 
@@ -85,6 +89,9 @@ func CompileFromCacheByHash(exprStr, hash string) (*vm.Program, error) {
 }
 
 func compileFromCacheByHash(exprStr, hash string) (*vm.Program, error) {
+	if len(exprStr) > maxExprLength {
+		return nil, fmt.Errorf("expression too long: %d bytes (max %d)", len(exprStr), maxExprLength)
+	}
 	cacheMu.RLock()
 	if entry, ok := cache[hash]; ok {
 		cacheMu.RUnlock()
@@ -101,8 +108,13 @@ func compileFromCacheByHash(exprStr, hash string) (*vm.Program, error) {
 	vars := extractUsedVars(prog)
 
 	cacheMu.Lock()
-	if len(cache) >= maxCacheSize {
-		cache = make(map[string]*cachedEntry, 64)
+	// 缓存满时随机逐出一条（Go map 迭代顺序随机），而不是整体清空，
+	// 避免热点表达式在清空后集中重编译。
+	for len(cache) >= maxCacheSize {
+		for k := range cache {
+			delete(cache, k)
+			break
+		}
 	}
 	cache[hash] = &cachedEntry{prog: prog, usedVars: vars, version: version}
 	cacheMu.Unlock()

@@ -70,7 +70,8 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   }
 
   const handleConfirm = async () => {
-    if (!amount && mode !== 'override') return
+    if (loading) return
+    if (!amount.trim()) return
     if (quotaValue <= 0 && mode !== 'override') return
 
     setLoading(true)

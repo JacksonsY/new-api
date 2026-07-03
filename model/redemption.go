@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 
+	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
 
@@ -127,7 +128,9 @@ func Redeem(key string, userId int) (quota int, err error) {
 	}
 	common.RandomSleep()
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(keyCol+" = ?", key).First(redemption).Error
+		// jzlh-fix `gorm:query_option FOR UPDATE` 是 GORM v1 语法，v2 下静默失效（且 SQLite
+		// 不支持行锁）。改为条件原子 UPDATE 抢占状态迁移，RowsAffected==0 视为已被并发兑换。
+		err := tx.Where(keyCol+" = ?", key).First(redemption).Error
 		if err != nil {
 			return errors.New("无效的兑换码")
 		}
@@ -137,20 +140,36 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
 			return errors.New("该兑换码已过期")
 		}
-		err = tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
-		if err != nil {
-			return err
+		now := common.GetTimestamp()
+		res := tx.Model(&Redemption{}).
+			Where("id = ? AND status = ?", redemption.Id, common.RedemptionCodeStatusEnabled).
+			Updates(map[string]interface{}{
+				"status":        common.RedemptionCodeStatusUsed,
+				"redeemed_time": now,
+				"used_user_id":  userId,
+			})
+		if res.Error != nil {
+			return res.Error
 		}
-		redemption.RedeemedTime = common.GetTimestamp()
+		if res.RowsAffected == 0 {
+			return errors.New("该兑换码已被使用")
+		}
+		redemption.RedeemedTime = now
 		redemption.Status = common.RedemptionCodeStatusUsed
 		redemption.UsedUserId = userId
-		err = tx.Save(redemption).Error
-		return err
+		return tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())
 		return 0, ErrRedeemFailed
 	}
+	// 事务提交成功后同步 Redis 额度缓存（与签到 cacheIncrUserQuota 一致，异步不阻塞）。
+	quotaAdded := redemption.Quota
+	gopool.Go(func() {
+		if cerr := cacheIncrUserQuota(userId, int64(quotaAdded)); cerr != nil {
+			common.SysLog("failed to sync user quota cache after redemption: " + cerr.Error())
+		}
+	})
 	RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
 	return redemption.Quota, nil
 }

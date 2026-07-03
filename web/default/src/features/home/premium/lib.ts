@@ -71,9 +71,10 @@ export function useSmoothScroll() {
     gsap.ticker.lagSmoothing(0)
 
     return () => {
+      // 本 hook 只创建 Lenis 与 ticker 回调,不 getAll() 全杀 ScrollTrigger——
+      // 其它 hook(如 useReveal)创建的实例由各自的 useGSAP 作用域自行清理。
       gsap.ticker.remove(onTick)
       lenis.destroy()
-      ScrollTrigger.getAll().forEach((st) => st.kill())
     }
   }, [])
 }

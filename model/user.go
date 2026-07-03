@@ -36,8 +36,10 @@ type User struct {
 	TelegramId       string  `json:"telegram_id" gorm:"column:telegram_id;index"`
 	VerificationCode string  `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
 	AccessToken      *string `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int     `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota        int     `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
+	// Quota/UsedQuota 不设 type:int：让 GORM 按方言映射(MySQL/PG→BIGINT, SQLite→INTEGER)，
+	// 避免余额/累计消耗撞 32 位上限（与下方 CommissionQuota 同一处理）。
+	Quota            int     `json:"quota" gorm:"default:0"`
+	UsedQuota        int     `json:"used_quota" gorm:"default:0;column:used_quota"` // used quota
 	RequestCount     int     `json:"request_count" gorm:"type:int;default:0;"`               // request number
 	Group            string  `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode          string  `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
@@ -384,7 +386,7 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 静默失效,实际是"无锁读整行→Save 整行",会把读后落地的并发原子更新(分佣入账、
 	// 额度变动)用旧值覆盖。改为条件原子 UPDATE(余额守卫),与分佣转额度同一模式。
 	res := DB.Model(&User{}).
-		Where("id = ? AND aff_quota >= ?", user.Id, quota).
+		Where("id = ? AND aff_quota >= ? AND quota <= ?", user.Id, quota, maxQuotaBalance-quota).
 		Updates(map[string]interface{}{
 			"aff_quota": gorm.Expr("aff_quota - ?", quota),
 			"quota":     gorm.Expr("quota + ?", quota),
@@ -393,7 +395,15 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
-		return errors.New("邀请额度不足！")
+		// 区分失败原因：邀请额度不足 vs 目标额度将超上限护栏
+		var u User
+		if err := DB.Select("aff_quota", "quota").Where("id = ?", user.Id).First(&u).Error; err != nil {
+			return err
+		}
+		if u.AffQuota < quota {
+			return errors.New("邀请额度不足！")
+		}
+		return errors.New("转移后额度将超过上限，已拒绝！")
 	}
 	// 同步内存对象与 Redis 额度缓存(与 IncreaseUserQuota / 分佣转换的处理一致)
 	user.AffQuota -= quota
@@ -758,7 +768,7 @@ func IsDiscordIdAlreadyTaken(discordId string) bool {
 }
 
 func IsOidcIdAlreadyTaken(oidcId string) bool {
-	return DB.Where("oidc_id = ?", oidcId).Find(&User{}).RowsAffected == 1
+	return DB.Unscoped().Where("oidc_id = ?", oidcId).Find(&User{}).RowsAffected == 1
 }
 
 func IsTelegramIdAlreadyTaken(telegramId string) bool {

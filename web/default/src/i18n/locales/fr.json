@@ -5253,6 +5253,12 @@
     "Downstream Users": "Utilisateurs affiliés",
     "Edit Commission Rate": "Modifier le taux de commission",
     "{{count}} agents revoked": "{{count}} agents révoqués",
-    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "{{count}} utilisateurs sélectionnés perdront leur accès agent. Le solde de commission accumulé est conservé."
+    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "{{count}} utilisateurs sélectionnés perdront leur accès agent. Le solde de commission accumulé est conservé.",
+    "Revoked {{success}} agents, {{failed}} failed": "{{success}} agents révoqués, {{failed}} échecs",
+    "Amount must be a positive number with up to 2 decimals": "Le montant doit être un nombre positif avec au plus 2 décimales",
+    "Partially saved. Applied: {{applied}}; failed: {{failed}}": "Enregistrement partiel. Appliqué : {{applied}} ; échec : {{failed}}",
+    "Converted at the exchange rate when requested": "Converti au taux de change au moment de la demande",
+    "This will send your API key to a third-party site. Do you want to continue?": "Cette action enverra votre clé API à un site tiers. Voulez-vous continuer ?",
+    "Failed to calculate payment amount": "Échec du calcul du montant du paiement"
   }
 }

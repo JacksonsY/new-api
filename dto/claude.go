@@ -185,7 +185,7 @@ type InputSchema struct {
 type ClaudeWebSearchTool struct {
 	Type         string                       `json:"type"`
 	Name         string                       `json:"name"`
-	MaxUses      int                          `json:"max_uses,omitempty"`
+	MaxUses      *int                         `json:"max_uses,omitempty"`
 	UserLocation *ClaudeWebSearchUserLocation `json:"user_location,omitempty"`
 }
 
@@ -200,7 +200,7 @@ type ClaudeWebSearchUserLocation struct {
 type ClaudeToolChoice struct {
 	Type                   string `json:"type"`
 	Name                   string `json:"name,omitempty"`
-	DisableParallelToolUse bool   `json:"disable_parallel_tool_use,omitempty"`
+	DisableParallelToolUse *bool  `json:"disable_parallel_tool_use,omitempty"`
 }
 
 type ClaudeRequest struct {

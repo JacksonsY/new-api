@@ -1,14 +1,15 @@
 package service
 
 import (
+	"context"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/go-redis/redis/v8"
 )
 
 // notifyLimitStore is used for in-memory rate limiting when Redis is disabled
@@ -54,36 +55,34 @@ func CheckNotificationLimit(userId int, notifyType string) (bool, error) {
 	return checkMemoryLimit(userId, notifyType)
 }
 
+// notifyLimitScript 原子地完成"检查上限 + 自增 + 首次设置过期"，
+// 消除原先 GET/SET/INCR 多步操作之间的竞态（并发下可能超发或覆盖计数）。
+// 返回 1 表示允许发送，0 表示已达上限。
+var notifyLimitScript = redis.NewScript(`
+local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+if current >= tonumber(ARGV[1]) then
+	return 0
+end
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+	redis.call('PEXPIRE', KEYS[1], ARGV[2])
+end
+return 1`)
+
 func checkRedisLimit(userId int, notifyType string) (bool, error) {
 	key := fmt.Sprintf("notify_limit:%d:%s:%s", userId, notifyType, time.Now().Format("2006010215"))
 
-	// Get current count
-	count, err := common.RedisGet(key)
-	if err != nil && err.Error() != "redis: nil" {
-		return false, fmt.Errorf("failed to get notification count: %w", err)
-	}
-
-	// If key doesn't exist, initialize it
-	if count == "" {
-		err = common.RedisSet(key, "1", getDuration())
-		return true, err
-	}
-
-	currentCount, _ := strconv.Atoi(count)
-	limit := constant.NotifyLimitCount
-
-	// Check if limit is already reached
-	if currentCount >= limit {
-		return false, nil
-	}
-
-	// Only increment if under limit
-	err = common.RedisIncr(key, 1)
+	allowed, err := notifyLimitScript.Run(
+		context.Background(),
+		common.RDB,
+		[]string{key},
+		constant.NotifyLimitCount,
+		getDuration().Milliseconds(),
+	).Int()
 	if err != nil {
-		return false, fmt.Errorf("failed to increment notification count: %w", err)
+		return false, fmt.Errorf("failed to check notification limit: %w", err)
 	}
-
-	return true, nil
+	return allowed == 1, nil
 }
 
 func checkMemoryLimit(userId int, notifyType string) (bool, error) {

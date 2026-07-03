@@ -108,6 +108,14 @@ func runProgram(prog *vm.Program, params TokenParams, request RequestInput) (flo
 	if !ok {
 		return 0, trace, fmt.Errorf("expr result is %T, want float64", out)
 	}
+	// 计费表达式必须产生有限且非负的成本；NaN/Inf/负值一律视为表达式错误，
+	// 防止异常值进入配额换算与扣费路径。
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, trace, fmt.Errorf("expr result is not a finite number: %v", f)
+	}
+	if f < 0 {
+		return 0, trace, fmt.Errorf("expr result is negative: %v", f)
+	}
 	return f, trace, nil
 }
 

@@ -45,6 +45,20 @@ func GetRandomString(length int) string {
 	return lo.RandomString(length, lo.AlphanumericCharset)
 }
 
+// GetRandomSecureString 返回基于 crypto/rand 的随机字母数字串，
+// 用于订单号等不可预测性要求高的场景。crypto/rand 失败时（极罕见）
+// 回退到非加密随机源，保证调用方总能拿到指定长度的字符串。
+func GetRandomSecureString(length int) string {
+	if length <= 0 {
+		return ""
+	}
+	s, err := GenerateRandomCharsKey(length)
+	if err != nil {
+		return GetRandomString(length)
+	}
+	return s
+}
+
 func MapToJsonStr(m map[string]interface{}) string {
 	bytes, err := json.Marshal(m)
 	if err != nil {

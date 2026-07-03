@@ -5259,6 +5259,12 @@
     "Downstream Users": "名下用户",
     "Edit Commission Rate": "编辑分润比例",
     "{{count}} agents revoked": "已撤销 {{count}} 个代理",
-    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "选中的 {{count}} 个用户将失去代理身份，已累计的分润余额保留。"
+    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "选中的 {{count}} 个用户将失去代理身份，已累计的分润余额保留。",
+    "Revoked {{success}} agents, {{failed}} failed": "已撤销 {{success}} 个代理，{{failed}} 个失败",
+    "Amount must be a positive number with up to 2 decimals": "金额必须为正数，最多两位小数",
+    "Partially saved. Applied: {{applied}}; failed: {{failed}}": "部分保存成功。已生效：{{applied}}；失败：{{failed}}",
+    "Converted at the exchange rate when requested": "按申请时汇率折算",
+    "This will send your API key to a third-party site. Do you want to continue?": "此操作会将您的 API 密钥发送给第三方站点，是否继续？",
+    "Failed to calculate payment amount": "支付金额计算失败"
   }
 }

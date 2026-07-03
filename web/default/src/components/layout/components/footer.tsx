@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
+import DOMPurify from 'dompurify'
 import { Fragment, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -223,6 +224,11 @@ export function Footer(props: FooterProps) {
 
   const displayColumns = props.columns ?? fallbackColumns
 
+  const sanitizedFooterHtml = useMemo(
+    () => (footerHtml ? DOMPurify.sanitize(footerHtml) : ''),
+    [footerHtml]
+  )
+
   if (footerHtml) {
     return (
       <footer
@@ -236,7 +242,8 @@ export function Footer(props: FooterProps) {
             <div className='flex min-w-0 flex-col items-center gap-2 sm:items-start'>
               <div
                 className='custom-footer text-muted-foreground text-center text-sm sm:text-left'
-                dangerouslySetInnerHTML={{ __html: footerHtml }}
+                // eslint-disable-next-line react/no-danger -- sanitized with DOMPurify above
+                dangerouslySetInnerHTML={{ __html: sanitizedFooterHtml }}
               />
               <SupportContact
                 inline

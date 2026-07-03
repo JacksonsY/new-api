@@ -22,6 +22,7 @@ import { toast } from 'sonner'
 
 import { getSelf } from '@/lib/api'
 import { formatQuota } from '@/lib/format'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { redeemTopupCode } from '../api'
 
@@ -49,7 +50,14 @@ export function useRedemption() {
             quota: formatQuota(quotaAdded),
           })
         )
-        await getSelf()
+        try {
+          const selfRes = await getSelf()
+          if (selfRes?.success && selfRes.data) {
+            useAuthStore.getState().auth.setUser(selfRes.data)
+          }
+        } catch {
+          /* ignore refresh failure */
+        }
         return true
       }
 

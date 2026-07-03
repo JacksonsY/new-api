@@ -238,44 +238,71 @@ func RedisHGetObj(key string, obj interface{}) error {
 	return nil
 }
 
-// RedisIncr Add this function to handle atomic increments
-func RedisIncr(key string, delta int64) error {
+// incrIfTTLScript / hincrIfTTLScript: 在单条 Lua 脚本内原子地完成
+// "TTL 检查 + 自增"。只有 key 存在且带 TTL 时才自增（避免把持久化
+// 一个本应过期的缓存 key）；INCRBY/HINCRBY 本身不会改变已有 TTL。
+// 返回 1 表示已自增，0 表示因 key 不存在/无 TTL 被跳过。
+var (
+	incrIfTTLScript = redis.NewScript(`
+if redis.call('TTL', KEYS[1]) > 0 then
+	redis.call('INCRBY', KEYS[1], ARGV[1])
+	return 1
+end
+return 0`)
+	hincrIfTTLScript = redis.NewScript(`
+if redis.call('TTL', KEYS[1]) > 0 then
+	redis.call('HINCRBY', KEYS[1], ARGV[1], ARGV[2])
+	return 1
+end
+return 0`)
+)
+
+// RedisIncrEx 原子自增（仅当 key 存在且有 TTL）。
+// 返回 applied=false 表示 key 不存在或无 TTL，自增被跳过。
+func RedisIncrEx(key string, delta int64) (applied bool, err error) {
 	if DebugEnabled {
 		SysLog(fmt.Sprintf("Redis INCR: key=%s, delta=%d", key, delta))
 	}
-	// 检查键的剩余生存时间
-	ttlCmd := RDB.TTL(context.Background(), key)
-	ttl, err := ttlCmd.Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return fmt.Errorf("failed to get TTL: %w", err)
+	res, err := incrIfTTLScript.Run(context.Background(), RDB, []string{key}, delta).Int()
+	if err != nil {
+		return false, fmt.Errorf("redis incr failed: %w", err)
 	}
-
-	// 只有在 key 存在且有 TTL 时才需要特殊处理
-	if ttl > 0 {
-		ctx := context.Background()
-		// 开始一个Redis事务
-		txn := RDB.TxPipeline()
-
-		// 减少余额
-		decrCmd := txn.IncrBy(ctx, key, delta)
-		if err := decrCmd.Err(); err != nil {
-			return err // 如果减少失败，则直接返回错误
-		}
-
-		// 重新设置过期时间，使用原来的过期时间
-		txn.Expire(ctx, key, ttl)
-
-		// 执行事务
-		_, err = txn.Exec(ctx)
-		return err
-	}
-	return nil
+	return res == 1, nil
 }
 
-func RedisHIncrBy(key, field string, delta int64) error {
+// RedisIncr Add this function to handle atomic increments.
+// 兼容旧语义：key 不存在/无 TTL 时静默跳过并返回 nil。
+// 需要区分"被跳过"的调用方请使用 RedisIncrEx。
+func RedisIncr(key string, delta int64) error {
+	_, err := RedisIncrEx(key, delta)
+	return err
+}
+
+// RedisHIncrByEx 原子哈希字段自增（仅当 key 存在且有 TTL）。
+// 返回 applied=false 表示 key 不存在或无 TTL，自增被跳过。
+func RedisHIncrByEx(key, field string, delta int64) (applied bool, err error) {
 	if DebugEnabled {
 		SysLog(fmt.Sprintf("Redis HINCRBY: key=%s, field=%s, delta=%d", key, field, delta))
 	}
+	res, err := hincrIfTTLScript.Run(context.Background(), RDB, []string{key}, field, delta).Int()
+	if err != nil {
+		return false, fmt.Errorf("redis hincrby failed: %w", err)
+	}
+	return res == 1, nil
+}
+
+// RedisHIncrBy 兼容旧语义：key 不存在/无 TTL 时静默跳过并返回 nil。
+func RedisHIncrBy(key, field string, delta int64) error {
+	_, err := RedisHIncrByEx(key, field, delta)
+	return err
+}
+
+// RedisHSetNXField 仅当 hash 字段不存在时写入（HSETNX），已存在则不覆盖。
+// 用于"回源初始化"场景：避免无条件 HSET 覆盖掉并发 HINCRBY 已落地的增量。
+func RedisHSetNXField(key, field string, value interface{}) error {
+	if DebugEnabled {
+		SysLog(fmt.Sprintf("Redis HSETNX field: key=%s, field=%s, value=%v", key, field, value))
+	}
 	ttlCmd := RDB.TTL(context.Background(), key)
 	ttl, err := ttlCmd.Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
@@ -286,8 +313,7 @@ func RedisHIncrBy(key, field string, delta int64) error {
 		ctx := context.Background()
 		txn := RDB.TxPipeline()
 
-		incrCmd := txn.HIncrBy(ctx, key, field, delta)
-		if err := incrCmd.Err(); err != nil {
+		if err := txn.HSetNX(ctx, key, field, value).Err(); err != nil {
 			return err
 		}
 

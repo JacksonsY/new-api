@@ -238,34 +238,38 @@ func updateConfigFromMap(config interface{}, configMap map[string]string) error 
 			}
 			field.SetFloat(floatValue)
 		case reflect.Ptr:
-			// 处理指针类型
+			// 处理指针类型。
+			// 并发安全说明：不要就地反序列化到旧指针指向的值（并发读者可能持有
+			// 同一指针，会看到写到一半的撕裂数据）。这里先构造完整新值，再一次性
+			// field.Set 替换指针，指针赋值近似原子，读者要么看到旧值要么看到新值。
 			if strValue == "null" {
 				field.Set(reflect.Zero(field.Type()))
 			} else {
-				// 如果指针是 nil，需要先初始化
-				if field.IsNil() {
-					field.Set(reflect.New(field.Type().Elem()))
-				}
-				// 反序列化到指针指向的值
-				err := json.Unmarshal([]byte(strValue), field.Interface())
-				if err != nil {
+				fresh := reflect.New(field.Type().Elem())
+				if err := json.Unmarshal([]byte(strValue), fresh.Interface()); err != nil {
 					continue
 				}
+				field.Set(fresh)
 			}
-		case reflect.Map:
-			// json.Unmarshal merges into existing maps (keeps old keys that are
-			// absent from the new JSON). Allocate a fresh map so removed keys
-			// are properly cleared.
+		case reflect.Map, reflect.Slice:
+			// 先构建完整新值再一次性 Set：
+			// 1) json.Unmarshal 对已有 map 是合并语义，新 JSON 缺失的旧 key 不会被清除；
+			// 2) 就地写会让并发读者观察到半更新状态。map/slice 头部赋值近似原子。
 			fresh := reflect.New(field.Type())
 			if err := json.Unmarshal([]byte(strValue), fresh.Interface()); err != nil {
 				continue
 			}
 			field.Set(fresh.Elem())
-		case reflect.Slice, reflect.Struct:
-			err := json.Unmarshal([]byte(strValue), field.Addr().Interface())
-			if err != nil {
+		case reflect.Struct:
+			// 同样先构建新 struct 再整体 Set，缩小撕裂窗口。
+			// 局限说明：多字（>1 machine word）的 struct 赋值在 Go 中并非原子，
+			// 且各配置模块的读者不经过 ConfigManager 的锁直接读全局配置对象，
+			// 无法在此处对读者全局加锁；本函数只能做到"最短写入窗口"。
+			fresh := reflect.New(field.Type())
+			if err := json.Unmarshal([]byte(strValue), fresh.Interface()); err != nil {
 				continue
 			}
+			field.Set(fresh.Elem())
 		}
 	}
 

@@ -5256,6 +5256,12 @@
     "Downstream Users": "Người dùng cấp dưới",
     "Edit Commission Rate": "Sửa tỷ lệ hoa hồng",
     "{{count}} agents revoked": "Đã thu hồi {{count}} đại lý",
-    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "{{count}} người dùng đã chọn sẽ mất quyền đại lý. Số dư hoa hồng tích lũy được giữ lại."
+    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "{{count}} người dùng đã chọn sẽ mất quyền đại lý. Số dư hoa hồng tích lũy được giữ lại.",
+    "Revoked {{success}} agents, {{failed}} failed": "Đã thu hồi {{success}} đại lý, {{failed}} thất bại",
+    "Amount must be a positive number with up to 2 decimals": "Số tiền phải là số dương, tối đa 2 chữ số thập phân",
+    "Partially saved. Applied: {{applied}}; failed: {{failed}}": "Chỉ lưu được một phần. Đã áp dụng: {{applied}}; thất bại: {{failed}}",
+    "Converted at the exchange rate when requested": "Quy đổi theo tỷ giá tại thời điểm yêu cầu",
+    "This will send your API key to a third-party site. Do you want to continue?": "Thao tác này sẽ gửi khóa API của bạn đến trang web bên thứ ba. Bạn có muốn tiếp tục không?",
+    "Failed to calculate payment amount": "Không thể tính số tiền thanh toán"
   }
 }

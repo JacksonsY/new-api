@@ -5253,6 +5253,12 @@
     "Downstream Users": "配下ユーザー",
     "Edit Commission Rate": "分配率を編集",
     "{{count}} agents revoked": "{{count}} 件の代理店を取り消しました",
-    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "選択した {{count}} 人のユーザーは代理店資格を失います。累計分配残高は保持されます。"
+    "{{count}} selected users will lose agent access. Accumulated commission balance is kept.": "選択した {{count}} 人のユーザーは代理店資格を失います。累計分配残高は保持されます。",
+    "Revoked {{success}} agents, {{failed}} failed": "{{success}} 件のエージェントを解除、{{failed}} 件失敗",
+    "Amount must be a positive number with up to 2 decimals": "金額は正の数で、小数点以下は2桁までです",
+    "Partially saved. Applied: {{applied}}; failed: {{failed}}": "一部のみ保存されました。適用済み：{{applied}}／失敗：{{failed}}",
+    "Converted at the exchange rate when requested": "申請時の為替レートで換算",
+    "This will send your API key to a third-party site. Do you want to continue?": "この操作により、APIキーが第三者のサイトに送信されます。続行しますか？",
+    "Failed to calculate payment amount": "支払金額の計算に失敗しました"
   }
 }
