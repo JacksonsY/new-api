@@ -337,16 +337,18 @@ func HardDeleteUserById(id int) error {
 	})
 }
 
+// >>> jzlh-fix 原实现"读整行→内存改→整行 Save"会把读后落地的并发原子更新
+// (分佣入账 commission_quota、额度变动等)用旧值覆盖回去,造成静默丢数。
+// 改为仅递增 aff 三字段的原子 UPDATE,不再触碰其他列。
 func inviteUser(inviterId int) (err error) {
-	user, err := GetUserById(inviterId, true)
-	if err != nil {
-		return err
-	}
-	user.AffCount++
-	user.AffQuota += common.QuotaForInviter
-	user.AffHistoryQuota += common.QuotaForInviter
-	return DB.Save(user).Error
+	return DB.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]interface{}{
+		"aff_count":   gorm.Expr("aff_count + 1"),
+		"aff_quota":   gorm.Expr("aff_quota + ?", common.QuotaForInviter),
+		"aff_history": gorm.Expr("aff_history + ?", common.QuotaForInviter),
+	}).Error
 }
+
+// <<< jzlh-fix
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 检查quota是否小于最小额度
@@ -354,35 +356,32 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(int(common.QuotaPerUnit)))
 	}
 
-	// 开始数据库事务
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return tx.Error
+	// >>> jzlh-fix 原实现的 `gorm:query_option FOR UPDATE` 是 GORM v1 语法,在 v2 下
+	// 静默失效,实际是"无锁读整行→Save 整行",会把读后落地的并发原子更新(分佣入账、
+	// 额度变动)用旧值覆盖。改为条件原子 UPDATE(余额守卫),与分佣转额度同一模式。
+	res := DB.Model(&User{}).
+		Where("id = ? AND aff_quota >= ?", user.Id, quota).
+		Updates(map[string]interface{}{
+			"aff_quota": gorm.Expr("aff_quota - ?", quota),
+			"quota":     gorm.Expr("quota + ?", quota),
+		})
+	if res.Error != nil {
+		return res.Error
 	}
-	defer tx.Rollback() // 确保在函数退出时事务能回滚
-
-	// 加锁查询用户以确保数据一致性
-	err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, user.Id).Error
-	if err != nil {
-		return err
-	}
-
-	// 再次检查用户的AffQuota是否足够
-	if user.AffQuota < quota {
+	if res.RowsAffected == 0 {
 		return errors.New("邀请额度不足！")
 	}
-
-	// 更新用户额度
+	// 同步内存对象与 Redis 额度缓存(与 IncreaseUserQuota / 分佣转换的处理一致)
 	user.AffQuota -= quota
 	user.Quota += quota
-
-	// 保存用户状态
-	if err := tx.Save(user).Error; err != nil {
-		return err
-	}
-
-	// 提交事务
-	return tx.Commit().Error
+	userId := user.Id
+	gopool.Go(func() {
+		if cerr := cacheIncrUserQuota(userId, int64(quota)); cerr != nil {
+			common.SysLog("failed to sync user quota cache after aff transfer: " + cerr.Error())
+		}
+	})
+	return nil
+	// <<< jzlh-fix
 }
 
 func (user *User) Insert(inviterId int) error {
