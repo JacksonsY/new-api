@@ -165,6 +165,13 @@ var AgentWithdrawMinQuota = 500000
 // jzlh-agent 单个代理同时存在的待审核提现单上限，防刷单轰炸审核列表。
 var AgentWithdrawMaxPending = 3
 
+// jzlh-agent 资格门槛：下级注册满 N 天其消费才开始计佣，抬高批量刷小号成本。0 = 关闭。
+var AgentInviteeMinAgeDays = 0
+
+// jzlh-agent 反欺诈 IP 快表(user_ip_records)保留天数，超期由每日清理任务删除。
+// 检测窗口最长按 90 天算，默认 180 天留足余量。
+var AgentIPRecordRetentionDays = 180
+
 var RetryTimes = 0
 
 //var RootUserEmail = ""

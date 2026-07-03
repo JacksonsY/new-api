@@ -22,9 +22,13 @@ import type {
   AgentUser,
   AgentUsersResult,
   ApiEnvelope,
+  ApplyRiskControlsRequest,
   CommissionsResult,
   CreateWithdrawalRequest,
+  FraudAlert,
+  FraudReviewAction,
   PagedResult,
+  RiskUser,
   SetAgentRequest,
   Withdrawal,
   WithdrawalReviewAction,
@@ -145,6 +149,71 @@ export async function reviewWithdrawal(
 
 export async function cancelWithdrawal(id: number): Promise<ApiEnvelope<null>> {
   const res = await api.post('/api/user/agent/withdraw/cancel', { id })
+  return res.data
+}
+
+// ---- 超管：反欺诈（IP 重合告警 + 风控管制，RootAuth）----
+
+export async function adminListFraudAlerts(
+  page = 1,
+  pageSize = 20,
+  status = '',
+  keyword = ''
+): Promise<ApiEnvelope<PagedResult<FraudAlert>>> {
+  const res = await api.get('/api/user/agent/fraud/alerts', {
+    params: { p: page, page_size: pageSize, status, keyword },
+  })
+  return res.data
+}
+
+export async function adminScanFraud(
+  days = 30,
+  deep = false
+): Promise<ApiEnvelope<{ new_alerts: number }>> {
+  const res = await api.post('/api/user/agent/fraud/scan', { days, deep })
+  return res.data
+}
+
+export async function adminReviewFraudAlert(
+  id: number,
+  action: FraudReviewAction,
+  remark = ''
+): Promise<ApiEnvelope<null>> {
+  const res = await api.post('/api/user/agent/fraud/review', {
+    id,
+    action,
+    remark,
+  })
+  return res.data
+}
+
+export async function adminListRiskUsers(
+  page = 1,
+  pageSize = 20,
+  keyword = '',
+  status = ''
+): Promise<ApiEnvelope<PagedResult<RiskUser>>> {
+  const res = await api.get('/api/user/agent/risk/list', {
+    params: { p: page, page_size: pageSize, keyword, status },
+  })
+  return res.data
+}
+
+export async function adminApplyRiskControls(
+  req: ApplyRiskControlsRequest
+): Promise<ApiEnvelope<{ rejected_withdrawals: number }>> {
+  const res = await api.post('/api/user/agent/risk/apply', req)
+  return res.data
+}
+
+export async function adminRemoveRiskControls(
+  userId: number,
+  remark = ''
+): Promise<ApiEnvelope<null>> {
+  const res = await api.post('/api/user/agent/risk/remove', {
+    user_id: userId,
+    remark,
+  })
   return res.data
 }
 

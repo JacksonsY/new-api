@@ -51,6 +51,13 @@ var agentErrorI18nKeys = map[error]string{
 	model.ErrWithdrawalClaimedByOther:   i18n.MsgAgentWithdrawalClaimedByOther,
 	model.ErrPayoutReferenceRequired:    i18n.MsgAgentPayoutReferenceRequired,
 	model.ErrInvalidReviewAction:        i18n.MsgAgentInvalidReviewAction,
+	// 反欺诈/风控（jzlh-agent 蓝图F）
+	model.ErrCommissionAssetsFrozen:    i18n.MsgAgentAssetsFrozen,
+	model.ErrFraudAlertNotFound:        i18n.MsgAgentFraudAlertNotFound,
+	model.ErrFraudAlertAlreadyResolved: i18n.MsgAgentFraudAlertAlreadyResolved,
+	model.ErrInvalidFraudAction:        i18n.MsgAgentInvalidFraudAction,
+	model.ErrRiskUserNotFound:          i18n.MsgAgentRiskUserNotFound,
+	model.ErrRiskNoActionSelected:      i18n.MsgAgentRiskNoActionSelected,
 	// ErrCannotReviewOwnWithdrawal / ErrQuotaOverflow 暂无独立 i18n key，
 	// 走 apiErrorAgent 的 err.Error() 兜底文案。
 }

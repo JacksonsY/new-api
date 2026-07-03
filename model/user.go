@@ -38,15 +38,15 @@ type User struct {
 	AccessToken      *string `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
 	// Quota/UsedQuota 不设 type:int：让 GORM 按方言映射(MySQL/PG→BIGINT, SQLite→INTEGER)，
 	// 避免余额/累计消耗撞 32 位上限（与下方 CommissionQuota 同一处理）。
-	Quota            int     `json:"quota" gorm:"default:0"`
-	UsedQuota        int     `json:"used_quota" gorm:"default:0;column:used_quota"` // used quota
-	RequestCount     int     `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string  `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode          string  `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int     `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int     `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int     `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int     `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	Quota           int    `json:"quota" gorm:"default:0"`
+	UsedQuota       int    `json:"used_quota" gorm:"default:0;column:used_quota"` // used quota
+	RequestCount    int    `json:"request_count" gorm:"type:int;default:0;"`      // request number
+	Group           string `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode         string `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount        int    `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota        int    `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota int    `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId       int    `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	// >>> jzlh-agent 代理分销：与全局 role 正交的独立维度
 	AgentType       string  `json:"agent_type" gorm:"type:varchar(16);default:'';column:agent_type"` // "" 非代理 / normal / oem / api
 	UsageProfitRate float64 `json:"usage_profit_rate" gorm:"default:0;column:usage_profit_rate"`     // 消费分润比例 0-1
@@ -340,7 +340,15 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 	}
 	var user User
 	err := DB.Select("id").First(&user, "aff_code = ?", affCode).Error
-	return user.Id, err
+	if err != nil {
+		return 0, err
+	}
+	// jzlh-agent 风控封码：被封邀请码的用户不再绑定新下级。
+	// 注册与 OAuth 两条绑定路径都经此函数且忽略错误(inviterId 落 0)，天然全覆盖。
+	if IsInviteCodeBlocked(user.Id) {
+		return 0, errors.New("aff code blocked by risk control")
+	}
+	return user.Id, nil
 }
 
 func DeleteUserById(id int) (err error) {

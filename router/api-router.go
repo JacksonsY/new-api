@@ -164,6 +164,13 @@ func SetApiRouter(router *gin.Engine) {
 				// 超管：提现审批（资金出口，收紧为 Root）
 				agentRoute.GET("/withdraw/all", middleware.RootAuth(), controller.AdminListWithdrawals)
 				agentRoute.POST("/withdraw/review", middleware.RootAuth(), controller.ReviewWithdrawal)
+				// 超管：反欺诈（IP 重合告警扫描/处置 + 风控管制，资金处置收紧为 Root）
+				agentRoute.GET("/fraud/alerts", middleware.RootAuth(), controller.AdminListFraudAlerts)
+				agentRoute.POST("/fraud/scan", middleware.RootAuth(), controller.AdminScanFraud)
+				agentRoute.POST("/fraud/review", middleware.RootAuth(), controller.AdminReviewFraudAlert)
+				agentRoute.GET("/risk/list", middleware.RootAuth(), controller.AdminListRiskUsers)
+				agentRoute.POST("/risk/apply", middleware.RootAuth(), controller.AdminApplyRiskControls)
+				agentRoute.POST("/risk/remove", middleware.RootAuth(), controller.AdminRemoveRiskControls)
 			}
 			// <<< jzlh-agent
 		}

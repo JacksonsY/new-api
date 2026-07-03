@@ -14,8 +14,9 @@ import (
 
 // 分润流水状态。历史行(加列前)默认为已成熟,不影响既有余额。
 const (
-	CommissionStatusPending = 1 // 成熟期内,未计入可提现余额
-	CommissionStatusMatured = 2 // 已计入可提现余额
+	CommissionStatusPending     = 1 // 成熟期内,未计入可提现余额
+	CommissionStatusMatured     = 2 // 已计入可提现余额
+	CommissionStatusConfiscated = 3 // 反欺诈追回没收(原 pending 流水,永不结转)
 )
 
 // Commission 代理消费分润流水。
@@ -90,6 +91,12 @@ func resolveCommissionAgent(fromUserId int, quota int) (*User, int) {
 	}
 	// 自邀守卫：上级即本人时不计佣（防经数据修改后自己给自己刷分润）
 	if fromUser.InviterId == fromUserId {
+		return nil, 0
+	}
+	// 资格门槛：下级注册满 N 天其消费才开始计佣，抬高批量刷小号成本(0=关闭)。
+	// fromUser 上面已加载，此检查零额外查询。
+	if common.AgentInviteeMinAgeDays > 0 &&
+		common.GetTimestamp()-fromUser.CreatedAt < int64(common.AgentInviteeMinAgeDays)*86400 {
 		return nil, 0
 	}
 	agent, err := GetUserById(fromUser.InviterId, false)
@@ -172,6 +179,11 @@ func creditAgentCommission(agentId int, fromUserId int, amount int, rate float64
 // 在代理读取汇总/转额度/申请提现前调用。
 func MatureAgentCommissions(agentId int) {
 	if common.AgentCommissionMatureMinutes <= 0 {
+		return
+	}
+	// 风控冻结的代理暂停结转：pending 停在原地（入账不停，证据链保留），
+	// 解除管制后下次结转恢复正常成熟。
+	if IsCommissionAssetsFrozen(agentId) {
 		return
 	}
 	cutoff := time.Now().Unix() - int64(common.AgentCommissionMatureMinutes)*60

@@ -132,6 +132,7 @@ func recordLoginAudit(user *model.User, c *gin.Context) {
 // setup session & cookies and then return user info
 func setupLogin(user *model.User, c *gin.Context) {
 	model.UpdateUserLastLoginAt(user.Id)
+	model.RecordUserIP(user.Id, c.ClientIP(), "login") // jzlh-agent 反欺诈 IP 快表
 	session := sessions.Default(c)
 	session.Set("id", user.Id)
 	session.Set("username", user.Username)
@@ -222,7 +223,7 @@ func Register(c *gin.Context) {
 		DisplayName: user.Username,
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
-		RegisterIp:  c.ClientIP(), // jzlh-agent 注册 IP 落库供防刷审计
+		RegisterIp:  c.ClientIP(),          // jzlh-agent 注册 IP 落库供防刷审计
 	}
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
@@ -238,6 +239,7 @@ func Register(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
 		return
 	}
+	model.RecordUserIP(insertedUser.Id, c.ClientIP(), "register") // jzlh-agent 反欺诈 IP 快表
 	// 生成默认令牌
 	if constant.GenerateDefaultToken {
 		key, err := common.GenerateKey()

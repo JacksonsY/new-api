@@ -269,6 +269,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 	user.Role = common.RoleCommonUser
 	user.Status = common.UserStatusEnabled
+	user.RegisterIp = c.ClientIP() // jzlh-agent 注册 IP 落库供防刷审计(与密码注册对齐)
 
 	// Handle affiliate code
 	affCode := session.Get("aff")

@@ -452,6 +452,10 @@ func TokenAuth() func(c *gin.Context) {
 
 		userCache.WriteContext(c)
 
+		// jzlh-agent 反欺诈 IP 快表：API 调用无条件埋点（异步+1h 去重），
+		// 不受用户自选的 RecordIpLog 日志开关影响——作弊者不会自己打开那个开关。
+		model.RecordUserIP(token.UserId, c.ClientIP(), "api_call")
+
 		userGroup := userCache.Group
 		tokenGroup := token.Group
 		if tokenGroup != "" {

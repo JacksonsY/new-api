@@ -135,3 +135,52 @@ export interface CreateWithdrawalRequest {
   payee_account: string
   remark: string
 }
+
+// ---- 反欺诈（jzlh-agent 蓝图F，对齐后端 /api/user/agent/fraud|risk/* 契约） ----
+
+export const FRAUD_ALERT_STATUS = {
+  DETECTED: 'detected',
+  RESOLVED: 'resolved',
+  DISMISSED: 'dismissed',
+} as const
+
+export type FraudReviewAction = 'unbind' | 'clawback' | 'dismiss' | 'delete'
+
+export interface FraudAlert {
+  id: number
+  agent_id: number
+  invitee_id: number
+  shared_ips: string // JSON 数组字符串
+  shared_ip_count: number
+  status: string
+  resolved_action?: string
+  clawback_quota?: number
+  admin_id?: number
+  admin_remark?: string
+  detected_at: number
+  resolved_at?: number
+  agent_username?: string
+  invitee_username?: string
+}
+
+export interface RiskUser {
+  id: number
+  user_id: number
+  status: string // active / removed
+  freeze_assets: boolean
+  block_invite_code: boolean
+  reason?: string
+  admin_id?: number
+  removed_by?: number
+  remove_remark?: string
+  removed_at?: number
+  created_at: number
+  username?: string
+}
+
+export interface ApplyRiskControlsRequest {
+  user_id: number
+  freeze_assets: boolean
+  block_invite_code: boolean
+  reason: string
+}

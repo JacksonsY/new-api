@@ -354,4 +354,11 @@ const (
 	MsgAgentWithdrawalNotClaimed       = "agent.withdrawal_not_claimed"
 	MsgAgentWithdrawalClaimedByOther   = "agent.withdrawal_claimed_by_other"
 	MsgAgentPayoutReferenceRequired    = "agent.payout_reference_required"
+	// 反欺诈/风控（jzlh-agent 蓝图F）
+	MsgAgentAssetsFrozen              = "agent.assets_frozen"
+	MsgAgentFraudAlertNotFound        = "agent.fraud_alert_not_found"
+	MsgAgentFraudAlertAlreadyResolved = "agent.fraud_alert_already_resolved"
+	MsgAgentInvalidFraudAction        = "agent.invalid_fraud_action"
+	MsgAgentRiskUserNotFound          = "agent.risk_user_not_found"
+	MsgAgentRiskNoActionSelected      = "agent.risk_no_action_selected"
 )

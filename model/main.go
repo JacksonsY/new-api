@@ -280,8 +280,12 @@ func migrateDB() error {
 		&Redemption{},
 		&Ability{},
 		&Log{},
-		&Commission{}, // jzlh-agent 代理分润流水
-		&Withdrawal{}, // jzlh-agent 代理提现单
+		&Commission{},           // jzlh-agent 代理分润流水
+		&Withdrawal{},           // jzlh-agent 代理提现单
+		&UserIPRecord{},         // jzlh-agent 反欺诈 IP 快表
+		&CommissionFraudAlert{}, // jzlh-agent IP 重合告警
+		&CommissionRiskUser{},   // jzlh-agent 风控管制
+		&CommissionRiskEvent{},  // jzlh-agent 风控事件留痕
 		&Midjourney{},
 		&TopUp{},
 		&QuotaData{},
@@ -336,8 +340,12 @@ func migrateDBFast() error {
 		{&Redemption{}, "Redemption"},
 		{&Ability{}, "Ability"},
 		{&Log{}, "Log"},
-		{&Commission{}, "Commission"}, // jzlh-agent 代理分润流水
-		{&Withdrawal{}, "Withdrawal"}, // jzlh-agent 代理提现单
+		{&Commission{}, "Commission"},                     // jzlh-agent 代理分润流水
+		{&Withdrawal{}, "Withdrawal"},                     // jzlh-agent 代理提现单
+		{&UserIPRecord{}, "UserIPRecord"},                 // jzlh-agent 反欺诈 IP 快表
+		{&CommissionFraudAlert{}, "CommissionFraudAlert"}, // jzlh-agent IP 重合告警
+		{&CommissionRiskUser{}, "CommissionRiskUser"},     // jzlh-agent 风控管制
+		{&CommissionRiskEvent{}, "CommissionRiskEvent"},   // jzlh-agent 风控事件留痕
 		{&Midjourney{}, "Midjourney"},
 		{&TopUp{}, "TopUp"},
 		{&QuotaData{}, "QuotaData"},

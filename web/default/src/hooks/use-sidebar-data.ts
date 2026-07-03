@@ -30,6 +30,7 @@ import {
   ServerCog,
   Settings,
   Share2,
+  ShieldAlert,
   Ticket,
   User,
   Users,
@@ -181,6 +182,11 @@ export function useSidebarData(): SidebarData {
                   title: t('Withdrawal Review'),
                   url: '/withdrawals',
                   icon: Wallet,
+                },
+                {
+                  title: t('Risk Control'),
+                  url: '/risk',
+                  icon: ShieldAlert,
                 },
               ]
             : []),

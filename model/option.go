@@ -139,6 +139,8 @@ func InitOptionMap() {
 	common.OptionMap["AgentWithdrawFeeRate"] = strconv.FormatFloat(common.AgentWithdrawFeeRate, 'f', -1, 64) // jzlh-agent
 	common.OptionMap["AgentWithdrawMinQuota"] = strconv.Itoa(common.AgentWithdrawMinQuota)                   // jzlh-agent
 	common.OptionMap["AgentWithdrawMaxPending"] = strconv.Itoa(common.AgentWithdrawMaxPending)               // jzlh-agent
+	common.OptionMap["AgentInviteeMinAgeDays"] = strconv.Itoa(common.AgentInviteeMinAgeDays)                 // jzlh-agent
+	common.OptionMap["AgentIPRecordRetentionDays"] = strconv.Itoa(common.AgentIPRecordRetentionDays)         // jzlh-agent
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
 	common.OptionMap["ModelRequestRateLimitDurationMinutes"] = strconv.Itoa(setting.ModelRequestRateLimitDurationMinutes)
 	common.OptionMap["ModelRequestRateLimitSuccessCount"] = strconv.Itoa(setting.ModelRequestRateLimitSuccessCount)
@@ -527,6 +529,14 @@ func updateOptionMap(key string, value string) (err error) {
 	case "AgentWithdrawMaxPending": // jzlh-agent
 		if v, err := strconv.Atoi(value); err == nil && v >= 0 {
 			common.AgentWithdrawMaxPending = v
+		}
+	case "AgentInviteeMinAgeDays": // jzlh-agent
+		if v, err := strconv.Atoi(value); err == nil && v >= 0 {
+			common.AgentInviteeMinAgeDays = v
+		}
+	case "AgentIPRecordRetentionDays": // jzlh-agent
+		if v, err := strconv.Atoi(value); err == nil && v >= 0 {
+			common.AgentIPRecordRetentionDays = v
 		}
 	case "ModelRequestRateLimitCount":
 		setting.ModelRequestRateLimitCount, _ = strconv.Atoi(value)

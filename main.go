@@ -125,6 +125,9 @@ func main() {
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 
+	// jzlh-agent 反欺诈 IP 快表每日过期清理
+	service.StartIPRecordCleanupTask()
+
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
 	service.StartSystemInstanceReporter()

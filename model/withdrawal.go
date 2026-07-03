@@ -153,6 +153,10 @@ func ConvertCommissionToQuota(userId int, amount int) error {
 	if amount <= 0 {
 		return ErrInvalidConvertAmount
 	}
+	// jzlh-agent 风控冻结：分润资产出口拦截
+	if IsCommissionAssetsFrozen(userId) {
+		return ErrCommissionAssetsFrozen
+	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		// 余额守卫 + 目标 quota 上限护栏（防转入后溢出）
 		res := tx.Model(&User{}).
@@ -193,6 +197,10 @@ func ConvertCommissionToQuota(userId int, amount int) error {
 func CreateWithdrawal(userId int, amount int, method string, payeeName string, payeeAccount string, remark string) (*Withdrawal, error) {
 	if amount <= 0 {
 		return nil, ErrInvalidWithdrawalAmount
+	}
+	// jzlh-agent 风控冻结：分润资产出口拦截
+	if IsCommissionAssetsFrozen(userId) {
+		return nil, ErrCommissionAssetsFrozen
 	}
 	if amount < common.AgentWithdrawMinQuota {
 		return nil, ErrWithdrawalBelowMinimum
