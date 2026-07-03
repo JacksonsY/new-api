@@ -29,6 +29,7 @@ import {
   Radio,
   ServerCog,
   Settings,
+  Share2,
   Ticket,
   User,
   Users,
@@ -38,6 +39,7 @@ import { useTranslation } from 'react-i18next'
 
 import { type SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -47,6 +49,10 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  // jzlh-agent：代理分销菜单按独立维度 agent_type / role 自条件显示
+  const user = useAuthStore((s) => s.auth.user)
+  const isAgent = Boolean(user?.agent_type)
+  const isAdmin = (user?.role ?? 0) >= ROLE.ADMIN
 
   return {
     navGroups: [
@@ -115,6 +121,26 @@ export function useSidebarData(): SidebarData {
           },
         ],
       },
+      ...(isAgent
+        ? [
+            {
+              id: 'agent',
+              title: t('Agent Center'),
+              items: [
+                {
+                  title: t('Agent Wallet'),
+                  url: '/agent/wallet',
+                  icon: Wallet,
+                },
+                {
+                  title: t('My Users'),
+                  url: '/agent/users',
+                  icon: Share2,
+                },
+              ],
+            },
+          ]
+        : []),
       {
         id: 'admin',
         title: t('Admin'),
@@ -144,20 +170,44 @@ export function useSidebarData(): SidebarData {
             url: '/subscriptions',
             icon: CreditCard,
           },
-          {
-            title: t('System Info'),
-            url: '/system-info',
-            icon: ServerCog,
-            requiredRole: ROLE.SUPER_ADMIN,
-          },
-          {
-            title: t('System Settings'),
-            url: '/system-settings/site',
-            activeUrls: ['/system-settings'],
-            icon: Settings,
-          },
+          ...(isAdmin
+            ? [
+                {
+                  title: t('Agent Management'),
+                  url: '/agents',
+                  icon: Users,
+                },
+                {
+                  title: t('Withdrawal Review'),
+                  url: '/withdrawals',
+                  icon: Wallet,
+                },
+              ]
+            : []),
         ],
       },
+      ...(isAdmin
+        ? [
+            {
+              id: 'system',
+              title: t('System'),
+              items: [
+                {
+                  title: t('System Info'),
+                  url: '/system-info',
+                  icon: ServerCog,
+                  requiredRole: ROLE.SUPER_ADMIN,
+                },
+                {
+                  title: t('System Settings'),
+                  url: '/system-settings/site',
+                  activeUrls: ['/system-settings'],
+                  icon: Settings,
+                },
+              ],
+            },
+          ]
+        : []),
     ],
   }
 }

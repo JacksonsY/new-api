@@ -42,6 +42,11 @@ export interface AuthUser {
   aff_quota?: number
   aff_history_quota?: number
   inviter_id?: number
+  // jzlh-agent 代理分销
+  agent_type?: string
+  usage_profit_rate?: number
+  commission_quota?: number
+  commission_history_quota?: number
   github_id?: string
   oidc_id?: string
   wechat_id?: string

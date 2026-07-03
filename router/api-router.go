@@ -145,6 +145,27 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
 			}
+
+			// >>> jzlh-agent 代理分销（/api/user/agent/*）
+			agentRoute := userRoute.Group("/agent")
+			{
+				// 超管侧：设/撤/列代理
+				agentRoute.POST("/create", middleware.AdminAuth(), controller.CreateAgent)
+				agentRoute.POST("/revoke", middleware.AdminAuth(), controller.RevokeAgent)
+				agentRoute.GET("/list", middleware.AdminAuth(), controller.ListAgents)
+				// 代理自助：名下用户 + 分润流水
+				agentRoute.GET("/users", middleware.UserAuth(), middleware.AgentAuth(), controller.AgentListUsers)
+				agentRoute.GET("/commissions", middleware.UserAuth(), middleware.AgentAuth(), controller.AgentListCommissions)
+				// 代理自助：分润出口（转额度 / 提现）
+				agentRoute.POST("/commission/convert", middleware.UserAuth(), middleware.AgentAuth(), controller.ConvertCommission)
+				agentRoute.POST("/withdraw", middleware.UserAuth(), middleware.AgentAuth(), controller.CreateWithdrawal)
+				agentRoute.GET("/withdraws", middleware.UserAuth(), middleware.AgentAuth(), controller.AgentListWithdrawals)
+				agentRoute.POST("/withdraw/cancel", middleware.UserAuth(), middleware.AgentAuth(), controller.CancelAgentWithdrawal)
+				// 超管：提现审批
+				agentRoute.GET("/withdraw/all", middleware.AdminAuth(), controller.AdminListWithdrawals)
+				agentRoute.POST("/withdraw/review", middleware.AdminAuth(), controller.ReviewWithdrawal)
+			}
+			// <<< jzlh-agent
 		}
 
 		// Subscription billing (plans, purchase, admin management)

@@ -330,3 +330,28 @@ const (
 	MsgCustomOAuthBindingNotFound   = "custom_oauth.binding_not_found"
 	MsgCustomOAuthProviderIdInvalid = "custom_oauth.provider_id_field_invalid"
 )
+
+// Agent (jzlh-agent) related messages: agent management, withdrawal, and commission conversion
+const (
+	MsgAgentInvalidAgentType           = "agent.invalid_agent_type"
+	MsgAgentInvalidUsageProfitRate     = "agent.invalid_usage_profit_rate"
+	MsgAgentUserNotFound               = "agent.user_not_found"
+	MsgAgentCannotSetAdminAsAgent      = "agent.cannot_set_admin_as_agent"
+	MsgAgentInvalidWithdrawalMethod    = "agent.invalid_withdrawal_method"
+	MsgAgentInvalidConvertAmount       = "agent.invalid_convert_amount"
+	MsgAgentInvalidWithdrawalAmount    = "agent.invalid_withdrawal_amount"
+	MsgAgentPayeeInfoRequired          = "agent.payee_info_required"
+	MsgAgentPayeeNameLength            = "agent.payee_name_length"
+	MsgAgentPayeeNameFormat            = "agent.payee_name_format"
+	MsgAgentPayeeAccountAlipayInvalid  = "agent.payee_account_alipay_invalid"
+	MsgAgentPayeeAccountWechatInvalid  = "agent.payee_account_wechat_invalid"
+	MsgAgentPayeeAccountBankInvalid    = "agent.payee_account_bank_invalid"
+	MsgAgentInsufficientCommission     = "agent.insufficient_commission"
+	MsgAgentWithdrawalAlreadyProcessed = "agent.withdrawal_already_processed"
+	MsgAgentInvalidReviewAction        = "agent.invalid_review_action"
+	MsgAgentWithdrawalBelowMinimum     = "agent.withdrawal_below_minimum"
+	MsgAgentTooManyPendingWithdrawals  = "agent.too_many_pending_withdrawals"
+	MsgAgentWithdrawalNotClaimed       = "agent.withdrawal_not_claimed"
+	MsgAgentWithdrawalClaimedByOther   = "agent.withdrawal_claimed_by_other"
+	MsgAgentPayoutReferenceRequired    = "agent.payout_reference_required"
+)

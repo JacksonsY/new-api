@@ -342,6 +342,17 @@ type RecordConsumeLogParams struct {
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
+	// >>> jzlh-agent 消费分润（异步，不阻塞主链；独立于日志开关）
+	// 幂等键取 request id；必须在 goroutine 外读取，handler 返回后 c 可能被回收。
+	if params.Quota > 0 {
+		sourceKey := ""
+		if rid := c.GetString(common.RequestIdKey); rid != "" {
+			sourceKey = "consume:" + rid
+		}
+		quota := params.Quota
+		gopool.Go(func() { RecordAgentCommission(userId, quota, sourceKey) })
+	}
+	// <<< jzlh-agent
 	if !common.LogConsumeEnabled {
 		return
 	}
@@ -420,6 +431,22 @@ type RecordTaskBillingLogParams struct {
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
+	// >>> jzlh-agent 任务消费分润（异步）；退款(任务失败/差额下调)按比例回冲，防"刷失败任务套佣金"。
+	// 幂等键取 task_id；差额结算(Recalculate)会对同一任务合法地多次记账，键上带金额区分。
+	if params.Quota > 0 {
+		taskKey := ""
+		if tid, ok := params.Other["task_id"].(string); ok && tid != "" {
+			taskKey = fmt.Sprintf("task:%s:%d:%d", tid, params.LogType, params.Quota)
+		}
+		userId, quota := params.UserId, params.Quota
+		switch params.LogType {
+		case LogTypeConsume:
+			gopool.Go(func() { RecordAgentCommission(userId, quota, taskKey) })
+		case LogTypeRefund:
+			gopool.Go(func() { RecordAgentCommissionReversal(userId, quota, taskKey) })
+		}
+	}
+	// <<< jzlh-agent
 	if params.LogType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}

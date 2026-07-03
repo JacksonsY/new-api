@@ -1,0 +1,399 @@
+package model
+
+// jzlh-agent 代理分销：消费分润流水与代理管理（与上游解耦的独立文件，便于合并 upstream）。
+
+import (
+	"strings"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"gorm.io/gorm"
+)
+
+// 分润流水状态。历史行(加列前)默认为已成熟,不影响既有余额。
+const (
+	CommissionStatusPending = 1 // 成熟期内,未计入可提现余额
+	CommissionStatusMatured = 2 // 已计入可提现余额
+)
+
+// Commission 代理消费分润流水。
+type Commission struct {
+	Id         int   `json:"id" gorm:"primaryKey"`
+	AgentId    int   `json:"agent_id" gorm:"index"`                  // 收益归属的代理(上级)用户 id
+	FromUserId int   `json:"from_user_id" gorm:"index"`              // 产生消费的下级用户 id
+	LogId      int   `json:"log_id" gorm:"default:0"`                // 关联消费日志 id（可为 0）
+	Quota      int   `json:"quota"`                                  // 本次分润额度（quota 整数,负数=回冲）
+	Status     int   `json:"status" gorm:"default:2;index"`          // 见 CommissionStatus*
+	CreatedAt  int64 `json:"created_at" gorm:"autoCreateTime;index"` // 秒级时间戳
+	// 来源幂等键(如 consume:<request_id> / task:<task_id>):同一来源只结算一次。
+	// 指针:NULL 不参与唯一约束(SQLite/MySQL/PG 行为一致),兼容无来源的旧行。
+	// 注意:唯一索引不能用 gorm uniqueIndex 标签——SQLite 对已有表 ALTER ADD UNIQUE 列
+	// 会直接报错,改在 EnsureCommissionSourceKeyIndex 里迁移后单独建。
+	SourceKey *string `json:"source_key" gorm:"size:96"`
+	// Rate 入账时的分润比例快照。退款回冲按快照比例计算，避免"消费与退款之间
+	// 管理员改了费率"导致回冲金额与原分润不一致。旧行为 0(加列前)，回冲时降级用当前费率。
+	Rate float64 `json:"rate" gorm:"default:0"`
+	// FromUsername 产生消费的下级用户名，仅代理钱包分润明细展示用（列表查询时批量回填，不落库）。
+	FromUsername string `json:"from_username,omitempty" gorm:"-"`
+}
+
+// EnsureCommissionSourceKeyIndex 迁移后单独创建 source_key 唯一索引。
+// CREATE UNIQUE INDEX 语法三库一致；HasIndex 判存在避免重复创建报错。
+func EnsureCommissionSourceKeyIndex() {
+	const idx = "idx_commissions_source_key"
+	if DB.Migrator().HasIndex(&Commission{}, idx) {
+		return
+	}
+	if err := DB.Exec("CREATE UNIQUE INDEX " + idx + " ON commissions(source_key)").Error; err != nil {
+		common.SysLog("failed to create commission source_key unique index: " + err.Error())
+	}
+}
+
+// AgentTypeValid 校验代理类型。平台代理只有一种：normal（空串=非代理）。
+func AgentTypeValid(t string) bool {
+	return t == "normal"
+}
+
+// resolveCommissionAgent 解析下级用户的上级代理及本次应计分润额。
+// 返回 (agent, commission)；不满足分润条件时 agent 为 nil。
+func resolveCommissionAgent(fromUserId int, quota int) (*User, int) {
+	// 合规声明未确认时不产生新分润(与上游"邀请返利需先确认合规"同一治理口径;
+	// 分佣是更大额的现金激励,没有理由豁免)。回冲不受此限制:已入账的钱永远可被冲回。
+	if !operation_setting.IsPaymentComplianceConfirmed() {
+		return nil, 0
+	}
+	if fromUserId <= 0 || quota <= 0 {
+		return nil, 0
+	}
+	fromUser, err := GetUserById(fromUserId, false)
+	if err != nil || fromUser == nil || fromUser.InviterId <= 0 {
+		return nil, 0
+	}
+	// 自邀守卫：上级即本人时不计佣（防经数据修改后自己给自己刷分润）
+	if fromUser.InviterId == fromUserId {
+		return nil, 0
+	}
+	agent, err := GetUserById(fromUser.InviterId, false)
+	if err != nil || agent == nil {
+		return nil, 0
+	}
+	// 被封禁/停用的代理不再产生新分润(冻结手段:封号即断佣)
+	if agent.Status != common.UserStatusEnabled {
+		return nil, 0
+	}
+	if agent.AgentType == "" || agent.UsageProfitRate <= 0 {
+		return nil, 0
+	}
+	commission := int(float64(quota) * agent.UsageProfitRate)
+	if commission <= 0 {
+		return nil, 0
+	}
+	return agent, commission
+}
+
+// RecordAgentCommission 下级用户产生消费时，按上级代理的 usage_profit_rate 累计分润。
+// 仅依赖 model 层，供 RecordConsumeLog / RecordTaskBillingLog 异步调用（避免 model→service 循环依赖）。
+// sourceKey 非空时做来源幂等：同一来源(请求/任务)只结算一次，防重放/重复调用刷佣。
+// AgentCommissionMatureMinutes > 0 时新分润先挂 pending，成熟后才进可提现余额
+// （累计收益 history 立即累加，钱包里可见"待成熟"）。
+func RecordAgentCommission(fromUserId int, consumedQuota int, sourceKey string) {
+	agent, commission := resolveCommissionAgent(fromUserId, consumedQuota)
+	if agent == nil {
+		return
+	}
+	creditAgentCommission(agent.Id, fromUserId, commission, agent.UsageProfitRate, sourceKey)
+}
+
+// creditAgentCommission 分润入账的公共路径：
+// 来源幂等 + 成熟期挂账 + 累计收益即时累加 + 费率快照。amount 必须为正。
+func creditAgentCommission(agentId int, fromUserId int, amount int, rate float64, sourceKey string) {
+	if amount <= 0 {
+		return
+	}
+	var keyPtr *string
+	if sourceKey != "" {
+		if n := int64(0); DB.Model(&Commission{}).Where("source_key = ?", sourceKey).Count(&n).Error == nil && n > 0 {
+			return // 已结算过该来源（预检；唯一索引兜底并发）
+		}
+		keyPtr = &sourceKey
+	}
+	status := CommissionStatusMatured
+	if common.AgentCommissionMatureMinutes > 0 {
+		status = CommissionStatusPending
+	}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&Commission{
+			AgentId:    agentId,
+			FromUserId: fromUserId,
+			Quota:      amount,
+			Status:     status,
+			SourceKey:  keyPtr,
+			Rate:       rate,
+		}).Error; err != nil {
+			return err
+		}
+		updates := map[string]interface{}{
+			"commission_history_quota": gorm.Expr("commission_history_quota + ?", amount),
+		}
+		if status == CommissionStatusMatured {
+			updates["commission_quota"] = gorm.Expr("commission_quota + ?", amount)
+		}
+		return tx.Model(&User{}).Where("id = ?", agentId).Updates(updates).Error
+	})
+	if err != nil {
+		common.SysLog("failed to record agent commission: " + err.Error())
+	}
+}
+
+// MatureAgentCommissions 惰性成熟结转：把超过成熟期的 pending 分润逐行翻转为
+// matured 并计入可提现余额。逐行条件更新保证并发安全且三库兼容(无 FOR UPDATE 依赖)。
+// 在代理读取汇总/转额度/申请提现前调用。
+func MatureAgentCommissions(agentId int) {
+	if common.AgentCommissionMatureMinutes <= 0 {
+		return
+	}
+	cutoff := time.Now().Unix() - int64(common.AgentCommissionMatureMinutes)*60
+	var due []Commission
+	if err := DB.Where("agent_id = ? AND status = ? AND created_at <= ?",
+		agentId, CommissionStatusPending, cutoff).Limit(500).Find(&due).Error; err != nil {
+		common.SysLog("failed to load maturing commissions: " + err.Error())
+		return
+	}
+	for _, row := range due {
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			res := tx.Model(&Commission{}).
+				Where("id = ? AND status = ?", row.Id, CommissionStatusPending).
+				Update("status", CommissionStatusMatured)
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return nil // 已被并发结转
+			}
+			return tx.Model(&User{}).Where("id = ?", agentId).
+				Update("commission_quota", gorm.Expr("commission_quota + ?", row.Quota)).Error
+		})
+		if err != nil {
+			common.SysLog("failed to mature agent commission: " + err.Error())
+		}
+	}
+}
+
+// GetAgentPendingCommission 成熟期内(未结转)的分润总和，钱包"待成熟"展示用。
+func GetAgentPendingCommission(agentId int) (pending int64) {
+	row := DB.Model(&Commission{}).
+		Where("agent_id = ? AND status = ?", agentId, CommissionStatusPending).
+		Select("COALESCE(SUM(quota),0)").Row()
+	_ = row.Scan(&pending)
+	return
+}
+
+// reversalRate 求回冲应使用的分润比例：优先用同一来源(任务)原始入账流水的费率快照，
+// 找不到（无来源键/加列前的旧行快照为 0）再降级用代理当前费率。
+// sourceKey 形如 task:<task_id>:<log_type>:<quota>，同任务的消费与退款键仅后两段不同，
+// 因此按 task:<task_id>: 前缀反查原始正数流水。
+func reversalRate(agentId int, fromUserId int, sourceKey string, fallback float64) float64 {
+	parts := strings.SplitN(sourceKey, ":", 3)
+	if len(parts) < 3 || parts[0] != "task" || parts[1] == "" {
+		return fallback
+	}
+	var orig Commission
+	err := DB.Where("agent_id = ? AND from_user_id = ? AND quota > 0 AND source_key LIKE ?",
+		agentId, fromUserId, "task:"+parts[1]+":%").
+		Order("id desc").First(&orig).Error
+	if err != nil || orig.Rate <= 0 {
+		return fallback
+	}
+	return orig.Rate
+}
+
+// RecordAgentCommissionReversal 下级消费发生退款（任务失败退款/差额下调）时，
+// 按原始入账比例回冲上级代理的分润，否则代理可靠"提交必失败的任务"白刷分润。
+// 与入账不同，回冲不检查代理当前状态/身份：代理被封禁或撤销后，已入账的分润
+// 依然要为退款负责，否则"先刷佣再退出"可白留佣金。
+// 回冲立即生效（负数已成熟流水），可提现余额允许被冲负（作为欠账抵扣后续分润）；
+// sourceKey 非空时同样幂等，防止同一退款重复回冲。
+func RecordAgentCommissionReversal(fromUserId int, refundedQuota int, sourceKey string) {
+	if fromUserId <= 0 || refundedQuota <= 0 {
+		return
+	}
+	fromUser, err := GetUserById(fromUserId, false)
+	if err != nil || fromUser == nil || fromUser.InviterId <= 0 || fromUser.InviterId == fromUserId {
+		return
+	}
+	agentId := fromUser.InviterId
+	fallback := 0.0
+	if agent, aerr := GetUserById(agentId, false); aerr == nil && agent != nil {
+		fallback = agent.UsageProfitRate
+	}
+	rate := reversalRate(agentId, fromUserId, sourceKey, fallback)
+	commission := int(float64(refundedQuota) * rate)
+	if commission <= 0 {
+		return
+	}
+	var keyPtr *string
+	if sourceKey != "" {
+		if n := int64(0); DB.Model(&Commission{}).Where("source_key = ?", sourceKey).Count(&n).Error == nil && n > 0 {
+			return
+		}
+		keyPtr = &sourceKey
+	}
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&Commission{
+			AgentId:    agentId,
+			FromUserId: fromUserId,
+			Quota:      -commission, // 负数流水 = 回冲
+			Status:     CommissionStatusMatured,
+			SourceKey:  keyPtr,
+			Rate:       rate,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&User{}).Where("id = ?", agentId).Updates(map[string]interface{}{
+			"commission_quota":         gorm.Expr("commission_quota - ?", commission),
+			"commission_history_quota": gorm.Expr("commission_history_quota - ?", commission),
+		}).Error
+	})
+	if err != nil {
+		common.SysLog("failed to record agent commission reversal: " + err.Error())
+	}
+}
+
+// ---- 超管：代理管理 ----
+
+// SetUserAgent 将用户设为代理并设定分润比例。
+func SetUserAgent(userId int, agentType string, usageProfitRate float64) error {
+	return DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+		"agent_type":        agentType,
+		"usage_profit_rate": usageProfitRate,
+	}).Error
+}
+
+// RevokeUserAgent 撤销代理身份（保留已累计分润余额）。
+func RevokeUserAgent(userId int) error {
+	return DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+		"agent_type":        "",
+		"usage_profit_rate": 0,
+	}).Error
+}
+
+// ListAgents 分页列出所有代理（agent_type 非空），可按用户名/显示名搜索、按状态筛选（status<=0 不筛选），并回填名下用户数。
+func ListAgents(keyword string, status int, offset int, limit int) (agents []*User, total int64, err error) {
+	tx := DB.Model(&User{}).Where("agent_type <> ?", "")
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		tx = tx.Where("username LIKE ? OR display_name LIKE ?", like, like)
+	}
+	if status > 0 {
+		tx = tx.Where("status = ?", status)
+	}
+	if err = tx.Count(&total).Error; err != nil {
+		return
+	}
+	if err = tx.Order("id desc").Limit(limit).Offset(offset).Omit("password").Find(&agents).Error; err != nil {
+		return
+	}
+	// 一次 GROUP BY 回填每个代理绑定的下级用户数（inviter_id 归属）。
+	if len(agents) > 0 {
+		ids := make([]int, 0, len(agents))
+		for _, a := range agents {
+			ids = append(ids, a.Id)
+		}
+		var rows []struct {
+			InviterId int
+			Cnt       int64
+		}
+		if cErr := DB.Model(&User{}).
+			Select("inviter_id, COUNT(*) AS cnt").
+			Where("inviter_id IN ?", ids).
+			Group("inviter_id").
+			Scan(&rows).Error; cErr != nil {
+			common.SysLog("failed to fill agent downstream counts: " + cErr.Error())
+			return
+		}
+		cntById := make(map[int]int64, len(rows))
+		for _, r := range rows {
+			cntById[r.InviterId] = r.Cnt
+		}
+		for _, a := range agents {
+			a.DownstreamCount = cntById[a.Id]
+		}
+	}
+	return
+}
+
+// ---- 代理自助 ----
+
+// GetAgentDownstreamUsers 代理名下用户（inviter_id = agentId）。
+// 代理只是"高级客户"而非管理员：只暴露展示所需的白名单字段，
+// 不能把下级的 email/OAuth 绑定/管理员备注/setting 等敏感列泄给代理。
+func GetAgentDownstreamUsers(agentId int, keyword string, status int, offset int, limit int) (users []*User, total int64, err error) {
+	tx := DB.Model(&User{}).Where("inviter_id = ?", agentId)
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		tx = tx.Where("username LIKE ? OR display_name LIKE ?", like, like)
+	}
+	if status > 0 {
+		tx = tx.Where("status = ?", status)
+	}
+	if err = tx.Count(&total).Error; err != nil {
+		return
+	}
+	err = tx.Order("id desc").Limit(limit).Offset(offset).
+		Select([]string{"id", "username", "display_name", commonGroupCol, "quota", "used_quota", "request_count", "status", "created_at", "last_login_at"}).
+		Find(&users).Error
+	return
+}
+
+// GetAgentDownstreamStats 代理名下用户的聚合统计（用户数由分页 total 提供，
+// 这里补余额与消耗总和，供「我的用户」页顶部统计卡展示）。
+func GetAgentDownstreamStats(agentId int) (totalQuota int64, totalUsedQuota int64, err error) {
+	row := DB.Model(&User{}).Where("inviter_id = ?", agentId).
+		Select("COALESCE(SUM(quota),0), COALESCE(SUM(used_quota),0)").Row()
+	err = row.Scan(&totalQuota, &totalUsedQuota)
+	return
+}
+
+// GetAgentCommissions 代理分润流水（agent_id = agentId），并批量回填来源用户名
+// （一次 IN 查询，失败仅降级为不显示用户名，不报错）。
+func GetAgentCommissions(agentId int, offset int, limit int) (records []*Commission, total int64, err error) {
+	tx := DB.Model(&Commission{}).Where("agent_id = ?", agentId)
+	if err = tx.Count(&total).Error; err != nil {
+		return
+	}
+	if err = tx.Order("id desc").Limit(limit).Offset(offset).Find(&records).Error; err != nil {
+		return
+	}
+	if len(records) == 0 {
+		return
+	}
+	idSet := make(map[int]struct{}, len(records))
+	ids := make([]int, 0, len(records))
+	for _, r := range records {
+		if _, ok := idSet[r.FromUserId]; !ok {
+			idSet[r.FromUserId] = struct{}{}
+			ids = append(ids, r.FromUserId)
+		}
+	}
+	var users []struct {
+		Id       int
+		Username string
+	}
+	if qerr := DB.Model(&User{}).Select("id", "username").Where("id IN ?", ids).Find(&users).Error; qerr != nil {
+		common.SysLog("failed to fill commission usernames: " + qerr.Error())
+		return
+	}
+	nameById := make(map[int]string, len(users))
+	for _, u := range users {
+		nameById[u.Id] = u.Username
+	}
+	for _, r := range records {
+		r.FromUsername = nameById[r.FromUserId]
+	}
+	return
+}
+
+// ---- 代理自助：我的用户 ----
+// 代理与普通用户同权:对名下用户只有只读可见性,无任何管理操作
+// (启停用户属管理员权限,历史版本曾开放给代理,已按治理决策移除)。

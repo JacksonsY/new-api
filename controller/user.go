@@ -222,6 +222,7 @@ func Register(c *gin.Context) {
 		DisplayName: user.Username,
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
+		RegisterIp:  c.ClientIP(), // jzlh-agent 注册 IP 落库供防刷审计
 	}
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
@@ -478,6 +479,12 @@ func GetSelf(c *gin.Context) {
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,                // 新增权限字段
+		// >>> jzlh-agent 代理身份随 self 下发，前端路由守卫/侧栏/钱包区块依赖
+		"agent_type":               user.AgentType,
+		"usage_profit_rate":        user.UsageProfitRate,
+		"commission_quota":         user.CommissionQuota,
+		"commission_history_quota": user.CommissionHistoryQuota,
+		// <<< jzlh-agent
 	}
 
 	c.JSON(http.StatusOK, gin.H{

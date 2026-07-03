@@ -196,6 +196,32 @@ func RootAuth() func(c *gin.Context) {
 	}
 }
 
+// AgentAuth 校验当前登录用户是否为代理（agent_type 非空）。必须挂在 UserAuth 之后使用，
+// 依赖 UserAuth 写入 context 的 "id"。代理身份是与全局 role 正交的独立维度（jzlh-agent）。
+func AgentAuth() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		id := c.GetInt("id")
+		user, err := model.GetUserById(id, false)
+		if err != nil || user == nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "用户不存在 / user not found"})
+			c.Abort()
+			return
+		}
+		if user.Status != common.UserStatusEnabled {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAuthUserBanned)})
+			c.Abort()
+			return
+		}
+		if user.AgentType == "" {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "无代理权限 / insufficient agent privilege"})
+			c.Abort()
+			return
+		}
+		c.Set("agent_type", user.AgentType)
+		c.Next()
+	}
+}
+
 func RequirePermission(permission authz.Permission) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		role := c.GetInt("role")

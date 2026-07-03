@@ -152,6 +152,19 @@ var AutomaticEnableChannelEnabled = false
 var QuotaRemindThreshold = 1000
 var PreConsumedQuota = 500
 
+// jzlh-agent 代理分润成熟期（分钟）。0 = 即时到账；>0 时新分润先进入
+// 待成熟状态，超过该时长后才计入可提现余额（兜住退款/撤销窗口，防刷）。
+var AgentCommissionMatureMinutes = 0
+
+// jzlh-agent 提现手续费比例(0-1)，申请时快照进提现单的 fee 字段。
+var AgentWithdrawFeeRate float64 = 0
+
+// jzlh-agent 最低提现额度(quota)。默认 500000 = $1(按 QuotaPerUnit=500k)。
+var AgentWithdrawMinQuota = 500000
+
+// jzlh-agent 单个代理同时存在的待审核提现单上限，防刷单轰炸审核列表。
+var AgentWithdrawMaxPending = 3
+
 var RetryTimes = 0
 
 //var RootUserEmail = ""

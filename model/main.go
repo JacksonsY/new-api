@@ -212,6 +212,9 @@ func InitDB() (err error) {
 		}
 		common.SysLog("database migration started")
 		err = migrateDB()
+		if err == nil {
+			EnsureCommissionSourceKeyIndex() // jzlh-agent 唯一索引单独建(SQLite ALTER ADD UNIQUE 限制)
+		}
 		return err
 	} else {
 		common.FatalLog(err)
@@ -277,6 +280,8 @@ func migrateDB() error {
 		&Redemption{},
 		&Ability{},
 		&Log{},
+		&Commission{}, // jzlh-agent 代理分润流水
+		&Withdrawal{}, // jzlh-agent 代理提现单
 		&Midjourney{},
 		&TopUp{},
 		&QuotaData{},
@@ -331,6 +336,8 @@ func migrateDBFast() error {
 		{&Redemption{}, "Redemption"},
 		{&Ability{}, "Ability"},
 		{&Log{}, "Log"},
+		{&Commission{}, "Commission"}, // jzlh-agent 代理分润流水
+		{&Withdrawal{}, "Withdrawal"}, // jzlh-agent 代理提现单
 		{&Midjourney{}, "Midjourney"},
 		{&TopUp{}, "TopUp"},
 		{&QuotaData{}, "QuotaData"},
