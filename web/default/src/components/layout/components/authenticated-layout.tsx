@@ -22,6 +22,7 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
 import { getCookie } from '@/lib/cookies'
+import { ContactFloat } from '@/components/contact-float'
 import { cn } from '@/lib/utils'
 
 import { AppHeader } from './app-header'
@@ -52,6 +53,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
             >
               {props.children ?? <AnimatedOutlet />}
             </SidebarInset>
+            <ContactFloat />
           </div>
         </SidebarProvider>
       </SearchProvider>

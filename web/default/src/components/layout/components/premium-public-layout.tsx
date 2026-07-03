@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ContactFloat } from '@/components/contact-float'
 import { PremiumFooter } from '@/features/home/premium/components/premium-footer'
 import '@/features/home/premium/premium.css'
 import type { TopNavLink } from '../types'
@@ -51,9 +52,9 @@ export function PremiumPublicLayout(props: PremiumPublicLayoutProps) {
 
   return (
     <div className='pf min-h-svh'>
-      <div className='pf-aurora' />
-      <div className='pf-grid' />
-      <div className='pf-grain' />
+      <div className='pf-aurora' aria-hidden />
+      <div className='pf-grid' aria-hidden />
+      <div className='pf-grain' aria-hidden />
 
       <PublicHeader
         navContent={props.navContent}
@@ -75,6 +76,7 @@ export function PremiumPublicLayout(props: PremiumPublicLayoutProps) {
       )}
 
       {showFooter && <PremiumFooter />}
+      <ContactFloat />
     </div>
   )
 }

@@ -72,6 +72,8 @@ export function PremiumMarquee() {
               <span
                 key={`${p.name}-${i}`}
                 className='inline-flex shrink-0 items-center gap-2.5'
+                // 第二份拷贝只为无缝循环存在，读屏不重复播报
+                aria-hidden={i >= PROVIDERS.length || undefined}
               >
                 <Mark size={26} className='rounded-[7px]' />
                 <span

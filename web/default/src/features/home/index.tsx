@@ -18,13 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
-import { PublicLayout } from '@/components/layout'
+import { PremiumPublicLayout } from '@/components/layout'
 import { RichContent } from '@/components/rich-content'
 import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { PremiumLanding } from './premium/premium-landing'
 import { useHomePageContent } from './hooks'
+import { PremiumLanding } from './premium/premium-landing'
 
 export function Home() {
   const { t } = useTranslation()
@@ -34,25 +34,26 @@ export function Home() {
 
   if (!isLoaded) {
     return (
-      <PublicLayout showMainContainer={false}>
-        <main className='flex min-h-screen items-center justify-center'>
+      <PremiumPublicLayout showMainContainer={false} showFooter={false}>
+        <main className='flex min-h-svh items-center justify-center'>
           <div className='text-muted-foreground'>{t('Loading...')}</div>
         </main>
-      </PublicLayout>
+      </PremiumPublicLayout>
     )
   }
 
   if (content) {
+    // 站长配置了自定义首页时,仍套 premium 外壳(同款页头/画布),保证与全站一致。
     if (isUrl) {
       return (
-        <PublicLayout showMainContainer={false}>
+        <PremiumPublicLayout showMainContainer={false} showFooter={false}>
           <iframe
             src={content}
-            className='h-screen w-full border-none'
+            className='h-svh w-full border-none pt-16'
             title={t('Custom Home Page')}
             sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts'
           />
-        </PublicLayout>
+        </PremiumPublicLayout>
       )
     }
 
@@ -60,27 +61,29 @@ export function Home() {
 
     if (contentIsHtml) {
       return (
-        <PublicLayout showMainContainer={false}>
-          <RichContent
-            mode='html'
-            htmlVariant='isolated'
-            content={content}
-            className='custom-home-content'
-          />
-        </PublicLayout>
+        <PremiumPublicLayout showMainContainer={false}>
+          <div className='pt-16'>
+            <RichContent
+              mode='html'
+              htmlVariant='isolated'
+              content={content}
+              className='custom-home-content'
+            />
+          </div>
+        </PremiumPublicLayout>
       )
     }
 
     return (
-      <PublicLayout>
-        <div className='mx-auto max-w-6xl px-4 py-8'>
+      <PremiumPublicLayout showMainContainer={false}>
+        <div className='mx-auto max-w-6xl px-4 pt-24 pb-12'>
           <RichContent
             mode='markdown'
             content={content}
             className='custom-home-content'
           />
         </div>
-      </PublicLayout>
+      </PremiumPublicLayout>
     )
   }
 

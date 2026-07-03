@@ -252,6 +252,9 @@ html.lenis body {
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
   mask-composite: exclude;
   pointer-events: none;
 }
@@ -275,6 +278,14 @@ html.lenis body {
 }
 .pf-btn:active {
   transform: scale(0.975);
+}
+/* Keyboard focus — visible ring in the brand violet; UA default outline is
+   rectangular and clips awkwardly against the pill radius. */
+.pf-btn:focus-visible,
+.pf-navlink:focus-visible,
+.pf-footlink:focus-visible {
+  outline: 2px solid var(--pf-violet);
+  outline-offset: 2px;
 }
 .pf-btn-fire {
   color: #fff;

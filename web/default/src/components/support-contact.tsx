@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { cn } from '@/lib/utils'
 
 // 客服联系方式 — single source of truth for the site-wide footer contact block.
@@ -27,10 +28,14 @@ export const SUPPORT_CONTACT: {
   email: string
   phone: string
   wechat: string
+  wechatQr: string
+  qq: string
 } = {
   email: 'support@jzlh99.com',
   phone: '400-000-0000',
   wechat: '', // 留空则不展示;需要时填微信号即可
+  wechatQr: '', // 微信二维码图片 URL,联系悬浮组件 hover 展示
+  qq: '',
 }
 
 type SupportContactProps = {
@@ -48,7 +53,8 @@ export function SupportContact({
   inline = false,
 }: SupportContactProps) {
   const { t } = useTranslation()
-  const telHref = `tel:${SUPPORT_CONTACT.phone.replace(/[^\d+]/g, '')}`
+  const contact = SUPPORT_CONTACT
+  const telHref = `tel:${contact.phone.replace(/[^\d+]/g, '')}`
 
   return (
     <div
@@ -61,19 +67,19 @@ export function SupportContact({
       )}
       style={style}
     >
-      {SUPPORT_CONTACT.email && (
-        <a href={`mailto:${SUPPORT_CONTACT.email}`} className={linkClassName}>
-          {t('Support Email')}: {SUPPORT_CONTACT.email}
+      {contact.email && (
+        <a href={`mailto:${contact.email}`} className={linkClassName}>
+          {t('Support Email')}: {contact.email}
         </a>
       )}
-      {SUPPORT_CONTACT.phone && (
+      {contact.phone && (
         <a href={telHref} className={linkClassName}>
-          {t('Support Phone')}: {SUPPORT_CONTACT.phone}
+          {t('Support Phone')}: {contact.phone}
         </a>
       )}
-      {SUPPORT_CONTACT.wechat && (
+      {contact.wechat && (
         <span>
-          {t('WeChat')}: {SUPPORT_CONTACT.wechat}
+          {t('WeChat')}: {contact.wechat}
         </span>
       )}
     </div>

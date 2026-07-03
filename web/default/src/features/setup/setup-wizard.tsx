@@ -39,6 +39,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { cn } from '@/lib/utils'
 
+import '@/features/home/premium/premium.css'
+
 import { buildSetupPayload, getSetupStatus, submitSetup } from './api'
 import { AdminStep } from './components/admin-step'
 import { CompleteStep } from './components/complete-step'
@@ -279,11 +281,14 @@ export function SetupWizard() {
   }
 
   return (
-    <div className='bg-muted/40 relative min-h-svh py-10'>
-      <div className='absolute top-4 right-4 sm:top-6 sm:right-6'>
+    <div className='pf relative min-h-svh py-10'>
+      <div className='pf-aurora' aria-hidden />
+      <div className='pf-grid' aria-hidden />
+      <div className='pf-grain' aria-hidden />
+      <div className='absolute top-4 right-4 z-20 sm:top-6 sm:right-6'>
         <LanguageSwitcher />
       </div>
-      <div className='container mx-auto flex max-w-5xl flex-col gap-8 px-4 sm:px-6'>
+      <div className='relative z-10 container mx-auto flex max-w-5xl flex-col gap-8 px-4 sm:px-6'>
         <div className='flex flex-col items-center gap-3'>
           <div className='relative h-12 w-12'>
             {systemConfigLoading ? (
@@ -299,7 +304,7 @@ export function SetupWizard() {
           {systemConfigLoading ? (
             <Skeleton className='h-7 w-40' />
           ) : (
-            <h1 className='text-2xl font-semibold tracking-tight'>
+            <h1 className='pf-fire-text text-2xl font-bold tracking-tight'>
               {t('Initialize')} {systemName}
             </h1>
           )}
