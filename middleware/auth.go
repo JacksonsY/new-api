@@ -150,8 +150,16 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("username", username)
 	c.Set("role", role)
 	c.Set("id", id)
-	c.Set("group", session.Get("group"))
-	c.Set("user_group", session.Get("group"))
+	// jzlh-fix: 分组鉴权读实时缓存,而非 session 登录快照——防降级/升级后越权。
+	// session.Get("group") 是登录时刻的组;订阅到期降级/管理员改组/充值升级都刷了
+	// UpdateUserGroupCache,唯独这里读陈旧 session 会让被降级用户继续按旧高分组
+	// 白嫖 premium 准入与低价倍率档。缓存失败则回退 session,不因缓存故障阻断登录态。
+	userGroup := session.Get("group")
+	if cache, cErr := model.GetUserCache(apiUserId); cErr == nil && cache.Group != "" {
+		userGroup = cache.Group
+	}
+	c.Set("group", userGroup)
+	c.Set("user_group", userGroup)
 	c.Set("use_access_token", useAccessToken)
 
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth

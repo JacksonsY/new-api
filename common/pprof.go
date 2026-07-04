@@ -14,7 +14,10 @@ func Monitor() {
 	for {
 		percent, err := cpu.Percent(time.Second, false)
 		if err != nil {
-			panic(err)
+			// jzlh-fix: 采样失败记日志继续,别让诊断监控自身成为进程退出源。
+			SysLog("cpu 采样失败: " + err.Error())
+			time.Sleep(30 * time.Second)
+			continue
 		}
 		if percent[0] > 80 {
 			fmt.Println("cpu usage too high")

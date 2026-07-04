@@ -86,9 +86,14 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
 	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 
-	responseBody, err := io.ReadAll(resp.Body)
+	// jzlh-fix: 限制上游错误体读取上限,防异常上游回吐超大 body 打爆内存/日志 IO。
+	const maxUpstreamErrBody = 1 << 20 // 1MiB
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, maxUpstreamErrBody+1))
 	if err != nil {
 		return
+	}
+	if len(responseBody) > maxUpstreamErrBody {
+		responseBody = append(responseBody[:maxUpstreamErrBody], []byte(" ...[truncated]")...)
 	}
 	CloseResponseBodyGracefully(resp)
 	var errResponse dto.GeneralErrorResponse

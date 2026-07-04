@@ -176,9 +176,29 @@ func (c ChannelInfo) Value() (driver.Value, error) {
 }
 
 // Scan implements sql.Scanner interface
+// jzlh-fix: glebarez/sqlite 对 TEXT 存储的 json 列返回 string 而非 []byte，
+// 旧实现 value.([]byte) 静默失败后 Unmarshal(nil) 报错——手工 SQL/外部工具/
+// 跨库迁移写入的 TEXT 行会炸；补 string/nil 分支（源自 Ritel-T/OpusClaw 同类修复）
 func (c *ChannelInfo) Scan(value interface{}) error {
-	bytesValue, _ := value.([]byte)
-	return common.Unmarshal(bytesValue, c)
+	switch v := value.(type) {
+	case nil:
+		*c = ChannelInfo{}
+		return nil
+	case []byte:
+		if len(v) == 0 {
+			*c = ChannelInfo{}
+			return nil
+		}
+		return common.Unmarshal(v, c)
+	case string:
+		if v == "" {
+			*c = ChannelInfo{}
+			return nil
+		}
+		return common.UnmarshalJsonStr(v, c)
+	default:
+		return fmt.Errorf("cannot scan type %T into ChannelInfo", value)
+	}
 }
 
 func (channel *Channel) GetKeys() []string {

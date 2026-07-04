@@ -63,8 +63,11 @@ func encode(writer io.Writer, event CustomEvent) error {
 }
 
 func writeData(w stringWriter, data interface{}) error {
-	dataReplacer.WriteString(w, fmt.Sprint(data))
-	if strings.HasPrefix(data.(string), "data") {
+	// jzlh-fix: 复用 fmt.Sprint 结果,消除多余的裸 data.(string) 断言——
+	// 这是 SSE 渲染热路径,data 非 string 时旧代码会 panic。
+	s := fmt.Sprint(data)
+	dataReplacer.WriteString(w, s)
+	if strings.HasPrefix(s, "data") {
 		w.writeString("\n\n")
 	}
 	return nil

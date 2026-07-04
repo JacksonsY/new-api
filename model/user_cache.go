@@ -120,6 +120,11 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 
 	// If Redis fails, get from DB
 	fromDB = true
+	// jzlh-fix: DB 未就绪时优雅返回错误,让调用方(如 authHelper 实时取组)回退,
+	// 而非在 GetUserById 里对 nil DB 解引用 panic。
+	if DB == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
 	user, err = GetUserById(userId, false)
 	if err != nil {
 		return nil, err // Return nil and error if DB lookup fails
@@ -140,7 +145,9 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 }
 
 func cacheGetUserBase(userId int) (*UserBase, error) {
-	if !common.RedisEnabled {
+	// jzlh-fix: 加 RDB nil 防护——RedisEnabled 已置 true 但客户端未就绪(启动竞态/
+	// 测试环境)时,底层 RedisHGetObj 会对 nil RDB 解引用 panic;这里优雅回退到 DB。
+	if !common.RedisEnabled || common.RDB == nil {
 		return nil, fmt.Errorf("redis is not enabled")
 	}
 	var userCache UserBase
