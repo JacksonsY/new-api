@@ -1,3 +1,4 @@
+import fs from 'fs'
 import path from 'path'
 import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
@@ -10,10 +11,19 @@ const semiUiDir = path.resolve(
   path.dirname(require.resolve('@douyinfe/semi-ui')),
   '../..',
 )
-const semiDateFnsDir = path.resolve(
+// Semi needs date-fns@2, but web/default pulls in date-fns@4, so the two coexist.
+// On a full workspace install date-fns@2 is nested under semi-foundation; under
+// `bun install --filter ./classic` (CI/Docker) web/default is absent, nothing
+// claims the top-level slot, and date-fns@2 is hoisted there instead — leaving
+// the nested directory nonexistent. Prefer the nested copy, fall back to hoisted,
+// so the alias resolves under either layout.
+const nestedSemiDateFnsDir = path.resolve(
   semiUiDir,
   '../semi-foundation/node_modules/date-fns',
 )
+const semiDateFnsDir = fs.existsSync(nestedSemiDateFnsDir)
+  ? nestedSemiDateFnsDir
+  : path.resolve(semiUiDir, '../../date-fns')
 
 export default defineConfig(({ envMode }) => {
   const env = loadEnv({ mode: envMode, prefixes: ['VITE_'] })
