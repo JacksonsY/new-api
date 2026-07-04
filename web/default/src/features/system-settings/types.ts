@@ -287,6 +287,11 @@ export type BillingSettings = {
   PayMethods: string
   'payment_setting.amount_options': string
   'payment_setting.amount_discount': string
+  'payment_setting.auto_switch_group_enabled': boolean
+  'payment_setting.auto_switch_group_only_new_topups': boolean
+  'payment_setting.auto_switch_group_enabled_from': number
+  'payment_setting.auto_switch_group_base_group': string
+  'payment_setting.auto_switch_group_rules': string
   'payment_setting.compliance_confirmed': boolean
   'payment_setting.compliance_terms_version': string
   'payment_setting.compliance_confirmed_at': number

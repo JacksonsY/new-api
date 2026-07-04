@@ -1085,6 +1085,12 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 				}
 				target = prevGroup
 			}
+			// 蓝图C：回退目标在自动升级受控链内时，按累计充值解析应处档位——
+			// 订阅前是 default 但期间累计充值已够 VIP 档的用户，到期应落 VIP 而非 default。
+			target, err = resolveTopUpTierOverrideTx(tx, userId, target)
+			if err != nil {
+				return err
+			}
 			if target == "" || target == currentGroup {
 				return nil
 			}

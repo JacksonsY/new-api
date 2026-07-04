@@ -50,6 +50,7 @@ import type {
   CreemProduct,
   WaffoPayMethod,
 } from '../types'
+import { AutoGroupTiersCard } from './auto-group-tiers-card'
 import { CreemProductsSection } from './creem-products-section'
 
 interface RechargeFormCardProps {
@@ -209,6 +210,11 @@ export function RechargeFormCard({
       }
       contentClassName='space-y-4 sm:space-y-6'
     >
+      {/* 蓝图C 充值自动升级档位（营销展示） */}
+      {topupInfo?.auto_group?.enabled && (
+        <AutoGroupTiersCard info={topupInfo.auto_group} />
+      )}
+
       {/* Online Topup Section */}
       {hasAnyTopup ? (
         <div className='space-y-4 sm:space-y-6'>

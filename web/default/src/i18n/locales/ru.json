@@ -5337,6 +5337,25 @@
     "On every balance update: sub2api upstreams derive the effective ratio from usage (actual cost / list cost, no admin key needed); new-api upstreams read the group ratio from public pricing by the group name below.": "При каждом обновлении баланса: sub2api выводит коэффициент из статистики (факт ÷ прайс, без admin key); new-api читает коэффициент группы из публичного pricing по имени ниже.",
     "Only needed for new-api upstreams: the group this channel key belongs to, used to pick the ratio from public pricing. sub2api upstreams can leave this empty.": "Нужно только для new-api: группа ключа этого канала для выбора коэффициента из публичного pricing. Для sub2api оставьте пустым.",
     "Current key (derived from usage)": "Текущий ключ (выведено из статистики)",
-    "Auto-sync is on: this value is maintained from the upstream on every balance update; manual edits are disabled. Turn off auto-sync below to set it manually.": "Автосинхронизация включена: значение поддерживается из источника при каждом обновлении баланса; ручное редактирование отключено. Отключите автосинхронизацию ниже, чтобы задать вручную."
+    "Auto-sync is on: this value is maintained from the upstream on every balance update; manual edits are disabled. Turn off auto-sync below to set it manually.": "Автосинхронизация включена: значение поддерживается из источника при каждом обновлении баланса; ручное редактирование отключено. Отключите автосинхронизацию ниже, чтобы задать вручную.",
+    "Top-up Auto Group Upgrade": "Автоповышение группы по пополнению",
+    "When a user’s cumulative successful top-up (USD) reaches a threshold, their group is upgraded automatically on the next payment. Users on manually-assigned groups outside the rule chain are never touched.": "Когда суммарные успешные пополнения (USD) достигают порога, группа повышается автоматически при следующей оплате. Пользователей на вручную назначенных группах вне цепочки правил это не затрагивает.",
+    "Enable auto group upgrade": "Включить автоповышение группы",
+    "Base group": "Базовая группа",
+    "The controlled chain = base group + all target groups. Only users currently in the chain are auto-switched.": "Контролируемая цепочка = базовая группа + все целевые группы. Переключаются только пользователи внутри цепочки.",
+    "Only count new top-ups": "Считать только новые пополнения",
+    "Only top-ups made after enabling this count toward the cumulative total. Existing history is ignored.": "В сумму входят только пополнения после включения. Прошлая история игнорируется.",
+    "Upgrade rules": "Правила повышения",
+    "Add rule": "Добавить правило",
+    "Cumulative top-up ≥ (USD)": "Суммарное пополнение ≥ (USD)",
+    "Add at least one rule, or turn off auto-upgrade": "Добавьте хотя бы одно правило или отключите автоповышение",
+    "Threshold must be >= 0": "Порог должен быть ≥ 0",
+    "Thresholds must be unique": "Пороги не должны повторяться",
+    "Top-up rewards: spend more, save more": "Бонусы пополнения: чем больше, тем выгоднее",
+    "Cumulative top-up": "Суммарное пополнение",
+    "current tier": "текущий уровень",
+    "Top up {{amount}} more to reach {{group}}": "Пополните ещё на {{amount}}, чтобы достичь {{group}}",
+    "Cumulative ≥ {{amount}}": "Суммарно ≥ {{amount}}",
+    "reached": "достигнуто"
   }
 }

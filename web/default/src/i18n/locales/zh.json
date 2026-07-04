@@ -5337,6 +5337,25 @@
     "On every balance update: sub2api upstreams derive the effective ratio from usage (actual cost / list cost, no admin key needed); new-api upstreams read the group ratio from public pricing by the group name below.": "每次余额更新时：sub2api 上游从用量推有效倍率（实扣÷表价，无需 admin key）；new-api 上游按下方分组名读取公开 pricing 的分组倍率。",
     "Only needed for new-api upstreams: the group this channel key belongs to, used to pick the ratio from public pricing. sub2api upstreams can leave this empty.": "仅 new-api 上游需要：本渠道 Key 在上游所属的分组，用于从公开 pricing 里取对应倍率。sub2api 上游留空即可。",
     "Current key (derived from usage)": "当前 Key（用量推导）",
-    "Auto-sync is on: this value is maintained from the upstream on every balance update; manual edits are disabled. Turn off auto-sync below to set it manually.": "自动同步已开启：该值随每次余额更新由上游维护，手动编辑已禁用。要手动设置请先关闭下方的自动同步。"
+    "Auto-sync is on: this value is maintained from the upstream on every balance update; manual edits are disabled. Turn off auto-sync below to set it manually.": "自动同步已开启：该值随每次余额更新由上游维护，手动编辑已禁用。要手动设置请先关闭下方的自动同步。",
+    "Top-up Auto Group Upgrade": "充值自动升级分组",
+    "When a user’s cumulative successful top-up (USD) reaches a threshold, their group is upgraded automatically on the next payment. Users on manually-assigned groups outside the rule chain are never touched.": "当用户累计成功充值(美元)达到阈值，下次支付时自动升级其分组。规则链之外的手动指定分组用户永不受影响。",
+    "Enable auto group upgrade": "启用自动升级分组",
+    "Base group": "基准分组",
+    "The controlled chain = base group + all target groups. Only users currently in the chain are auto-switched.": "受控链 = 基准分组 + 所有目标分组。只有当前处于链内的用户会被自动切换。",
+    "Only count new top-ups": "只统计新充值",
+    "Only top-ups made after enabling this count toward the cumulative total. Existing history is ignored.": "只有启用之后的充值计入累计额，历史充值忽略。",
+    "Upgrade rules": "升级规则",
+    "Add rule": "添加规则",
+    "Cumulative top-up ≥ (USD)": "累计充值 ≥ (美元)",
+    "Add at least one rule, or turn off auto-upgrade": "至少添加一条规则，或关闭自动升级",
+    "Threshold must be >= 0": "阈值必须 ≥ 0",
+    "Thresholds must be unique": "阈值不能重复",
+    "Top-up rewards: spend more, save more": "充值特权：充得越多，越优惠",
+    "Cumulative top-up": "累计充值",
+    "current tier": "当前档位",
+    "Top up {{amount}} more to reach {{group}}": "再充 {{amount}} 即可升级到 {{group}}",
+    "Cumulative ≥ {{amount}}": "累计 ≥ {{amount}}",
+    "reached": "已达成"
   }
 }

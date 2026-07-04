@@ -122,6 +122,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	}
 
 	var quotaToAdd int
+	var switchedGroup string // 蓝图C 事务内自动切组结果，提交后刷缓存
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -169,7 +170,12 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		topUp.Status = common.TopUpStatusSuccess
 		topUp.CompleteTime = now
 
-		return tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(map[string]interface{}{"stripe_customer": customerId, "quota": gorm.Expr("quota + ?", quotaToAdd)}).Error
+		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(map[string]interface{}{"stripe_customer": customerId, "quota": gorm.Expr("quota + ?", quotaToAdd)}).Error; err != nil {
+			return err
+		}
+		// 蓝图C：入账后同一事务内按累计充值自动切组
+		switchedGroup, err = applyTopUpAutoSwitchGroupTx(tx, topUp.UserId)
+		return err
 	})
 
 	if err != nil {
@@ -186,6 +192,9 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			}
 		})
 		RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(quotaToAdd), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+	}
+	if switchedGroup != "" {
+		_ = UpdateUserGroupCache(topUp.UserId, switchedGroup)
 	}
 
 	return nil
@@ -363,6 +372,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	var quotaToAdd int
 	var payMoney float64
 	var paymentMethod string
+	var switchedGroup string // 蓝图C 事务内自动切组结果，提交后刷缓存
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
@@ -418,7 +428,10 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		userId = topUp.UserId
 		payMoney = topUp.Money
 		paymentMethod = topUp.PaymentMethod
-		return nil
+		// 蓝图C：入账后同一事务内按累计充值自动切组
+		var switchErr error
+		switchedGroup, switchErr = applyTopUpAutoSwitchGroupTx(tx, topUp.UserId)
+		return switchErr
 	})
 
 	if err != nil {
@@ -436,6 +449,9 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		})
 		RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
 	}
+	if switchedGroup != "" {
+		_ = UpdateUserGroupCache(userId, switchedGroup)
+	}
 	return nil
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {
@@ -444,6 +460,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 	}
 
 	var quota int64
+	var switchedGroup string // 蓝图C 事务内自动切组结果，提交后刷缓存
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -514,7 +531,9 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			return err
 		}
 
-		return nil
+		// 蓝图C：入账后同一事务内按累计充值自动切组
+		switchedGroup, err = applyTopUpAutoSwitchGroupTx(tx, topUp.UserId)
+		return err
 	})
 
 	if err != nil {
@@ -532,6 +551,9 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		})
 		RecordTopupLog(topUp.UserId, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodCreem)
 	}
+	if switchedGroup != "" {
+		_ = UpdateUserGroupCache(topUp.UserId, switchedGroup)
+	}
 
 	return nil
 }
@@ -542,6 +564,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 	}
 
 	var quotaToAdd int
+	var switchedGroup string // 蓝图C 事务内自动切组结果，提交后刷缓存
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -596,7 +619,10 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return err
 		}
 
-		return nil
+		// 蓝图C：入账后同一事务内按累计充值自动切组
+		var switchErr error
+		switchedGroup, switchErr = applyTopUpAutoSwitchGroupTx(tx, topUp.UserId)
+		return switchErr
 	})
 
 	if err != nil {
@@ -614,6 +640,9 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 		})
 		RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffo)
 	}
+	if switchedGroup != "" {
+		_ = UpdateUserGroupCache(topUp.UserId, switchedGroup)
+	}
 
 	return nil
 }
@@ -624,6 +653,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 	}
 
 	var quotaToAdd int
+	var switchedGroup string // 蓝图C 事务内自动切组结果，提交后刷缓存
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -676,7 +706,10 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return err
 		}
 
-		return nil
+		// 蓝图C：入账后同一事务内按累计充值自动切组
+		var switchErr error
+		switchedGroup, switchErr = applyTopUpAutoSwitchGroupTx(tx, topUp.UserId)
+		return switchErr
 	})
 
 	if err != nil {
@@ -694,6 +727,95 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 		})
 		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo Pancake充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
 	}
+	if switchedGroup != "" {
+		_ = UpdateUserGroupCache(topUp.UserId, switchedGroup)
+	}
 
 	return nil
+}
+
+// CompleteEpayTopUp 易支付回调的模型层完成函数：条件原子状态迁移 + 入账 + 自动
+// 切组收敛到同一事务（原先散在 controller 里且入账在事务外，存在"标成功却没入账"
+// 的窗口；也为 epay 主动对账复用同一结算路径做准备）。
+// 幂等：已成功/已被并发处理返回 quotaToAdd=0 且无错误。
+// actualPaymentMethod 非空且与订单不同（用户在收银台换了支付方式）时回写。
+func CompleteEpayTopUp(tradeNo string, actualPaymentMethod string) (userId int, quotaToAdd int, money float64, switchedGroup string, err error) {
+	if tradeNo == "" {
+		return 0, 0, 0, "", errors.New("未提供支付单号")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		topUp := &TopUp{}
+		// jzlh-fix 条件原子 UPDATE 抢占状态迁移（与其他网关同一模式，不用 FOR UPDATE）
+		if err := tx.Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+			return ErrTopUpNotFound
+		}
+		if topUp.PaymentProvider != PaymentProviderEpay {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			return nil // 幂等：已成功直接返回
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+
+		quotaToAdd = int(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
+		if quotaToAdd <= 0 {
+			quotaToAdd = 0
+			return errors.New("无效的充值额度")
+		}
+
+		updates := map[string]interface{}{
+			"status":        common.TopUpStatusSuccess,
+			"complete_time": common.GetTimestamp(),
+		}
+		if actualPaymentMethod != "" && actualPaymentMethod != topUp.PaymentMethod {
+			updates["payment_method"] = actualPaymentMethod
+		}
+		res := tx.Model(&TopUp{}).
+			Where("id = ? AND status = ?", topUp.Id, common.TopUpStatusPending).
+			Updates(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			quotaToAdd = 0
+			return nil // 已被并发处理，幂等返回
+		}
+
+		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).
+			Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
+			return err
+		}
+
+		userId = topUp.UserId
+		money = topUp.Money
+		// 蓝图C：入账后同一事务内按累计充值自动切组
+		var switchErr error
+		switchedGroup, switchErr = applyTopUpAutoSwitchGroupTx(tx, topUp.UserId)
+		return switchErr
+	})
+	if err != nil {
+		return 0, 0, 0, "", err
+	}
+
+	if quotaToAdd > 0 {
+		uid := userId
+		added := quotaToAdd
+		gopool.Go(func() {
+			if cerr := cacheIncrUserQuota(uid, int64(added)); cerr != nil {
+				common.SysLog("failed to sync user quota cache after epay topup: " + cerr.Error())
+			}
+		})
+	}
+	if switchedGroup != "" {
+		_ = UpdateUserGroupCache(userId, switchedGroup)
+	}
+	return userId, quotaToAdd, money, switchedGroup, nil
 }

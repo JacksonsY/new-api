@@ -22,6 +22,7 @@ import { CheckinSettingsSection } from '../general/checkin-settings-section'
 import { PricingSection } from '../general/pricing-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
 import { PaymentSettingsSection } from '../integrations/payment-settings-section'
+import { TopupAutoGroupSection } from './topup-auto-group-section'
 import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
@@ -183,6 +184,25 @@ const BILLING_SECTIONS = [
             settings['payment_setting.compliance_terms_version'] ?? '',
           confirmedAt: settings['payment_setting.compliance_confirmed_at'] ?? 0,
           confirmedBy: settings['payment_setting.compliance_confirmed_by'] ?? 0,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'topup-auto-group',
+    titleKey: 'Top-up Auto Group Upgrade',
+    build: (settings: BillingSettings) => (
+      <TopupAutoGroupSection
+        defaultValues={{
+          enabled:
+            settings['payment_setting.auto_switch_group_enabled'] ?? false,
+          onlyNewTopups:
+            settings['payment_setting.auto_switch_group_only_new_topups'] ??
+            false,
+          baseGroup:
+            settings['payment_setting.auto_switch_group_base_group'] ||
+            'default',
+          rules: settings['payment_setting.auto_switch_group_rules'] || '',
         }}
       />
     ),

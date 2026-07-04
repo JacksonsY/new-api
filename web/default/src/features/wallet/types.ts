@@ -156,6 +156,19 @@ export interface TopupInfo {
   payment_compliance_confirmed?: boolean
   /** Current compliance terms version */
   payment_compliance_terms_version?: string
+  /** 蓝图C 充值自动升级档位（营销展示，仅在后端启用且配置了规则时下发） */
+  auto_group?: AutoGroupInfo
+}
+
+/** 充值自动升级档位信息 */
+export interface AutoGroupInfo {
+  enabled: boolean
+  /** 已按阈值升序排列 */
+  rules: { threshold_usd: number; group: string }[]
+  /** 当前用户累计成功充值(USD) */
+  total_topup_usd: number
+  /** 当前分组 */
+  current_group: string
 }
 
 /**
