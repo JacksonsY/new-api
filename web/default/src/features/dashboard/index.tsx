@@ -89,6 +89,12 @@ const LazyUserCharts = lazy(() =>
   }))
 )
 
+const LazyChannelCharts = lazy(() =>
+  import('./components/channels/channel-charts').then((m) => ({
+    default: m.ChannelCharts,
+  }))
+)
+
 const LazyFlowCharts = lazy(() =>
   import('./components/flow/flow-charts').then((m) => ({
     default: m.FlowCharts,
@@ -161,6 +167,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   users: {
     titleKey: 'User Analytics',
   },
+  channels: {
+    titleKey: 'Channel Cost',
+  },
 }
 
 export function Dashboard() {
@@ -220,7 +229,10 @@ export function Dashboard() {
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
+        (section) =>
+          section !== 'overview' &&
+          (section !== 'users' || isAdmin) &&
+          (section !== 'channels' || isAdmin)
       ),
     [isAdmin]
   )
@@ -369,6 +381,13 @@ export function Dashboard() {
                   filters={userChartsFilters}
                   onFiltersChange={setUserChartsFilters}
                 />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'channels' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyChannelCharts />
               </Suspense>
             </FadeIn>
           )}

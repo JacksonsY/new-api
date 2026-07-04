@@ -5317,6 +5317,20 @@
     "Remove controls?": "Remove controls?",
     "Frozen assets resume maturing and exits reopen. The invite code becomes valid again.": "Frozen assets resume maturing and exits reopen. The invite code becomes valid again.",
     "Select at least one control": "Select at least one control",
-    "Open actions": "Open actions"
+    "Open actions": "Open actions",
+    "~{{days}}d": "~{{days}}d left",
+    "Estimated days remaining at the average daily spend of the last {{days}} active days": "Estimated days remaining at the average daily spend of the last {{days}} active days",
+    "Set balance manually (USD)": "Set balance manually (USD)",
+    "For upstreams without a balance API: enter the balance after topping up, consumption keeps deducting locally.": "For upstreams without a balance API: enter the balance after topping up, consumption keeps deducting locally.",
+    "Channel cost saving": "Channel cost saving",
+    "Channel cost ratio": "Channel cost ratio",
+    "Channel Cost": "Channel Cost",
+    "Channel Cost Ranking": "Channel Cost Ranking",
+    "Channel Cost Trend": "Channel Cost Trend",
+    "Total Channel Cost": "Total Channel Cost",
+    "Total Raw Cost": "Total Raw Cost",
+    "Overall Ratio": "Overall Ratio",
+    "Top Channels": "Top Channels",
+    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed."
   }
 }

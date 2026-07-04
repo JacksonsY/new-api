@@ -22,6 +22,44 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	service.RegisterSystemTaskHandler(channelBalanceAlertHandler{}) // 蓝图A
+}
+
+// channelBalanceAlertHandler 蓝图A 渠道余额告警：预计剩余天数低于阈值时通知 root。
+// 阈值/间隔走 option 热更（ChannelBalanceAlertThresholdDays / IntervalMinutes），
+// 阈值 0 = 关闭。挂 system task 框架换来多主去重与运行历史。
+type channelBalanceAlertHandler struct{}
+
+func (channelBalanceAlertHandler) Type() string { return model.SystemTaskTypeChannelBalanceAlert }
+
+func (channelBalanceAlertHandler) Enabled() bool {
+	return common.ChannelBalanceAlertThresholdDays > 0
+}
+
+func (channelBalanceAlertHandler) Interval() time.Duration {
+	minutes := common.ChannelBalanceAlertIntervalMinutes
+	if minutes < 1 {
+		minutes = 1440
+	}
+	return time.Duration(minutes) * time.Minute
+}
+
+func (channelBalanceAlertHandler) NewPayload() any { return nil }
+
+func (channelBalanceAlertHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	threshold := common.ChannelBalanceAlertThresholdDays
+	if threshold <= 0 {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded,
+			map[string]any{"skipped": true}, nil)
+		return
+	}
+	belowCount, err := service.CheckChannelBalanceDaysOnce(threshold)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded,
+		map[string]any{"below_threshold": belowCount, "threshold_days": threshold}, nil)
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and

@@ -5317,6 +5317,20 @@
     "Remove controls?": "Снять меры?",
     "Frozen assets resume maturing and exits reopen. The invite code becomes valid again.": "Замороженные активы снова созревают, выводы открываются. Код приглашения снова действителен.",
     "Select at least one control": "Выберите хотя бы одну меру",
-    "Open actions": "Открыть действия"
+    "Open actions": "Открыть действия",
+    "~{{days}}d": "≈{{days}} дн. осталось",
+    "Estimated days remaining at the average daily spend of the last {{days}} active days": "Оценка оставшихся дней по среднему дневному расходу за последние {{days}} активных дней",
+    "Set balance manually (USD)": "Задать баланс вручную (USD)",
+    "For upstreams without a balance API: enter the balance after topping up, consumption keeps deducting locally.": "Для источников без API баланса: введите баланс после пополнения, расход будет вычитаться локально.",
+    "Channel cost saving": "Экономия",
+    "Channel cost ratio": "Множитель стоимости канала",
+    "Channel Cost": "Стоимость канала",
+    "Channel Cost Ranking": "Рейтинг затрат по каналам",
+    "Channel Cost Trend": "Динамика затрат по каналам",
+    "Total Channel Cost": "Итого затрат каналов",
+    "Total Raw Cost": "Итого исходной квоты",
+    "Overall Ratio": "Общий коэффициент",
+    "Top Channels": "Топ каналов",
+    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "Множитель только для админ-статистики затрат/прибыли (стоимость = квота × множитель). Не влияет на списания пользователей. По умолчанию 1, 0 допустим."
   }
 }

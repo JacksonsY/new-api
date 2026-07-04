@@ -135,12 +135,14 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
-	common.OptionMap["AgentCommissionMatureMinutes"] = strconv.Itoa(common.AgentCommissionMatureMinutes)     // jzlh-agent
-	common.OptionMap["AgentWithdrawFeeRate"] = strconv.FormatFloat(common.AgentWithdrawFeeRate, 'f', -1, 64) // jzlh-agent
-	common.OptionMap["AgentWithdrawMinQuota"] = strconv.Itoa(common.AgentWithdrawMinQuota)                   // jzlh-agent
-	common.OptionMap["AgentWithdrawMaxPending"] = strconv.Itoa(common.AgentWithdrawMaxPending)               // jzlh-agent
-	common.OptionMap["AgentInviteeMinAgeDays"] = strconv.Itoa(common.AgentInviteeMinAgeDays)                 // jzlh-agent
-	common.OptionMap["AgentIPRecordRetentionDays"] = strconv.Itoa(common.AgentIPRecordRetentionDays)         // jzlh-agent
+	common.OptionMap["AgentCommissionMatureMinutes"] = strconv.Itoa(common.AgentCommissionMatureMinutes)             // jzlh-agent
+	common.OptionMap["AgentWithdrawFeeRate"] = strconv.FormatFloat(common.AgentWithdrawFeeRate, 'f', -1, 64)         // jzlh-agent
+	common.OptionMap["AgentWithdrawMinQuota"] = strconv.Itoa(common.AgentWithdrawMinQuota)                           // jzlh-agent
+	common.OptionMap["AgentWithdrawMaxPending"] = strconv.Itoa(common.AgentWithdrawMaxPending)                       // jzlh-agent
+	common.OptionMap["AgentInviteeMinAgeDays"] = strconv.Itoa(common.AgentInviteeMinAgeDays)                         // jzlh-agent
+	common.OptionMap["AgentIPRecordRetentionDays"] = strconv.Itoa(common.AgentIPRecordRetentionDays)                 // jzlh-agent
+	common.OptionMap["ChannelBalanceAlertThresholdDays"] = strconv.Itoa(common.ChannelBalanceAlertThresholdDays)     // 蓝图A
+	common.OptionMap["ChannelBalanceAlertIntervalMinutes"] = strconv.Itoa(common.ChannelBalanceAlertIntervalMinutes) // 蓝图A
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
 	common.OptionMap["ModelRequestRateLimitDurationMinutes"] = strconv.Itoa(setting.ModelRequestRateLimitDurationMinutes)
 	common.OptionMap["ModelRequestRateLimitSuccessCount"] = strconv.Itoa(setting.ModelRequestRateLimitSuccessCount)
@@ -537,6 +539,14 @@ func updateOptionMap(key string, value string) (err error) {
 	case "AgentIPRecordRetentionDays": // jzlh-agent
 		if v, err := strconv.Atoi(value); err == nil && v >= 0 {
 			common.AgentIPRecordRetentionDays = v
+		}
+	case "ChannelBalanceAlertThresholdDays": // 蓝图A
+		if v, err := strconv.Atoi(value); err == nil && v >= 0 {
+			common.ChannelBalanceAlertThresholdDays = v
+		}
+	case "ChannelBalanceAlertIntervalMinutes": // 蓝图A
+		if v, err := strconv.Atoi(value); err == nil && v >= 1 {
+			common.ChannelBalanceAlertIntervalMinutes = v
 		}
 	case "ModelRequestRateLimitCount":
 		setting.ModelRequestRateLimitCount, _ = strconv.Atoi(value)

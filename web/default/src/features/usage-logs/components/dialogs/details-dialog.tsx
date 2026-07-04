@@ -308,6 +308,23 @@ function BillingBreakdown(props: {
     })
   }
 
+  // 渠道成本（仅管理员可见）：原始花费 × 渠道计费倍率，不影响用户扣费
+  if (
+    isAdmin &&
+    typeof log.channel_ratio === 'number' &&
+    log.channel_ratio > 0 && // 旧日志加列前默认 0 = 未打快照，不展示
+    log.channel_ratio !== 1
+  ) {
+    rows.push({
+      label: t('Channel cost ratio'),
+      value: `${log.channel_ratio}x`,
+    })
+    rows.push({
+      label: t('Channel Cost'),
+      value: formatLogQuota(Math.round(log.quota * log.channel_ratio)),
+    })
+  }
+
   if (isAdmin && other.admin_info) {
     rows.push({
       label: t('Billing Source'),

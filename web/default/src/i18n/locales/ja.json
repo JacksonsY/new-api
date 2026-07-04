@@ -5317,6 +5317,20 @@
     "Remove controls?": "措置を解除しますか？",
     "Frozen assets resume maturing and exits reopen. The invite code becomes valid again.": "凍結資産の成熟が再開し、出口も再度開放されます。招待コードも有効に戻ります。",
     "Select at least one control": "少なくとも 1 つ選択してください",
-    "Open actions": "操作を開く"
+    "Open actions": "操作を開く",
+    "~{{days}}d": "残り約 {{days}} 日",
+    "Estimated days remaining at the average daily spend of the last {{days}} active days": "直近 {{days}} 活動日の平均日次消費に基づく残り日数の推定",
+    "Set balance manually (USD)": "残高を手動設定（USD）",
+    "For upstreams without a balance API: enter the balance after topping up, consumption keeps deducting locally.": "残高照会 API のない上流向け：チャージ後に残高を入力すると、以降の消費はローカルで差し引かれます。",
+    "Channel cost saving": "コスト削減",
+    "Channel cost ratio": "チャネルコスト倍率",
+    "Channel Cost": "チャネルコスト",
+    "Channel Cost Ranking": "チャネルコストランキング",
+    "Channel Cost Trend": "チャネルコスト推移",
+    "Total Channel Cost": "チャネル総コスト",
+    "Total Raw Cost": "元の総クォータ",
+    "Overall Ratio": "全体倍率",
+    "Top Channels": "上位チャネル",
+    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "管理者向けコスト/利益統計専用の倍率（コスト = クォータ × 倍率）。ユーザー課金には影響しません。既定 1、0 も可。"
   }
 }

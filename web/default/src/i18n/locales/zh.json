@@ -5317,6 +5317,20 @@
     "Remove controls?": "解除风控管制？",
     "Frozen assets resume maturing and exits reopen. The invite code becomes valid again.": "冻结的分润恢复结转、出口重新放开，邀请码恢复有效。",
     "Select at least one control": "至少选择一项管制",
-    "Open actions": "打开操作菜单"
+    "Open actions": "打开操作菜单",
+    "~{{days}}d": "约剩 {{days}} 天",
+    "Estimated days remaining at the average daily spend of the last {{days}} active days": "按最近 {{days}} 个活跃日的日均消耗估算的剩余天数",
+    "Set balance manually (USD)": "手动设置余额（美元）",
+    "For upstreams without a balance API: enter the balance after topping up, consumption keeps deducting locally.": "适用于没有余额查询接口的上游：充值后录入余额，之后消耗照常本地扣减推算剩余。",
+    "Channel cost saving": "成本节省",
+    "Channel cost ratio": "渠道成本倍率",
+    "Channel Cost": "渠道成本",
+    "Channel Cost Ranking": "渠道成本排行",
+    "Channel Cost Trend": "渠道成本趋势",
+    "Total Channel Cost": "渠道总成本",
+    "Total Raw Cost": "原始总额度",
+    "Overall Ratio": "整体倍率",
+    "Top Channels": "热门渠道",
+    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "仅用于管理员成本/利润统计的成本倍率（成本 = 额度 × 倍率），不影响用户扣费。默认 1，允许 0。"
   }
 }

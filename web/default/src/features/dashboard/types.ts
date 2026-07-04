@@ -33,6 +33,26 @@ export interface QuotaDataItem {
   quota?: number
 }
 
+// Channel Quota Types（渠道维度成本统计，仅管理员；对应后端 ChannelQuota 二开）
+export interface ChannelQuotaTrendPoint {
+  channel_id: number
+  created_at: number
+  count: number
+  quota: number
+  channel_quota?: number
+}
+
+export interface ChannelQuotaMeta {
+  channel_id: number
+  channel_name: string
+  current_ratio: number
+}
+
+export interface ChannelQuotaResult {
+  points: ChannelQuotaTrendPoint[]
+  channels: ChannelQuotaMeta[]
+}
+
 export interface FlowQuotaDataItem {
   user_id?: number
   username?: string

@@ -13,6 +13,12 @@ type ChannelSettings struct {
 	PassThroughBodyEnabled bool   `json:"pass_through_body_enabled,omitempty"`
 	SystemPrompt           string `json:"system_prompt,omitempty"`
 	SystemPromptOverride   bool   `json:"system_prompt_override,omitempty"`
+	// Sub2ApiBalanceQuery 为 true 时，更新余额走 sub2api 上游的 /v1/usage 端点
+	// （用渠道 Key 以 Bearer 鉴权，读取 remaining 字段），而非 OpenAI 计费端点。
+	Sub2ApiBalanceQuery bool `json:"sub2api_balance_query,omitempty"`
+	// Sub2ApiAdminKey 是 sub2api 上游的管理员 API Key（x-api-key），用于只读拉取
+	// 上游分组成本倍率（/api/v1/admin/groups/all）。仅供展示，不参与计费。
+	Sub2ApiAdminKey string `json:"sub2api_admin_key,omitempty"`
 }
 
 type VertexKeyType string

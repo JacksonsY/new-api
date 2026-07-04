@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"strings"
 	"sync"
@@ -39,17 +40,25 @@ type Channel struct {
 	Models             string  `json:"models"`
 	Group              string  `json:"group" gorm:"type:varchar(64);default:'default'"`
 	UsedQuota          int64   `json:"used_quota" gorm:"bigint;default:0"`
-	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
+	// BalanceSnapshot 上次余额落库时的 used_quota 快照（NULL=从未设置过余额）。
+	// 实时余额 = balance - (used_quota - balance_snapshot)/QuotaPerUnit，
+	// 供渠道列表"剩余天数"与余额告警本地推算，无需反复查上游。(蓝图A, feitianbubu)
+	BalanceSnapshot *int64  `json:"balance_snapshot" gorm:"bigint"`
+	ModelMapping    *string `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
 	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
 	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
-	OtherInfo         string  `json:"other_info"`
-	Tag               *string `json:"tag" gorm:"index"`
-	Setting           *string `json:"setting" gorm:"type:text"` // 渠道额外设置
-	ParamOverride     *string `json:"param_override" gorm:"type:text"`
-	HeaderOverride    *string `json:"header_override" gorm:"type:text"`
-	Remark            *string `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
+	// ChannelRatio 渠道计费倍率：仅影响渠道维度统计（used_quota / 数据面板），不影响用户扣费。
+	// >=0，允许 0；nil（旧数据/未配置）或负数按 1.0 处理。默认在 GetChannelRatio 里兜底，
+	// 不用 gorm default 标签，避免三库 AutoMigrate 反复 ALTER。
+	ChannelRatio   *float64 `json:"channel_ratio"`
+	OtherInfo      string   `json:"other_info"`
+	Tag            *string  `json:"tag" gorm:"index"`
+	Setting        *string  `json:"setting" gorm:"type:text"` // 渠道额外设置
+	ParamOverride  *string  `json:"param_override" gorm:"type:text"`
+	HeaderOverride *string  `json:"header_override" gorm:"type:text"`
+	Remark         *string  `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
 	// add after v0.8.5
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
 
@@ -583,13 +592,34 @@ func (channel *Channel) UpdateResponseTime(responseTime int64) {
 }
 
 func (channel *Channel) UpdateBalance(balance float64) {
-	err := DB.Model(channel).Select("balance_updated_time", "balance").Updates(Channel{
-		BalanceUpdatedTime: common.GetTimestamp(),
-		Balance:            balance,
+	// balance_snapshot 与余额同步打点：此后 used_quota 相对快照的增量即"这笔余额
+	// 之后的消耗"，实时余额可本地推算。不落快照，列表/告警会退化成陈旧余额。
+	err := DB.Model(channel).Updates(map[string]interface{}{
+		"balance_updated_time": common.GetTimestamp(),
+		"balance":              balance,
+		"balance_snapshot":     gorm.Expr("used_quota"),
 	}).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update balance: channel_id=%d, error=%v", channel.Id, err))
 	}
+}
+
+// SetChannelBalanceManually 管理员手动设置渠道余额（上游无余额查询接口时的兜底，
+// 蓝图A 配套）。走独立入口而非通用编辑端点——balance 在通用编辑里是只读字段
+// （见 clearChannelReadOnlyFields），避免误改；此处同样打 used_quota 快照。
+func SetChannelBalanceManually(id int, balance float64) error {
+	res := DB.Model(&Channel{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"balance_updated_time": common.GetTimestamp(),
+		"balance":              balance,
+		"balance_snapshot":     gorm.Expr("used_quota"),
+	})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errors.New("channel not found")
+	}
+	return nil
 }
 
 func (channel *Channel) Delete() error {
@@ -852,7 +882,32 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	return nil
 }
 
+// GetChannelRatio 返回渠道计费倍率。nil（旧数据/未配置）或负数（非法）按 1.0 处理；允许 0。
+func (channel *Channel) GetChannelRatio() float64 {
+	if channel == nil || channel.ChannelRatio == nil {
+		return 1.0
+	}
+	if *channel.ChannelRatio < 0 {
+		return 1.0
+	}
+	return *channel.ChannelRatio
+}
+
+// applyChannelRatio 按渠道计费倍率折算渠道维度用量；仅作用于渠道 used_quota 统计，不影响用户扣费。
+func applyChannelRatio(id int, quota int) int {
+	channel, err := CacheGetChannel(id)
+	if err != nil || channel == nil {
+		return quota
+	}
+	ratio := channel.GetChannelRatio()
+	if ratio == 1 {
+		return quota
+	}
+	return int(math.Round(float64(quota) * ratio))
+}
+
 func UpdateChannelUsedQuota(id int, quota int) {
+	quota = applyChannelRatio(id, quota)
 	if common.BatchUpdateEnabled {
 		addNewRecord(BatchUpdateTypeChannelUsedQuota, id, quota)
 		return

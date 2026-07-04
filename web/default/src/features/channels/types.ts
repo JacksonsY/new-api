@@ -57,6 +57,13 @@ export const channelSchema = z.object({
   status_code_mapping: z.string().nullish(),
   priority: z.number().nullish(),
   auto_ban: z.number().nullish(),
+  channel_ratio: z.number().nullish(), // 渠道计费倍率（成本统计，仅管理员）
+  // 蓝图A：上次余额落库时的 used_quota 快照，实时余额本地推算用
+  balance_snapshot: z.number().nullish(),
+  // 蓝图A：近期消耗统计（列表接口的 recent_usage map 在前端合并进行，非后端字段）
+  recent_usage: z
+    .object({ quota: z.number(), active_days: z.number() })
+    .nullish(),
   other_info: z.string().default(''),
   tag: z.string().nullish(),
   setting: z.string().nullish(),
@@ -75,6 +82,12 @@ export const channelSchema = z.object({
 
 export type Channel = z.infer<typeof channelSchema>
 
+// 蓝图A：渠道近期消耗统计（剩余天数估算），对齐后端 model.ChannelRecentUsage
+export interface ChannelRecentUsage {
+  quota: number
+  active_days: number
+}
+
 // ============================================================================
 // Channel Settings Types
 // ============================================================================
@@ -86,6 +99,8 @@ export interface ChannelSettings {
   pass_through_body_enabled?: boolean
   system_prompt?: string
   system_prompt_override?: boolean
+  sub2api_balance_query?: boolean
+  sub2api_admin_key?: string
 }
 
 export interface ChannelOtherSettings {
@@ -150,6 +165,7 @@ export interface GetChannelsResponse {
     page: number
     page_size: number
     type_counts?: Record<string, number>
+    recent_usage?: Record<string, ChannelRecentUsage> | null
   }
 }
 
@@ -160,6 +176,7 @@ export interface SearchChannelsResponse {
     items: Channel[]
     total: number
     type_counts?: Record<string, number>
+    recent_usage?: Record<string, ChannelRecentUsage> | null
   }
 }
 
@@ -346,6 +363,7 @@ export interface ChannelFormData {
   model_mapping?: string
   priority?: number
   weight?: number
+  channel_ratio?: number
   test_model?: string
   auto_ban?: number
   status: number

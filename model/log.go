@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -58,27 +59,35 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 }
 
 type Log struct {
-	Id                int    `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
-	UserId            int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
-	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type"`
-	Type              int    `json:"type" gorm:"index:idx_created_at_type"`
-	Content           string `json:"content"`
-	Username          string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
-	TokenName         string `json:"token_name" gorm:"index;default:''"`
-	ModelName         string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
-	Quota             int    `json:"quota" gorm:"default:0"`
-	PromptTokens      int    `json:"prompt_tokens" gorm:"default:0"`
-	CompletionTokens  int    `json:"completion_tokens" gorm:"default:0"`
-	UseTime           int    `json:"use_time" gorm:"default:0"`
-	IsStream          bool   `json:"is_stream"`
-	ChannelId         int    `json:"channel" gorm:"index"`
-	ChannelName       string `json:"channel_name" gorm:"->"`
-	TokenId           int    `json:"token_id" gorm:"default:0;index"`
-	Group             string `json:"group" gorm:"index"`
-	Ip                string `json:"ip" gorm:"index;default:''"`
-	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
-	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
-	Other             string `json:"other"`
+	Id     int `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
+	UserId int `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
+	// idx_logs_channel_usage (type, channel_id, created_at, quota)：渠道消耗聚合的
+	// 覆盖索引（蓝图A 余额告警/剩余天数估算）。type+channel_id 等值定位、
+	// created_at 范围扫、quota 免回表；不建则两个聚合在大表上全表扫。
+	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type;index:idx_logs_channel_usage,priority:3"`
+	Type             int    `json:"type" gorm:"index:idx_created_at_type;index:idx_logs_channel_usage,priority:1"`
+	Content          string `json:"content"`
+	Username         string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
+	TokenName        string `json:"token_name" gorm:"index;default:''"`
+	ModelName        string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
+	Quota            int    `json:"quota" gorm:"default:0;index:idx_logs_channel_usage,priority:4"`
+	PromptTokens     int    `json:"prompt_tokens" gorm:"default:0"`
+	CompletionTokens int    `json:"completion_tokens" gorm:"default:0"`
+	UseTime          int    `json:"use_time" gorm:"default:0"`
+	IsStream         bool   `json:"is_stream"`
+	ChannelId        int    `json:"channel" gorm:"index;index:idx_logs_channel_usage,priority:2"`
+	ChannelName      string `json:"channel_name" gorm:"->"`
+	// ChannelRatio 渠道计费倍率快照：仅供管理员维度的渠道成本统计，不影响用户扣费。
+	// 默认在写入时显式赋值（GetChannelRatio 兜底），不用 gorm default 标签。
+	// omitempty：用户侧路径经 formatUserLogs 清零后，该字段整个不出现在响应里
+	// ——成本倍率是经营机密，普通用户连字段名都不该看到。
+	ChannelRatio      float64 `json:"channel_ratio,omitempty"`
+	TokenId           int     `json:"token_id" gorm:"default:0;index"`
+	Group             string  `json:"group" gorm:"index"`
+	Ip                string  `json:"ip" gorm:"index;default:''"`
+	RequestId         string  `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
+	UpstreamRequestId string  `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
+	Other             string  `json:"other"`
 }
 
 // don't use iota, avoid change log type value
@@ -117,6 +126,8 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
+		// 渠道计费倍率属于管理员维度信息，对普通用户隐藏
+		logs[i].ChannelRatio = 0
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
 		if otherMap != nil {
@@ -365,6 +376,11 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
 	otherStr := common.MapToJsonStr(params.Other)
+	// 渠道计费倍率快照：用于管理员维度的渠道成本统计，与用户扣费无关。
+	channelRatio := 1.0
+	if channel, err := CacheGetChannel(params.ChannelId); err == nil && channel != nil {
+		channelRatio = channel.GetChannelRatio()
+	}
 	// 判断是否需要记录 IP
 	needRecordIp := false
 	if settingMap, err := GetUserSetting(userId, false); err == nil {
@@ -384,6 +400,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		ModelName:        params.ModelName,
 		Quota:            params.Quota,
 		ChannelId:        params.ChannelId,
+		ChannelRatio:     channelRatio,
 		TokenId:          params.TokenId,
 		UseTime:          params.UseTimeSeconds,
 		IsStream:         params.IsStream,
@@ -403,17 +420,20 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		logger.LogError(c, "failed to record log: "+err.Error())
 	}
 	if common.DataExportEnabled {
+		// 渠道维度成本 = 原始额度 × 渠道计费倍率，随用量数据一并预聚合进 quota_data
+		channelQuota := int(math.Round(float64(params.Quota) * channelRatio))
 		LogQuotaData(QuotaDataLogParams{
-			UserID:    userId,
-			Username:  username,
-			ModelName: params.ModelName,
-			Quota:     params.Quota,
-			CreatedAt: createdAt,
-			TokenUsed: params.PromptTokens + params.CompletionTokens,
-			UseGroup:  params.Group,
-			TokenID:   params.TokenId,
-			ChannelID: params.ChannelId,
-			NodeName:  common.NodeName,
+			UserID:       userId,
+			Username:     username,
+			ModelName:    params.ModelName,
+			Quota:        params.Quota,
+			ChannelQuota: channelQuota,
+			CreatedAt:    createdAt,
+			TokenUsed:    params.PromptTokens + params.CompletionTokens,
+			UseGroup:     params.Group,
+			TokenID:      params.TokenId,
+			ChannelID:    params.ChannelId,
+			NodeName:     common.NodeName,
 		})
 	}
 }
@@ -468,19 +488,25 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		}
 	}
 	createdAt := common.GetTimestamp()
+	// 渠道计费倍率快照：用于管理员维度的渠道成本统计，与用户扣费无关。
+	channelRatio := 1.0
+	if channel, err := CacheGetChannel(params.ChannelId); err == nil && channel != nil {
+		channelRatio = channel.GetChannelRatio()
+	}
 	log := &Log{
-		UserId:    params.UserId,
-		Username:  username,
-		CreatedAt: createdAt,
-		Type:      params.LogType,
-		Content:   params.Content,
-		TokenName: tokenName,
-		ModelName: params.ModelName,
-		Quota:     params.Quota,
-		ChannelId: params.ChannelId,
-		TokenId:   params.TokenId,
-		Group:     params.Group,
-		Other:     common.MapToJsonStr(params.Other),
+		UserId:       params.UserId,
+		Username:     username,
+		CreatedAt:    createdAt,
+		Type:         params.LogType,
+		Content:      params.Content,
+		TokenName:    tokenName,
+		ModelName:    params.ModelName,
+		Quota:        params.Quota,
+		ChannelId:    params.ChannelId,
+		ChannelRatio: channelRatio,
+		TokenId:      params.TokenId,
+		Group:        params.Group,
+		Other:        common.MapToJsonStr(params.Other),
 	}
 	err := createLog(log)
 	if err != nil {
@@ -491,16 +517,19 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		if nodeName == "" {
 			nodeName = common.NodeName
 		}
+		// 渠道维度成本 = 原始额度 × 渠道计费倍率
+		channelQuota := int(math.Round(float64(params.Quota) * channelRatio))
 		LogQuotaData(QuotaDataLogParams{
-			UserID:    params.UserId,
-			Username:  username,
-			ModelName: params.ModelName,
-			Quota:     params.Quota,
-			CreatedAt: createdAt,
-			UseGroup:  params.Group,
-			TokenID:   params.TokenId,
-			ChannelID: params.ChannelId,
-			NodeName:  nodeName,
+			UserID:       params.UserId,
+			Username:     username,
+			ModelName:    params.ModelName,
+			Quota:        params.Quota,
+			ChannelQuota: channelQuota,
+			CreatedAt:    createdAt,
+			UseGroup:     params.Group,
+			TokenID:      params.TokenId,
+			ChannelID:    params.ChannelId,
+			NodeName:     nodeName,
 		})
 	}
 }
@@ -801,4 +830,83 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 	}
 
 	return total, nil
+}
+
+// ---- 蓝图A 渠道消耗聚合（余额告警 / 剩余天数估算，参考 feitianbubu）----
+
+type ChannelRecentUsage struct {
+	Quota      int64 `json:"quota"`
+	ActiveDays int   `json:"active_days"`
+}
+
+// 剩余天数估算的共享窗口（渠道列表与余额告警同一口径）。
+const (
+	ChannelRecentUsageActiveDays   = 7
+	ChannelRecentUsageLookbackDays = 90 // 聚合最多回看的天数，防无界扫描
+)
+
+// GetChannelsRecentUsage 返回每个渠道"最近 maxActiveDays 个有消费的 UTC 日"的
+// 消耗额度总和（回看不早于 since）。按活跃日而非自然日取平均，低频渠道不会被
+// 大量零消费日稀释成"永不耗尽"。
+func GetChannelsRecentUsage(channelIds []int, since int64, maxActiveDays int) (map[int]ChannelRecentUsage, error) {
+	usageMap := make(map[int]ChannelRecentUsage)
+	if len(channelIds) == 0 || maxActiveDays <= 0 {
+		return usageMap, nil
+	}
+	var rows []struct {
+		ChannelId int
+		Day       int64
+		Quota     int64
+	}
+	// 整数取模做日桶（created_at - created_at % 86400）：MySQL/PostgreSQL/SQLite
+	// 行为一致（"/" 在 MySQL 上是小数除法，不可用）。
+	err := LOG_DB.Table("logs").
+		Select("channel_id, created_at - created_at % 86400 as day, sum(quota) as quota").
+		Where("type = ?", LogTypeConsume).
+		Where("created_at >= ?", since).
+		Where("channel_id IN ?", channelIds).
+		Group("channel_id, day").
+		Order("day desc").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	// 行按日期倒序返回，每个渠道的前 maxActiveDays 行恰好是其最近的活跃日
+	for _, row := range rows {
+		usage := usageMap[row.ChannelId]
+		if usage.ActiveDays >= maxActiveDays {
+			continue
+		}
+		usage.ActiveDays++
+		usage.Quota += row.Quota
+		usageMap[row.ChannelId] = usage
+	}
+	return usageMap, nil
+}
+
+// GetChannelsQuotaSince 返回每个渠道自 since 起（滑动窗口，不按日分桶）的消耗
+// 额度总和。窗口内无消费的渠道不在 map 里。
+func GetChannelsQuotaSince(channelIds []int, since int64) (map[int]int64, error) {
+	result := make(map[int]int64)
+	if len(channelIds) == 0 {
+		return result, nil
+	}
+	var rows []struct {
+		ChannelId int
+		Quota     int64
+	}
+	err := LOG_DB.Table("logs").
+		Select("channel_id, sum(quota) as quota").
+		Where("type = ?", LogTypeConsume).
+		Where("created_at >= ?", since).
+		Where("channel_id IN ?", channelIds).
+		Group("channel_id").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.ChannelId] = row.Quota
+	}
+	return result, nil
 }

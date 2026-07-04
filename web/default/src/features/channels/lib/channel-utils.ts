@@ -16,7 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { formatCurrencyFromUSD, formatQuotaWithCurrency } from '@/lib/currency'
+import {
+  formatCurrencyFromUSD,
+  formatQuotaWithCurrency,
+  getCurrencyDisplay,
+} from '@/lib/currency'
 import { formatTimestampToDate } from '@/lib/format'
 
 import {
@@ -27,7 +31,12 @@ import {
   RESPONSE_TIME_THRESHOLDS,
   TYPE_TO_KEY_PROMPT,
 } from '../constants'
-import type { Channel, ChannelSettings, ChannelOtherSettings } from '../types'
+import type {
+  Channel,
+  ChannelRecentUsage,
+  ChannelSettings,
+  ChannelOtherSettings,
+} from '../types'
 
 // ============================================================================
 // Channel Type Utilities
@@ -351,6 +360,52 @@ export function getBalanceVariant(
     return 'warning'
   }
   return 'success'
+}
+
+// ============================================================================
+// 蓝图A：实时余额与剩余天数估算（对齐后端 balance_snapshot / recent_usage）
+// ============================================================================
+
+/**
+ * 实时剩余余额（USD）：落库余额减去"上次余额落库后"的消耗
+ * （used_quota - balance_snapshot 的增量）。快照从未打过时退回落库余额。
+ */
+export function channelLiveBalanceUsd(channel: {
+  balance?: number | null
+  used_quota?: number | null
+  balance_snapshot?: number | null
+}): number {
+  const balance = channel.balance || 0
+  const snapshot = channel.balance_snapshot
+  if (snapshot == null) return balance
+  const { config } = getCurrencyDisplay()
+  return balance - ((channel.used_quota || 0) - snapshot) / config.quotaPerUnit
+}
+
+/**
+ * 按最近活跃日的日均消耗估算实时余额还能撑几天。不可估算时返回 null
+ * （无消耗记录 / 余额未设置或已耗尽）。
+ */
+export function estimateChannelDaysRemaining(
+  channel: Parameters<typeof channelLiveBalanceUsd>[0],
+  usage: ChannelRecentUsage | undefined | null
+): number | null {
+  if (!usage || usage.quota <= 0) return null
+  const liveBalance = channelLiveBalanceUsd(channel)
+  if (liveBalance <= 0) return null
+  const { config } = getCurrencyDisplay()
+  const avgDailyUsd =
+    usage.quota / Math.max(usage.active_days, 1) / config.quotaPerUnit
+  return liveBalance / avgDailyUsd
+}
+
+/** 剩余天数染色：≤7 危险、≤15 警告，其余中性。阈值只管列表展示，与告警阈值独立。 */
+export function getDaysRemainingVariant(
+  days: number
+): 'danger' | 'warning' | 'neutral' {
+  if (days <= 7) return 'danger'
+  if (days <= 15) return 'warning'
+  return 'neutral'
 }
 
 // ============================================================================

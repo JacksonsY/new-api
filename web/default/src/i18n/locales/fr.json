@@ -5317,6 +5317,20 @@
     "Remove controls?": "Lever les mesures ?",
     "Frozen assets resume maturing and exits reopen. The invite code becomes valid again.": "Les actifs gelés reprennent leur maturation et les sorties rouvrent. Le code d’invitation redevient valide.",
     "Select at least one control": "Sélectionnez au moins une mesure",
-    "Open actions": "Ouvrir les actions"
+    "Open actions": "Ouvrir les actions",
+    "~{{days}}d": "≈{{days}} j restants",
+    "Estimated days remaining at the average daily spend of the last {{days}} active days": "Jours restants estimés selon la dépense quotidienne moyenne des {{days}} derniers jours actifs",
+    "Set balance manually (USD)": "Définir le solde manuellement (USD)",
+    "For upstreams without a balance API: enter the balance after topping up, consumption keeps deducting locally.": "Pour les fournisseurs sans API de solde : saisissez le solde après recharge, la consommation continue d’être déduite localement.",
+    "Channel cost saving": "Économie de coût",
+    "Channel cost ratio": "Multiplicateur de coût du canal",
+    "Channel Cost": "Coût du canal",
+    "Channel Cost Ranking": "Classement des coûts par canal",
+    "Channel Cost Trend": "Tendance des coûts par canal",
+    "Total Channel Cost": "Coût total des canaux",
+    "Total Raw Cost": "Quota brut total",
+    "Overall Ratio": "Ratio global",
+    "Top Channels": "Top canaux",
+    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "Multiplicateur pour les statistiques coût/profit admin uniquement (coût = quota × ratio). N’affecte pas la facturation. Défaut 1, 0 autorisé."
   }
 }

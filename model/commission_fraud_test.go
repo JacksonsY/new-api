@@ -315,3 +315,19 @@ func TestInviteeMinAgeGate(t *testing.T) {
 	RecordAgentCommission(invitee.Id, 1000, "")
 	assert.Equal(t, before+1, countCommissions(t), "满 7 天后应正常计佣")
 }
+
+// TestUserLogsHideChannelCostFields 隐私契约：渠道成本倍率是经营机密，
+// 普通用户的日志响应经 formatUserLogs 处理后，序列化结果不得出现
+// channel_ratio / channel_name 字段（清零 + omitempty 双保险的防回归）。
+func TestUserLogsHideChannelCostFields(t *testing.T) {
+	logs := []*Log{{
+		UserId: 1, Type: LogTypeConsume, ChannelId: 5,
+		ChannelName: "内部渠道", ChannelRatio: 0.8, Quota: 1000,
+	}}
+	formatUserLogs(logs, 0)
+
+	data, err := common.Marshal(logs)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "channel_ratio", "用户侧日志不得暴露成本倍率")
+	assert.Equal(t, "", logs[0].ChannelName, "用户侧日志不得暴露渠道名")
+}

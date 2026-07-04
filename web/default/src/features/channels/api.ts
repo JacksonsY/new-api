@@ -235,6 +235,55 @@ export async function updateChannelBalance(
 }
 
 /**
+ * 蓝图A：管理员手动设置渠道余额（USD）。上游无余额查询接口时的兜底，
+ * 后端同步打 used_quota 快照，此后消耗照常本地推算剩余。
+ */
+export async function setChannelBalance(
+  id: number,
+  balance: number
+): Promise<{ success: boolean; message?: string }> {
+  const res = await api.post(
+    `/api/channel/balance/${id}`,
+    { balance },
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export interface Sub2apiGroupRate {
+  id: number
+  name: string
+  platform: string
+  status: string
+  rate_multiplier: number
+  image_rate_multiplier: number
+  peak_rate_enabled: boolean
+  peak_rate_multiplier: number
+  is_exclusive: boolean
+  subscription_type: string
+}
+
+export interface Sub2apiGroupRatesResponse {
+  success: boolean
+  message: string
+  data?: Sub2apiGroupRate[]
+}
+
+/**
+ * Read-only: fetch sub2api upstream group cost multipliers using the
+ * channel's configured admin key. Display only, not used for billing.
+ */
+export async function getChannelSub2apiRates(
+  id: number
+): Promise<Sub2apiGroupRatesResponse> {
+  const res = await api.get(
+    `/api/channel/${id}/sub2api_rates`,
+    channelActionConfig()
+  )
+  return res.data
+}
+
+/**
  * Fetch available models from upstream provider
  */
 export async function fetchUpstreamModels(

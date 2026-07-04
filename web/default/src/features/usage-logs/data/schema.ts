@@ -39,6 +39,8 @@ export const usageLogSchema = z.object({
   is_stream: z.boolean().default(false),
   channel: z.number().default(0),
   channel_name: z.string().nullish().default(''),
+  // channel_ratio 渠道计费倍率快照（fork 二开）：仅供渠道成本统计，不影响用户扣费；对齐后端 Log.ChannelRatio
+  channel_ratio: z.number().nullish().default(1),
   token_id: z.number().default(0),
   group: z.string().default(''),
   ip: z.string().default(''),

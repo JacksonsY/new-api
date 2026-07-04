@@ -5317,6 +5317,20 @@
     "Remove controls?": "Gỡ biện pháp?",
     "Frozen assets resume maturing and exits reopen. The invite code becomes valid again.": "Tài sản đóng băng tiếp tục đáo hạn, các lối ra mở lại. Mã mời hợp lệ trở lại.",
     "Select at least one control": "Chọn ít nhất một biện pháp",
-    "Open actions": "Mở thao tác"
+    "Open actions": "Mở thao tác",
+    "~{{days}}d": "còn ≈{{days}} ngày",
+    "Estimated days remaining at the average daily spend of the last {{days}} active days": "Ước tính số ngày còn lại theo mức chi trung bình của {{days}} ngày hoạt động gần nhất",
+    "Set balance manually (USD)": "Đặt số dư thủ công (USD)",
+    "For upstreams without a balance API: enter the balance after topping up, consumption keeps deducting locally.": "Cho upstream không có API số dư: nhập số dư sau khi nạp, tiêu thụ sẽ tiếp tục trừ cục bộ.",
+    "Channel cost saving": "Tiết kiệm chi phí",
+    "Channel cost ratio": "Hệ số chi phí kênh",
+    "Channel Cost": "Chi phí kênh",
+    "Channel Cost Ranking": "Xếp hạng chi phí kênh",
+    "Channel Cost Trend": "Xu hướng chi phí kênh",
+    "Total Channel Cost": "Tổng chi phí kênh",
+    "Total Raw Cost": "Tổng hạn mức gốc",
+    "Overall Ratio": "Tỷ lệ tổng thể",
+    "Top Channels": "Kênh hàng đầu",
+    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "Hệ số chỉ dùng cho thống kê chi phí/lợi nhuận của quản trị (chi phí = hạn mức × hệ số). Không ảnh hưởng đến tính phí người dùng. Mặc định 1, cho phép 0."
   }
 }

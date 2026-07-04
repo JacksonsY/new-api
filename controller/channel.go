@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -97,6 +98,33 @@ func GetChannelOps(c *gin.Context) {
 	})
 }
 
+// getChannelsRecentUsage 返回渠道近期消耗统计（蓝图A 剩余天数估算用）；查询失败
+// 返回 nil——估算是装饰性信息，渠道列表必须照常渲染。消耗按渠道成本倍率折算成
+// 上游成本口径，与 used_quota 的折算口径一致。
+func getChannelsRecentUsage(channels []*model.Channel) map[int]model.ChannelRecentUsage {
+	channelIds := make([]int, 0, len(channels))
+	for _, channel := range channels {
+		channelIds = append(channelIds, channel.Id)
+	}
+	since := common.GetTimestamp() - model.ChannelRecentUsageLookbackDays*86400
+	usageMap, err := model.GetChannelsRecentUsage(channelIds, since, model.ChannelRecentUsageActiveDays)
+	if err != nil {
+		common.SysError("failed to query channels recent usage: " + err.Error())
+		return nil
+	}
+	for _, channel := range channels {
+		usage, ok := usageMap[channel.Id]
+		if !ok {
+			continue
+		}
+		if ratio := channel.GetChannelRatio(); ratio != 1 {
+			usage.Quota = int64(float64(usage.Quota) * ratio)
+			usageMap[channel.Id] = usage
+		}
+	}
+	return usageMap
+}
+
 func GetAllChannels(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	channelData := make([]*model.Channel, 0)
@@ -184,11 +212,12 @@ func GetAllChannels(c *gin.Context) {
 		typeCounts[r.Type] = r.Count
 	}
 	common.ApiSuccess(c, gin.H{
-		"items":       channelData,
-		"total":       total,
-		"page":        pageInfo.GetPage(),
-		"page_size":   pageInfo.GetPageSize(),
-		"type_counts": typeCounts,
+		"items":        channelData,
+		"total":        total,
+		"page":         pageInfo.GetPage(),
+		"page_size":    pageInfo.GetPageSize(),
+		"type_counts":  typeCounts,
+		"recent_usage": getChannelsRecentUsage(channelData), // 蓝图A 剩余天数估算
 	})
 	return
 }
@@ -379,12 +408,40 @@ func SearchChannels(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"items":       pagedData,
-			"total":       total,
-			"type_counts": typeCounts,
+			"items":        pagedData,
+			"total":        total,
+			"type_counts":  typeCounts,
+			"recent_usage": getChannelsRecentUsage(pagedData), // 蓝图A 剩余天数估算
 		},
 	})
 	return
+}
+
+// SetChannelBalance 管理员手动设置渠道余额（蓝图A 配套）。上游没有余额查询接口
+// 的渠道（多数国内中转站）由管理员在充值后手动录入，之后消耗照常本地推算剩余。
+// balance 在通用编辑端点里是只读字段，这里是唯一的写入口，权限对齐 update_balance。
+func SetChannelBalance(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var req struct {
+		Balance float64 `json:"balance"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if req.Balance < 0 || math.IsNaN(req.Balance) || math.IsInf(req.Balance, 0) {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if err := model.SetChannelBalanceManually(id, req.Balance); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
 }
 
 func GetChannel(c *gin.Context) {

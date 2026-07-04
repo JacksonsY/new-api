@@ -290,7 +290,17 @@ export function ChannelsTable() {
 
   // Apply tag aggregation if tag mode is enabled
   const channels = useMemo(() => {
-    const rawChannels = data?.data?.items || []
+    let rawChannels = data?.data?.items || []
+
+    // 蓝图A：把列表响应里的 recent_usage map 合并到行上，供余额列估算剩余天数
+    const recentUsage = data?.data?.recent_usage
+    if (recentUsage && rawChannels.length > 0) {
+      rawChannels = rawChannels.map((ch) =>
+        recentUsage[String(ch.id)]
+          ? { ...ch, recent_usage: recentUsage[String(ch.id)] }
+          : ch
+      )
+    }
 
     if (enableTagMode && rawChannels.length > 0) {
       return aggregateChannelsByTag(rawChannels)

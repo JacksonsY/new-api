@@ -57,11 +57,14 @@ import { truncateText } from '@/lib/utils'
 import { getCodexUsage } from '../api'
 import { CHANNEL_STATUS_CONFIG, MODEL_FETCHABLE_TYPES } from '../constants'
 import {
+  channelLiveBalanceUsd,
+  estimateChannelDaysRemaining,
   formatRelativeTime,
   formatResponseTime,
   getBalanceVariant,
   getChannelTypeIcon,
   getChannelTypeLabel,
+  getDaysRemainingVariant,
   getResponseTimeConfig,
   isMultiKeyChannel,
   parseModelsList,
@@ -299,8 +302,13 @@ function BalanceCell({ channel }: { channel: Channel }) {
   const layout = useContext(ChannelRowActionsLayoutContext)
   const { sensitiveVisible } = useChannels()
   const isTagRow = isTagAggregateRow(channel)
-  const balance = channel.balance || 0
+  // 蓝图A：展示实时余额（落库余额 - 快照后消耗），估算剩余天数
+  const balance = channelLiveBalanceUsd(channel)
   const usedQuota = channel.used_quota || 0
+  const daysRemaining = estimateChannelDaysRemaining(
+    channel,
+    channel.recent_usage
+  )
   const [isUpdating, setIsUpdating] = useState(false)
   const [codexUsageOpen, setCodexUsageOpen] = useState(false)
   const [codexUsageResponse, setCodexUsageResponse] =
@@ -471,6 +479,33 @@ function BalanceCell({ channel }: { channel: Channel }) {
             {channel.type !== 57 && <p>{t('Click to update balance')}</p>}
           </TooltipContent>
         </Tooltip>
+        {sensitiveVisible && daysRemaining != null && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <StatusBadge
+                  label={t('~{{days}}d', {
+                    days:
+                      daysRemaining > 999 ? '999+' : daysRemaining.toFixed(1),
+                  })}
+                  variant={getDaysRemainingVariant(daysRemaining)}
+                  size='sm'
+                  copyable={false}
+                  showDot={false}
+                  className='cursor-help'
+                />
+              }
+            />
+            <TooltipContent>
+              <p>
+                {t(
+                  'Estimated days remaining at the average daily spend of the last {{days}} active days',
+                  { days: channel.recent_usage?.active_days ?? 0 }
+                )}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       <CodexUsageDialog
@@ -1050,6 +1085,20 @@ export function useChannelsColumns(
         header: t('Weight'),
         meta: { mobileHidden: true },
         cell: ({ row }) => <WeightCell channel={row.original} />,
+        size: 90,
+        enableSorting: false,
+      },
+
+      // Channel cost ratio column（fork 二开：渠道计费倍率，仅管理员成本统计）
+      {
+        accessorKey: 'channel_ratio',
+        header: t('Channel cost ratio'),
+        meta: { mobileHidden: true },
+        cell: ({ row }) => (
+          <span className='tabular-nums'>
+            {row.original.channel_ratio ?? 1}
+          </span>
+        ),
         size: 90,
         enableSorting: false,
       },

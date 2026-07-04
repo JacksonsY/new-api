@@ -87,6 +87,7 @@ var channelReadOnlyFields = map[string]struct{}{
 	"response_time":        {},
 	"balance":              {},
 	"balance_updated_time": {},
+	"balance_snapshot":     {}, // 蓝图A：余额快照仅由 UpdateBalance/手动设余额端点写
 	"used_quota":           {},
 }
 
@@ -105,6 +106,9 @@ func clearChannelReadOnlyFields(channel *PatchChannel, requestData map[string]an
 	}
 	if _, ok := requestData["balance_updated_time"]; ok {
 		channel.BalanceUpdatedTime = 0
+	}
+	if _, ok := requestData["balance_snapshot"]; ok {
+		channel.BalanceSnapshot = nil
 	}
 	if _, ok := requestData["used_quota"]; ok {
 		channel.UsedQuota = 0
@@ -128,6 +132,7 @@ var channelNonSensitiveFields = map[string]struct{}{
 	"status_code_mapping": {},
 	"priority":            {},
 	"auto_ban":            {},
+	"channel_ratio":       {}, // 渠道成本倍率：仅影响管理员成本统计，不泄密、不改用户计费
 	"other_info":          {},
 	"tag":                 {},
 	"remark":              {},

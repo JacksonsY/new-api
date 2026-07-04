@@ -121,6 +121,45 @@ type OpenRouterCreditResponse struct {
 	} `json:"data"`
 }
 
+// Sub2APIUsageResponse 对应 sub2api 上游 GET /v1/usage 的响应。
+// 该端点用渠道 Key（Bearer）鉴权，即便 Key 过期/额度耗尽也允许查询自身用量。
+// remaining（USD）在 quota_limited / 订阅 / 钱包三种模式下均存在，是渠道余额。
+type Sub2APIUsageResponse struct {
+	Mode      string   `json:"mode"`
+	IsValid   bool     `json:"isValid"`
+	Remaining *float64 `json:"remaining"`
+	Balance   *float64 `json:"balance"`
+	Unit      string   `json:"unit"`
+	Quota     *struct {
+		Limit     float64 `json:"limit"`
+		Used      float64 `json:"used"`
+		Remaining float64 `json:"remaining"`
+		Unit      string  `json:"unit"`
+	} `json:"quota"`
+}
+
+// Sub2APIAdminGroup 是 sub2api 上游 GET /api/v1/admin/groups/all 返回的分组，
+// 只保留成本倍率相关字段用于只读展示。
+type Sub2APIAdminGroup struct {
+	ID                  int64   `json:"id"`
+	Name                string  `json:"name"`
+	Platform            string  `json:"platform"`
+	Status              string  `json:"status"`
+	RateMultiplier      float64 `json:"rate_multiplier"`
+	ImageRateMultiplier float64 `json:"image_rate_multiplier"`
+	PeakRateEnabled     bool    `json:"peak_rate_enabled"`
+	PeakRateMultiplier  float64 `json:"peak_rate_multiplier"`
+	IsExclusive         bool    `json:"is_exclusive"`
+	SubscriptionType    string  `json:"subscription_type"`
+}
+
+// Sub2APIAdminGroupsResponse 是 sub2api 管理面统一响应外壳 {code,message,data}。
+type Sub2APIAdminGroupsResponse struct {
+	Code    int                 `json:"code"`
+	Message string              `json:"message"`
+	Data    []Sub2APIAdminGroup `json:"data"`
+}
+
 // GetAuthHeader get auth header
 func GetAuthHeader(token string) http.Header {
 	h := http.Header{}
@@ -356,10 +395,41 @@ func updateChannelMoonshotBalance(channel *model.Channel) (float64, error) {
 	return availableBalanceUsd, nil
 }
 
+// updateChannelSub2APIBalance 通过 sub2api 上游的 /v1/usage 端点查询余额。
+// 用渠道 Key 以 Bearer 鉴权，读取 remaining（USD）作为渠道余额；
+// remaining 缺失时回退到 balance / quota.remaining。
+func updateChannelSub2APIBalance(channel *model.Channel) (float64, error) {
+	url := fmt.Sprintf("%s/v1/usage", channel.GetBaseURL())
+	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
+	if err != nil {
+		return 0, err
+	}
+	response := Sub2APIUsageResponse{}
+	if err = common.Unmarshal(body, &response); err != nil {
+		return 0, err
+	}
+	switch {
+	case response.Remaining != nil:
+		channel.UpdateBalance(*response.Remaining)
+		return *response.Remaining, nil
+	case response.Balance != nil:
+		channel.UpdateBalance(*response.Balance)
+		return *response.Balance, nil
+	case response.Quota != nil:
+		channel.UpdateBalance(response.Quota.Remaining)
+		return response.Quota.Remaining, nil
+	default:
+		return 0, errors.New("sub2api /v1/usage 未返回余额字段（remaining/balance/quota）")
+	}
+}
+
 func updateChannelBalance(channel *model.Channel) (float64, error) {
 	baseURL := constant.ChannelBaseURLs[channel.Type]
 	if channel.GetBaseURL() == "" {
 		channel.BaseURL = &baseURL
+	}
+	if channel.GetSetting().Sub2ApiBalanceQuery {
+		return updateChannelSub2APIBalance(channel)
 	}
 	switch channel.Type {
 	case constant.ChannelTypeOpenAI:
@@ -448,6 +518,48 @@ func UpdateChannelBalance(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"balance": balance,
+	})
+}
+
+// GetChannelSub2APIGroupRates 只读拉取该渠道对应 sub2api 上游的分组成本倍率。
+// 用渠道 Setting 里配置的 admin key（x-api-key）调用 /api/v1/admin/groups/all，
+// 结果仅供后台展示，不落库、不参与计费。
+func GetChannelSub2APIGroupRates(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	channel, err := model.CacheGetChannel(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	adminKey := channel.GetSetting().Sub2ApiAdminKey
+	if adminKey == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "未配置 sub2api 上游 admin key",
+		})
+		return
+	}
+	url := fmt.Sprintf("%s/api/v1/admin/groups/all", channel.GetBaseURL())
+	headers := http.Header{}
+	headers.Add("x-api-key", adminKey)
+	body, err := GetResponseBody("GET", url, channel, headers)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	resp := Sub2APIAdminGroupsResponse{}
+	if err = common.Unmarshal(body, &resp); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    resp.Data,
 	})
 }
 

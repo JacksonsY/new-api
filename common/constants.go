@@ -172,6 +172,12 @@ var AgentInviteeMinAgeDays = 0
 // 检测窗口最长按 90 天算，默认 180 天留足余量。
 var AgentIPRecordRetentionDays = 180
 
+// 蓝图A 渠道余额告警：预计剩余天数低于该阈值时通知 root。0 = 关闭。
+var ChannelBalanceAlertThresholdDays = 0
+
+// 蓝图A 渠道余额告警检查间隔（分钟），走 system task 调度（多主去重+运行历史）。
+var ChannelBalanceAlertIntervalMinutes = 1440
+
 var RetryTimes = 0
 
 //var RootUserEmail = ""
