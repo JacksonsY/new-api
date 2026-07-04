@@ -3092,8 +3092,6 @@
     "Pass specified request headers to upstream": "Chuyển tiếp header yêu cầu chỉ định lên upstream",
     "Query balance via sub2api upstream": "通过 sub2api 上游查询余额",
     "Sync balance from the sub2api /v1/usage endpoint using the channel key, instead of the OpenAI billing endpoint": "用渠道密钥调用 sub2api 上游的 /v1/usage 端点同步余额，而非 OpenAI 计费端点",
-    "sub2api upstream admin key": "sub2api 上游管理员密钥",
-    "Admin API key (x-api-key) for reading upstream group cost multipliers": "用于读取上游分组成本倍率的管理员 API Key（x-api-key）",
     "Read-only: fetch upstream group cost multipliers for display. Not used for billing. Save the channel before viewing.": "只读：拉取上游分组成本倍率用于展示，不参与计费。查看前请先保存渠道。",
     "View upstream group rates": "查看上游分组倍率",
     "Cost multiplier": "成本倍率",
@@ -5331,6 +5329,16 @@
     "Total Raw Cost": "Tổng hạn mức gốc",
     "Overall Ratio": "Tỷ lệ tổng thể",
     "Top Channels": "Kênh hàng đầu",
-    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "Hệ số chỉ dùng cho thống kê chi phí/lợi nhuận của quản trị (chi phí = hạn mức × hệ số). Không ảnh hưởng đến tính phí người dùng. Mặc định 1, cho phép 0."
+    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "Hệ số chỉ dùng cho thống kê chi phí/lợi nhuận của quản trị (chi phí = hạn mức × hệ số). Không ảnh hưởng đến tính phí người dùng. Mặc định 1, cho phép 0.",
+    "Apply": "Áp dụng",
+    "Upstream group name": "Tên nhóm upstream",
+    "e.g. default / vip — the group this channel key belongs to on the upstream": "vd. default / vip — nhóm mà key kênh này thuộc về trên upstream",
+    "Ratio filled and group remembered for auto-sync. Save the channel to apply.": "Đã điền hệ số và ghi nhớ nhóm để tự đồng bộ. Lưu kênh để áp dụng.",
+    "Cost & Upstream Sync": "Chi phí & đồng bộ upstream",
+    "Auto-sync channel cost ratio": "Tự đồng bộ hệ số chi phí",
+    "On every balance update: sub2api upstreams derive the effective ratio from usage (actual cost / list cost, no admin key needed); new-api upstreams read the group ratio from public pricing by the group name below.": "Mỗi lần cập nhật số dư: sub2api suy ra hệ số từ usage (thực thu ÷ giá niêm yết, không cần admin key); new-api đọc hệ số nhóm từ pricing công khai theo tên bên dưới.",
+    "Only needed for new-api upstreams: the group this channel key belongs to, used to pick the ratio from public pricing. sub2api upstreams can leave this empty.": "Chỉ cần cho new-api: nhóm của key kênh này, dùng để chọn hệ số từ pricing công khai. Sub2api để trống.",
+    "Current key (derived from usage)": "Key hiện tại (suy ra từ usage)",
+    "Auto-sync is on: this value is maintained from the upstream on every balance update; manual edits are disabled. Turn off auto-sync below to set it manually.": "Tự đồng bộ đang bật: giá trị được duy trì từ upstream mỗi lần cập nhật số dư; chỉnh tay bị khóa. Tắt tự đồng bộ bên dưới để đặt thủ công."
   }
 }

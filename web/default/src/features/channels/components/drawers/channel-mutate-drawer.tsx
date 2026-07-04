@@ -24,6 +24,7 @@ import {
   Boxes,
   CheckCircle2,
   Circle,
+  Coins,
   HelpCircle,
   KeyRound,
   Loader2,
@@ -252,6 +253,7 @@ const ADVANCED_SETTINGS_SECTION_IDS = {
   internalNotes: 'channel-section-advanced-internal-notes',
   overrideRules: 'channel-section-advanced-override-rules',
   extraSettings: 'channel-section-advanced-extra-settings',
+  costSync: 'channel-section-advanced-cost-sync',
   fieldPassthrough: 'channel-section-advanced-field-passthrough',
   upstreamModelDetection: 'channel-section-advanced-upstream-model-detection',
 } as const
@@ -283,7 +285,8 @@ const SENSITIVE_FORM_FIELDS = [
   'system_prompt',
   'system_prompt_override',
   'sub2api_balance_query',
-  'sub2api_admin_key',
+  'upstream_ratio_sync',
+  'upstream_group_name',
   'allow_service_tier',
   'disable_store',
   'allow_safety_identifier',
@@ -337,7 +340,8 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.pass_through_body_enabled ||
     values.system_prompt_override ||
     values.sub2api_balance_query ||
-    values.sub2api_admin_key?.trim() ||
+    values.upstream_ratio_sync ||
+    values.upstream_group_name?.trim() ||
     values.claude_beta_query ||
     values.upstream_model_update_check_enabled ||
     values.upstream_model_update_auto_sync_enabled ||
@@ -736,6 +740,10 @@ export function ChannelMutateDrawer({
   const currentProxy = form.watch('proxy')
   const currentSystemPrompt = form.watch('system_prompt')
   const currentSystemPromptOverride = form.watch('system_prompt_override')
+  const currentChannelRatio = form.watch('channel_ratio')
+  const currentSub2apiBalanceQuery = form.watch('sub2api_balance_query')
+  const currentUpstreamRatioSync = form.watch('upstream_ratio_sync')
+  const currentUpstreamGroupName = form.watch('upstream_group_name')
   const currentAllowServiceTier = form.watch('allow_service_tier')
   const currentDisableStore = form.watch('disable_store')
   const currentAllowSafetyIdentifier = form.watch('allow_safety_identifier')
@@ -963,11 +971,18 @@ export function ChannelMutateDrawer({
     currentUpstreamModelUpdateAutoSyncEnabled ||
     currentUpstreamModelUpdateIgnoredModels?.trim()
   )
+  const costSyncConfigured = Boolean(
+    (currentChannelRatio ?? 1) !== 1 ||
+    currentSub2apiBalanceQuery ||
+    currentUpstreamRatioSync ||
+    currentUpstreamGroupName?.trim()
+  )
   const advancedConfigured = Boolean(
     routingStrategyConfigured ||
     internalNotesConfigured ||
     overrideRulesConfigured ||
     extraSettingsConfigured ||
+    costSyncConfigured ||
     fieldPassthroughConfigured ||
     upstreamModelDetectionConfigured
   )
@@ -991,6 +1006,11 @@ export function ChannelMutateDrawer({
       id: ADVANCED_SETTINGS_SECTION_IDS.extraSettings,
       title: t('Channel Extra Settings'),
       configured: extraSettingsConfigured,
+    },
+    {
+      id: ADVANCED_SETTINGS_SECTION_IDS.costSync,
+      title: t('Cost & Upstream Sync'),
+      configured: costSyncConfigured,
     },
   ]
   if (currentType === 1 || currentType === 14) {
@@ -3565,34 +3585,6 @@ export function ChannelMutateDrawer({
 
                             <FormField
                               control={form.control}
-                              name='channel_ratio'
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>{t('Channel cost ratio')}</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type='number'
-                                      step='0.01'
-                                      min='0'
-                                      placeholder='1'
-                                      {...field}
-                                      onChange={(e) =>
-                                        field.onChange(Number(e.target.value))
-                                      }
-                                    />
-                                  </FormControl>
-                                  <FormDescription>
-                                    {t(
-                                      'Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.'
-                                    )}
-                                  </FormDescription>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={form.control}
                               name='test_model'
                               render={({ field }) => (
                                 <FormItem>
@@ -4062,119 +4054,6 @@ export function ChannelMutateDrawer({
 
                               <FormField
                                 control={form.control}
-                                name='sub2api_balance_query'
-                                render={({ field }) => (
-                                  <FormItem className='flex items-center justify-between px-4 py-3'>
-                                    <div className='space-y-0.5'>
-                                      <FormLabel>
-                                        {t('Query balance via sub2api upstream')}
-                                      </FormLabel>
-                                      <FormDescription>
-                                        {t(
-                                          'Sync balance from the sub2api /v1/usage endpoint using the channel key, instead of the OpenAI billing endpoint'
-                                        )}
-                                      </FormDescription>
-                                    </div>
-                                    <FormControl>
-                                      <Switch
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                      />
-                                    </FormControl>
-                                  </FormItem>
-                                )}
-                              />
-
-                              <FormField
-                                control={form.control}
-                                name='sub2api_admin_key'
-                                render={({ field }) => (
-                                  <FormItem className='px-4 py-3'>
-                                    <FormLabel>
-                                      {t('sub2api upstream admin key')}
-                                    </FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        type='password'
-                                        autoComplete='off'
-                                        placeholder={t(
-                                          'Admin API key (x-api-key) for reading upstream group cost multipliers'
-                                        )}
-                                        {...field}
-                                      />
-                                    </FormControl>
-                                    <FormDescription>
-                                      {t(
-                                        'Read-only: fetch upstream group cost multipliers for display. Not used for billing. Save the channel before viewing.'
-                                      )}
-                                    </FormDescription>
-                                  </FormItem>
-                                )}
-                              />
-
-                              {isEditing && (
-                                <div className='space-y-2 px-4 py-3'>
-                                  <Button
-                                    type='button'
-                                    variant='outline'
-                                    size='sm'
-                                    disabled={sub2apiRatesLoading}
-                                    onClick={handleFetchSub2apiRates}
-                                  >
-                                    {sub2apiRatesLoading
-                                      ? t('Loading...')
-                                      : t('View upstream group rates')}
-                                  </Button>
-                                  {sub2apiRates &&
-                                    (sub2apiRates.length > 0 ? (
-                                      <div className='overflow-x-auto rounded-md border'>
-                                        <table className='w-full text-sm'>
-                                          <thead>
-                                            <tr className='border-b text-left text-muted-foreground'>
-                                              <th className='px-3 py-2 font-medium'>
-                                                {t('Group')}
-                                              </th>
-                                              <th className='px-3 py-2 font-medium'>
-                                                {t('Platform')}
-                                              </th>
-                                              <th className='px-3 py-2 text-right font-medium'>
-                                                {t('Cost multiplier')}
-                                              </th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {sub2apiRates.map((g) => (
-                                              <tr
-                                                key={g.id}
-                                                className='border-b last:border-0'
-                                              >
-                                                <td className='px-3 py-2'>
-                                                  {g.name}
-                                                </td>
-                                                <td className='px-3 py-2 text-muted-foreground'>
-                                                  {g.platform}
-                                                </td>
-                                                <td className='px-3 py-2 text-right tabular-nums'>
-                                                  {g.rate_multiplier}
-                                                  {g.peak_rate_enabled
-                                                    ? ` / ${t('peak')} ${g.peak_rate_multiplier}`
-                                                    : ''}
-                                                </td>
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    ) : (
-                                      <p className='text-sm text-muted-foreground'>
-                                        {t('No groups returned')}
-                                      </p>
-                                    ))}
-                                </div>
-                              )}
-
-                              <FormField
-                                control={form.control}
                                 name='disable_task_polling_sleep'
                                 render={({ field }) => (
                                   <FormItem className='flex items-center justify-between px-4 py-3'>
@@ -4272,6 +4151,235 @@ export function ChannelMutateDrawer({
                                 </FormItem>
                               )}
                             />
+                          </fieldset>
+                        </div>
+
+                        {/* ── Cost & Upstream Sync（成本与上游同步，fork 二开独立分区） ── */}
+                        <div
+                          id={ADVANCED_SETTINGS_SECTION_IDS.costSync}
+                          className={sideDrawerSectionClassName(
+                            configuredAdvancedSectionClassName(
+                              'scroll-mt-4',
+                              costSyncConfigured
+                            )
+                          )}
+                        >
+                          <CardHeading
+                            title={t('Cost & Upstream Sync')}
+                            icon={<Coins className='h-4 w-4' />}
+                          />
+                          {/* channel_ratio 非敏感字段，放 fieldset 外：ChannelWrite 权限即可修改 */}
+                          <FormField
+                            control={form.control}
+                            name='channel_ratio'
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>{t('Channel cost ratio')}</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type='number'
+                                    step='0.01'
+                                    min='0'
+                                    placeholder='1'
+                                    disabled={currentUpstreamRatioSync}
+                                    {...field}
+                                    onChange={(e) =>
+                                      field.onChange(Number(e.target.value))
+                                    }
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  {currentUpstreamRatioSync
+                                    ? t(
+                                        'Auto-sync is on: this value is maintained from the upstream on every balance update; manual edits are disabled. Turn off auto-sync below to set it manually.'
+                                      )
+                                    : t(
+                                        'Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.'
+                                      )}
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <fieldset
+                            disabled={sensitiveLocked}
+                            className='space-y-4 disabled:opacity-60'
+                          >
+                            <div className='divide-border space-y-0 divide-y border-y'>
+                              <FormField
+                                control={form.control}
+                                name='sub2api_balance_query'
+                                render={({ field }) => (
+                                  <FormItem className='flex items-center justify-between px-4 py-3'>
+                                    <div className='space-y-0.5'>
+                                      <FormLabel>
+                                        {t('Query balance via sub2api upstream')}
+                                      </FormLabel>
+                                      <FormDescription>
+                                        {t(
+                                          'Sync balance from the sub2api /v1/usage endpoint using the channel key, instead of the OpenAI billing endpoint'
+                                        )}
+                                      </FormDescription>
+                                    </div>
+                                    <FormControl>
+                                      <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={form.control}
+                                name='upstream_ratio_sync'
+                                render={({ field }) => (
+                                  <FormItem className='flex items-center justify-between px-4 py-3'>
+                                    <div className='space-y-0.5'>
+                                      <FormLabel>
+                                        {t('Auto-sync channel cost ratio')}
+                                      </FormLabel>
+                                      <FormDescription>
+                                        {t(
+                                          'On every balance update: sub2api upstreams derive the effective ratio from usage (actual cost / list cost, no admin key needed); new-api upstreams read the group ratio from public pricing by the group name below.'
+                                        )}
+                                      </FormDescription>
+                                    </div>
+                                    <FormControl>
+                                      <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={form.control}
+                                name='upstream_group_name'
+                                render={({ field }) => (
+                                  <FormItem className='px-4 py-3'>
+                                    <FormLabel>
+                                      {t('Upstream group name')}
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        placeholder={t(
+                                          'e.g. default / vip — the group this channel key belongs to on the upstream'
+                                        )}
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormDescription>
+                                      {t(
+                                        'Only needed for new-api upstreams: the group this channel key belongs to, used to pick the ratio from public pricing. sub2api upstreams can leave this empty.'
+                                      )}
+                                    </FormDescription>
+                                  </FormItem>
+                                )}
+                              />
+
+                              {isEditing && (
+                                <div className='space-y-2 px-4 py-3'>
+                                  <Button
+                                    type='button'
+                                    variant='outline'
+                                    size='sm'
+                                    disabled={sub2apiRatesLoading}
+                                    onClick={handleFetchSub2apiRates}
+                                  >
+                                    {sub2apiRatesLoading
+                                      ? t('Loading...')
+                                      : t('View upstream group rates')}
+                                  </Button>
+                                  {sub2apiRates &&
+                                    (sub2apiRates.length > 0 ? (
+                                      <div className='overflow-x-auto rounded-md border'>
+                                        <table className='w-full text-sm'>
+                                          <thead>
+                                            <tr className='border-b text-left text-muted-foreground'>
+                                              <th className='px-3 py-2 font-medium'>
+                                                {t('Group')}
+                                              </th>
+                                              <th className='px-3 py-2 font-medium'>
+                                                {t('Platform')}
+                                              </th>
+                                              <th className='px-3 py-2 text-right font-medium'>
+                                                {t('Cost multiplier')}
+                                              </th>
+                                              <th className='px-3 py-2' />
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {sub2apiRates.map((g) => (
+                                              <tr
+                                                key={g.id}
+                                                className='border-b last:border-0'
+                                              >
+                                                <td className='px-3 py-2'>
+                                                  {g.name === 'current-key'
+                                                    ? t('Current key (derived from usage)')
+                                                    : g.name}
+                                                </td>
+                                                <td className='px-3 py-2 text-muted-foreground'>
+                                                  {g.platform}
+                                                </td>
+                                                <td className='px-3 py-2 text-right tabular-nums'>
+                                                  {g.rate_multiplier}
+                                                  {g.peak_rate_enabled
+                                                    ? ` / ${t('peak')} ${g.peak_rate_multiplier}`
+                                                    : ''}
+                                                </td>
+                                                <td className='px-3 py-2 text-right'>
+                                                  <Button
+                                                    type='button'
+                                                    variant='ghost'
+                                                    size='sm'
+                                                    onClick={() => {
+                                                      form.setValue(
+                                                        'channel_ratio',
+                                                        g.rate_multiplier,
+                                                        { shouldDirty: true }
+                                                      )
+                                                      if (
+                                                        g.platform !== 'sub2api'
+                                                      ) {
+                                                        form.setValue(
+                                                          'upstream_group_name',
+                                                          g.name,
+                                                          { shouldDirty: true }
+                                                        )
+                                                      }
+                                                      form.setValue(
+                                                        'upstream_ratio_sync',
+                                                        true,
+                                                        { shouldDirty: true }
+                                                      )
+                                                      toast.success(
+                                                        t(
+                                                          'Ratio filled and group remembered for auto-sync. Save the channel to apply.'
+                                                        )
+                                                      )
+                                                    }}
+                                                  >
+                                                    {t('Apply')}
+                                                  </Button>
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    ) : (
+                                      <p className='text-sm text-muted-foreground'>
+                                        {t('No groups returned')}
+                                      </p>
+                                    ))}
+                                </div>
+                              )}
+                            </div>
                           </fieldset>
                         </div>
 

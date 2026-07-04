@@ -100,7 +100,8 @@ export interface ChannelSettings {
   system_prompt?: string
   system_prompt_override?: boolean
   sub2api_balance_query?: boolean
-  sub2api_admin_key?: string
+  upstream_ratio_sync?: boolean
+  upstream_group_name?: string
 }
 
 export interface ChannelOtherSettings {

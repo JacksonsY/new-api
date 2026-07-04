@@ -3092,8 +3092,6 @@
     "Pass specified request headers to upstream": "指定のリクエストヘッダーを上流に透過",
     "Query balance via sub2api upstream": "通过 sub2api 上游查询余额",
     "Sync balance from the sub2api /v1/usage endpoint using the channel key, instead of the OpenAI billing endpoint": "用渠道密钥调用 sub2api 上游的 /v1/usage 端点同步余额，而非 OpenAI 计费端点",
-    "sub2api upstream admin key": "sub2api 上游管理员密钥",
-    "Admin API key (x-api-key) for reading upstream group cost multipliers": "用于读取上游分组成本倍率的管理员 API Key（x-api-key）",
     "Read-only: fetch upstream group cost multipliers for display. Not used for billing. Save the channel before viewing.": "只读：拉取上游分组成本倍率用于展示，不参与计费。查看前请先保存渠道。",
     "View upstream group rates": "查看上游分组倍率",
     "Cost multiplier": "成本倍率",
@@ -5331,6 +5329,16 @@
     "Total Raw Cost": "元の総クォータ",
     "Overall Ratio": "全体倍率",
     "Top Channels": "上位チャネル",
-    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "管理者向けコスト/利益統計専用の倍率（コスト = クォータ × 倍率）。ユーザー課金には影響しません。既定 1、0 も可。"
+    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "管理者向けコスト/利益統計専用の倍率（コスト = クォータ × 倍率）。ユーザー課金には影響しません。既定 1、0 も可。",
+    "Apply": "適用",
+    "Upstream group name": "上流グループ名",
+    "e.g. default / vip — the group this channel key belongs to on the upstream": "例: default / vip——このチャネルの Key が上流で属するグループ",
+    "Ratio filled and group remembered for auto-sync. Save the channel to apply.": "倍率を入力し、自動同期用にグループを記憶しました。保存すると反映されます。",
+    "Cost & Upstream Sync": "コストと上流同期",
+    "Auto-sync channel cost ratio": "コスト倍率を自動同期",
+    "On every balance update: sub2api upstreams derive the effective ratio from usage (actual cost / list cost, no admin key needed); new-api upstreams read the group ratio from public pricing by the group name below.": "残高更新のたびに：sub2api は使用量から実効倍率を導出（実請求÷定価、admin key 不要）；new-api は下のグループ名で公開 pricing から取得。",
+    "Only needed for new-api upstreams: the group this channel key belongs to, used to pick the ratio from public pricing. sub2api upstreams can leave this empty.": "new-api 上流のみ必要：このチャネル Key の所属グループ。公開 pricing から倍率を選ぶために使用。sub2api は空欄可。",
+    "Current key (derived from usage)": "現在の Key（使用量から導出）",
+    "Auto-sync is on: this value is maintained from the upstream on every balance update; manual edits are disabled. Turn off auto-sync below to set it manually.": "自動同期が有効：この値は残高更新のたびに上流から維持され、手動編集は無効です。手動設定するには下の自動同期をオフにしてください。"
   }
 }

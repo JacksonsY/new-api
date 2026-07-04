@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -121,6 +124,14 @@ type OpenRouterCreditResponse struct {
 	} `json:"data"`
 }
 
+// Sub2APIUsageCostBucket sub2api /v1/usage 里 usage.today / usage.total 的成本摘要。
+// cost 是表价、actual_cost 是按 Key 所在分组倍率实扣（源码契约：
+// ActualCost = TotalCost × RateMultiplier），因此 actual_cost/cost 即有效倍率。
+type Sub2APIUsageCostBucket struct {
+	Cost       float64 `json:"cost"`
+	ActualCost float64 `json:"actual_cost"`
+}
+
 // Sub2APIUsageResponse 对应 sub2api 上游 GET /v1/usage 的响应。
 // 该端点用渠道 Key（Bearer）鉴权，即便 Key 过期/额度耗尽也允许查询自身用量。
 // remaining（USD）在 quota_limited / 订阅 / 钱包三种模式下均存在，是渠道余额。
@@ -136,10 +147,15 @@ type Sub2APIUsageResponse struct {
 		Remaining float64 `json:"remaining"`
 		Unit      string  `json:"unit"`
 	} `json:"quota"`
+	Usage *struct {
+		Today *Sub2APIUsageCostBucket `json:"today"`
+		Total *Sub2APIUsageCostBucket `json:"total"`
+	} `json:"usage"`
 }
 
-// Sub2APIAdminGroup 是 sub2api 上游 GET /api/v1/admin/groups/all 返回的分组，
-// 只保留成本倍率相关字段用于只读展示。
+// Sub2APIAdminGroup 上游分组倍率的展示行（前端「查看上游分组倍率」表格的行契约）。
+// new-api 上游来自公开 pricing 的分组表；sub2api 上游是客户视角，没有分组列表
+// 端点，返回一行"本渠道 Key 的有效倍率"（用量推导）。
 type Sub2APIAdminGroup struct {
 	ID                  int64   `json:"id"`
 	Name                string  `json:"name"`
@@ -151,13 +167,6 @@ type Sub2APIAdminGroup struct {
 	PeakRateMultiplier  float64 `json:"peak_rate_multiplier"`
 	IsExclusive         bool    `json:"is_exclusive"`
 	SubscriptionType    string  `json:"subscription_type"`
-}
-
-// Sub2APIAdminGroupsResponse 是 sub2api 管理面统一响应外壳 {code,message,data}。
-type Sub2APIAdminGroupsResponse struct {
-	Code    int                 `json:"code"`
-	Message string              `json:"message"`
-	Data    []Sub2APIAdminGroup `json:"data"`
 }
 
 // GetAuthHeader get auth header
@@ -390,14 +399,32 @@ func updateChannelMoonshotBalance(channel *model.Channel) (float64, error) {
 		return 0, fmt.Errorf("failed to update moonshot balance, status: %v, code: %d, scode: %s", response.Status, response.Code, response.Scode)
 	}
 	availableBalanceCny := response.Data.AvailableBalance
-	availableBalanceUsd := decimal.NewFromFloat(availableBalanceCny).Div(decimal.NewFromFloat(operation_setting.Price)).InexactFloat64()
+	// moonshot 报真人民币。按原口径除以充值售价 Price（≈本站单位的人民币面值，
+	// 1:1 站 Price=1 → 原样入库），仅补除零兜底——Price 可为 0，历史上会得 +Inf。
+	divisor := operation_setting.Price
+	if divisor <= 0 {
+		divisor = usdExchangeRateOrDefault()
+	}
+	availableBalanceUsd := decimal.NewFromFloat(availableBalanceCny).Div(decimal.NewFromFloat(divisor)).InexactFloat64()
 	channel.UpdateBalance(availableBalanceUsd)
 	return availableBalanceUsd, nil
 }
 
+// usdExchangeRateOrDefault 返回 CNY/USD 汇率，未配置(<=0)时退回默认 7.3。
+// 仅供真人民币供应商（moonshot）换算时的除零兜底链使用。
+func usdExchangeRateOrDefault() float64 {
+	rate := operation_setting.USDExchangeRate
+	if rate <= 0 {
+		return 7.3
+	}
+	return rate
+}
+
 // updateChannelSub2APIBalance 通过 sub2api 上游的 /v1/usage 端点查询余额。
-// 用渠道 Key 以 Bearer 鉴权，读取 remaining（USD）作为渠道余额；
+// 用渠道 Key 以 Bearer 鉴权，读取 remaining 作为渠道余额；
 // remaining 缺失时回退到 balance / quota.remaining。
+// 上游报的数字与本站单位同构（同为名义美元额度单位），原样入库不做币种换算
+// ——蓝图B 的探测式 CNY 归一评估后不适用本生态，已回退（见图鉴 §十一）。
 func updateChannelSub2APIBalance(channel *model.Channel) (float64, error) {
 	url := fmt.Sprintf("%s/v1/usage", channel.GetBaseURL())
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
@@ -408,6 +435,8 @@ func updateChannelSub2APIBalance(channel *model.Channel) (float64, error) {
 	if err = common.Unmarshal(body, &response); err != nil {
 		return 0, err
 	}
+	// 倍率自动同步搭同一响应推导（actual_cost/cost），零额外请求
+	maybeSyncSub2apiDerivedRatio(channel, &response)
 	switch {
 	case response.Remaining != nil:
 		channel.UpdateBalance(*response.Remaining)
@@ -423,7 +452,19 @@ func updateChannelSub2APIBalance(channel *model.Channel) (float64, error) {
 	}
 }
 
+// updateChannelBalance 更新渠道余额；成功后搭车自动同步成本倍率（开关
+// upstream_ratio_sync）。sub2api 渠道在余额响应里就地推导（见
+// maybeSyncSub2apiDerivedRatio），这里只处理 new-api 上游的 pricing 路径。
+// 手动单渠道与全量定时两条调用路径都经此收口。
 func updateChannelBalance(channel *model.Channel) (float64, error) {
+	balance, err := updateChannelBalanceInner(channel)
+	if err == nil && !channel.GetSetting().Sub2ApiBalanceQuery {
+		maybeSyncUpstreamGroupRatio(channel)
+	}
+	return balance, err
+}
+
+func updateChannelBalanceInner(channel *model.Channel) (float64, error) {
 	baseURL := constant.ChannelBaseURLs[channel.Type]
 	if channel.GetBaseURL() == "" {
 		channel.BaseURL = &baseURL
@@ -521,9 +562,163 @@ func UpdateChannelBalance(c *gin.Context) {
 	})
 }
 
-// GetChannelSub2APIGroupRates 只读拉取该渠道对应 sub2api 上游的分组成本倍率。
-// 用渠道 Setting 里配置的 admin key（x-api-key）调用 /api/v1/admin/groups/all，
-// 结果仅供后台展示，不落库、不参与计费。
+// upstreamPricingProbe new-api 上游公开 /api/pricing 响应里的分组倍率表。
+type upstreamPricingProbe struct {
+	Success    bool               `json:"success"`
+	GroupRatio map[string]float64 `json:"group_ratio"`
+}
+
+// fetchNewAPIGroupRates 从 new-api 上游的公开 /api/pricing 拉分组倍率
+// （pricing 模块公开时匿名可访问），映射成与 sub2api 分组同构的行供前端同一张表展示。
+func fetchNewAPIGroupRates(channel *model.Channel) ([]Sub2APIAdminGroup, error) {
+	url := fmt.Sprintf("%s/api/pricing", channel.GetBaseURL())
+	body, err := GetResponseBody("GET", url, channel, http.Header{})
+	if err != nil {
+		return nil, err
+	}
+	probe := upstreamPricingProbe{}
+	if err := common.Unmarshal(body, &probe); err != nil {
+		return nil, err
+	}
+	if len(probe.GroupRatio) == 0 {
+		return nil, errors.New("上游 /api/pricing 未返回分组倍率（可能未公开 pricing 模块）")
+	}
+	names := make([]string, 0, len(probe.GroupRatio))
+	for name := range probe.GroupRatio {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	groups := make([]Sub2APIAdminGroup, 0, len(names))
+	for i, name := range names {
+		groups = append(groups, Sub2APIAdminGroup{
+			ID:             int64(i + 1),
+			Name:           name,
+			Platform:       "new-api",
+			Status:         "active",
+			RateMultiplier: probe.GroupRatio[name],
+		})
+	}
+	return groups, nil
+}
+
+// fetchUpstreamGroupRates 拉取该渠道上游的倍率信息，全程只用渠道 Key
+// （我们只是上游中转站的客户，没有管理面权限）：
+//   - sub2api 上游（开了 sub2api 余额查询）：/v1/usage 推导本 Key 的有效倍率，单行返回；
+//   - new-api 上游：公开 /api/pricing 的分组倍率全表（匿名可访问）。
+func fetchUpstreamGroupRates(channel *model.Channel) ([]Sub2APIAdminGroup, error) {
+	if channel.GetSetting().Sub2ApiBalanceQuery {
+		url := fmt.Sprintf("%s/v1/usage", channel.GetBaseURL())
+		body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
+		if err != nil {
+			return nil, err
+		}
+		response := Sub2APIUsageResponse{}
+		if err = common.Unmarshal(body, &response); err != nil {
+			return nil, err
+		}
+		derived := deriveSub2apiEffectiveRatio(&response)
+		if derived == nil {
+			return nil, errors.New("该 Key 尚无用量数据，无法推导有效倍率（跑一笔请求后再试）")
+		}
+		return []Sub2APIAdminGroup{{
+			ID:             1,
+			Name:           "current-key",
+			Platform:       "sub2api",
+			Status:         "active",
+			RateMultiplier: *derived,
+		}}, nil
+	}
+	return fetchNewAPIGroupRates(channel)
+}
+
+// findUpstreamGroupRate 按组名在上游分组表里找倍率：先精确匹配，再不区分大小写。
+func findUpstreamGroupRate(groups []Sub2APIAdminGroup, name string) (float64, bool) {
+	for _, g := range groups {
+		if g.Name == name {
+			return g.RateMultiplier, true
+		}
+	}
+	for _, g := range groups {
+		if strings.EqualFold(g.Name, name) {
+			return g.RateMultiplier, true
+		}
+	}
+	return 0, false
+}
+
+// applyChannelRatioSync 成本倍率回写的公共出口：变化超过 0.0001 才写库
+// （防浮点噪声空更新），失败只记日志不反噬余额主流程。
+func applyChannelRatioSync(channel *model.Channel, ratio float64, source string) {
+	current := channel.GetChannelRatio()
+	if math.Abs(current-ratio) < 1e-4 {
+		return
+	}
+	if err := model.UpdateChannelRatio(channel.Id, ratio); err != nil {
+		common.SysLog(fmt.Sprintf("channel %d channel_ratio sync write failed: %s", channel.Id, err.Error()))
+		return
+	}
+	common.SysLog(fmt.Sprintf("channel %d channel_ratio synced from %s: %.4f -> %.4f",
+		channel.Id, source, current, ratio))
+}
+
+// deriveSub2apiEffectiveRatio 从 /v1/usage 的成本摘要推本 Key 的有效倍率
+// （actual_cost/cost，见 Sub2APIUsageCostBucket 注释）。优先当日口径——反映上游
+// 最新费率；无当日消费退累计口径；表价低于 1 分钱视为无数据不推导。
+// 四舍五入到 4 位小数，与 applyChannelRatioSync 的写入阈值配套防抖。
+func deriveSub2apiEffectiveRatio(response *Sub2APIUsageResponse) *float64 {
+	if response == nil || response.Usage == nil {
+		return nil
+	}
+	for _, bucket := range []*Sub2APIUsageCostBucket{response.Usage.Today, response.Usage.Total} {
+		if bucket == nil || bucket.Cost < 0.01 || bucket.ActualCost < 0 {
+			continue
+		}
+		ratio := math.Round(bucket.ActualCost/bucket.Cost*10000) / 10000
+		return &ratio
+	}
+	return nil
+}
+
+// maybeSyncSub2apiDerivedRatio sub2api 渠道的倍率自动同步：搭余额更新同一响应推导，
+// 零额外请求、无需分组名、无需 admin key。
+func maybeSyncSub2apiDerivedRatio(channel *model.Channel, response *Sub2APIUsageResponse) {
+	if !channel.GetSetting().UpstreamRatioSync {
+		return
+	}
+	derived := deriveSub2apiEffectiveRatio(response)
+	if derived == nil {
+		return
+	}
+	applyChannelRatioSync(channel, *derived, "sub2api usage (actual_cost/cost)")
+}
+
+// maybeSyncUpstreamGroupRatio new-api 上游的成本倍率自动同步：按配置的分组名
+// 拉公开 /api/pricing 的分组倍率回写。拉取/匹配失败只记日志。
+func maybeSyncUpstreamGroupRatio(channel *model.Channel) {
+	setting := channel.GetSetting()
+	if !setting.UpstreamRatioSync {
+		return
+	}
+	groupName := strings.TrimSpace(setting.UpstreamGroupName)
+	if groupName == "" {
+		common.SysLog(fmt.Sprintf("channel %d ratio sync enabled but upstream_group_name is empty (required for new-api upstreams)", channel.Id))
+		return
+	}
+	groups, err := fetchUpstreamGroupRates(channel)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("channel %d upstream group ratio sync failed: %s", channel.Id, err.Error()))
+		return
+	}
+	ratio, ok := findUpstreamGroupRate(groups, groupName)
+	if !ok {
+		common.SysLog(fmt.Sprintf("channel %d upstream group %q not found among %d groups", channel.Id, groupName, len(groups)))
+		return
+	}
+	applyChannelRatioSync(channel, ratio, fmt.Sprintf("upstream group %q", groupName))
+}
+
+// GetChannelSub2APIGroupRates 只读拉取该渠道上游的分组成本倍率，供管理员比对/应用
+// 为本渠道 channel_ratio（也可配置 upstream_group_name 走全自动同步）。
 func GetChannelSub2APIGroupRates(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -535,31 +730,18 @@ func GetChannelSub2APIGroupRates(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	adminKey := channel.GetSetting().Sub2ApiAdminKey
-	if adminKey == "" {
+	groups, err := fetchUpstreamGroupRates(channel)
+	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": "未配置 sub2api 上游 admin key",
+			"message": "拉取上游分组倍率失败：" + err.Error(),
 		})
-		return
-	}
-	url := fmt.Sprintf("%s/api/v1/admin/groups/all", channel.GetBaseURL())
-	headers := http.Header{}
-	headers.Add("x-api-key", adminKey)
-	body, err := GetResponseBody("GET", url, channel, headers)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	resp := Sub2APIAdminGroupsResponse{}
-	if err = common.Unmarshal(body, &resp); err != nil {
-		common.ApiError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    resp.Data,
+		"data":    groups,
 	})
 }
 

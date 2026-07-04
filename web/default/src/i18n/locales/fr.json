@@ -3092,8 +3092,6 @@
     "Pass specified request headers to upstream": "Transmettre les en-têtes de requête spécifiés en amont",
     "Query balance via sub2api upstream": "通过 sub2api 上游查询余额",
     "Sync balance from the sub2api /v1/usage endpoint using the channel key, instead of the OpenAI billing endpoint": "用渠道密钥调用 sub2api 上游的 /v1/usage 端点同步余额，而非 OpenAI 计费端点",
-    "sub2api upstream admin key": "sub2api 上游管理员密钥",
-    "Admin API key (x-api-key) for reading upstream group cost multipliers": "用于读取上游分组成本倍率的管理员 API Key（x-api-key）",
     "Read-only: fetch upstream group cost multipliers for display. Not used for billing. Save the channel before viewing.": "只读：拉取上游分组成本倍率用于展示，不参与计费。查看前请先保存渠道。",
     "View upstream group rates": "查看上游分组倍率",
     "Cost multiplier": "成本倍率",
@@ -5331,6 +5329,16 @@
     "Total Raw Cost": "Quota brut total",
     "Overall Ratio": "Ratio global",
     "Top Channels": "Top canaux",
-    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "Multiplicateur pour les statistiques coût/profit admin uniquement (coût = quota × ratio). N’affecte pas la facturation. Défaut 1, 0 autorisé."
+    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "Multiplicateur pour les statistiques coût/profit admin uniquement (coût = quota × ratio). N’affecte pas la facturation. Défaut 1, 0 autorisé.",
+    "Apply": "Appliquer",
+    "Upstream group name": "Nom du groupe upstream",
+    "e.g. default / vip — the group this channel key belongs to on the upstream": "ex. default / vip — le groupe auquel appartient la clé de ce canal",
+    "Ratio filled and group remembered for auto-sync. Save the channel to apply.": "Ratio renseigné et groupe mémorisé pour la synchro auto. Enregistrez le canal pour appliquer.",
+    "Cost & Upstream Sync": "Coût & synchro upstream",
+    "Auto-sync channel cost ratio": "Synchro auto du ratio de coût",
+    "On every balance update: sub2api upstreams derive the effective ratio from usage (actual cost / list cost, no admin key needed); new-api upstreams read the group ratio from public pricing by the group name below.": "À chaque mise à jour du solde : sub2api dérive le ratio effectif de l’usage (coût réel ÷ tarif, sans clé admin) ; new-api lit le ratio du groupe via le pricing public selon le nom ci-dessous.",
+    "Only needed for new-api upstreams: the group this channel key belongs to, used to pick the ratio from public pricing. sub2api upstreams can leave this empty.": "Requis uniquement pour new-api : le groupe de la clé de ce canal, pour choisir le ratio dans le pricing public. Laissez vide pour sub2api.",
+    "Current key (derived from usage)": "Clé actuelle (dérivée de l’usage)",
+    "Auto-sync is on: this value is maintained from the upstream on every balance update; manual edits are disabled. Turn off auto-sync below to set it manually.": "Synchro auto activée : cette valeur est maintenue depuis l’upstream à chaque mise à jour du solde ; l’édition manuelle est désactivée. Désactivez la synchro pour la définir manuellement."
   }
 }

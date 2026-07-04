@@ -3092,8 +3092,6 @@
     "Pass specified request headers to upstream": "把指定请求头透传到上游请求",
     "Query balance via sub2api upstream": "通过 sub2api 上游查询余额",
     "Sync balance from the sub2api /v1/usage endpoint using the channel key, instead of the OpenAI billing endpoint": "用渠道密钥调用 sub2api 上游的 /v1/usage 端点同步余额，而非 OpenAI 计费端点",
-    "sub2api upstream admin key": "sub2api 上游管理员密钥",
-    "Admin API key (x-api-key) for reading upstream group cost multipliers": "用于读取上游分组成本倍率的管理员 API Key（x-api-key）",
     "Read-only: fetch upstream group cost multipliers for display. Not used for billing. Save the channel before viewing.": "只读：拉取上游分组成本倍率用于展示，不参与计费。查看前请先保存渠道。",
     "View upstream group rates": "查看上游分组倍率",
     "Cost multiplier": "成本倍率",
@@ -5331,6 +5329,16 @@
     "Total Raw Cost": "原始总额度",
     "Overall Ratio": "整体倍率",
     "Top Channels": "热门渠道",
-    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "仅用于管理员成本/利润统计的成本倍率（成本 = 额度 × 倍率），不影响用户扣费。默认 1，允许 0。"
+    "Cost multiplier for admin cost/profit stats only (cost = quota × ratio). Does not affect user billing. Default 1, 0 allowed.": "仅用于管理员成本/利润统计的成本倍率（成本 = 额度 × 倍率），不影响用户扣费。默认 1，允许 0。",
+    "Apply": "应用",
+    "Upstream group name": "上游分组名",
+    "e.g. default / vip — the group this channel key belongs to on the upstream": "如 default / vip——本渠道 Key 在上游所属的分组",
+    "Ratio filled and group remembered for auto-sync. Save the channel to apply.": "已填入倍率并记住分组（自动同步）。保存渠道后生效。",
+    "Cost & Upstream Sync": "成本与上游同步",
+    "Auto-sync channel cost ratio": "自动同步成本倍率",
+    "On every balance update: sub2api upstreams derive the effective ratio from usage (actual cost / list cost, no admin key needed); new-api upstreams read the group ratio from public pricing by the group name below.": "每次余额更新时：sub2api 上游从用量推有效倍率（实扣÷表价，无需 admin key）；new-api 上游按下方分组名读取公开 pricing 的分组倍率。",
+    "Only needed for new-api upstreams: the group this channel key belongs to, used to pick the ratio from public pricing. sub2api upstreams can leave this empty.": "仅 new-api 上游需要：本渠道 Key 在上游所属的分组，用于从公开 pricing 里取对应倍率。sub2api 上游留空即可。",
+    "Current key (derived from usage)": "当前 Key（用量推导）",
+    "Auto-sync is on: this value is maintained from the upstream on every balance update; manual edits are disabled. Turn off auto-sync below to set it manually.": "自动同步已开启：该值随每次余额更新由上游维护，手动编辑已禁用。要手动设置请先关闭下方的自动同步。"
   }
 }

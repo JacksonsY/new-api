@@ -1,8 +1,6 @@
 {
   "Query balance via sub2api upstream": "通过 sub2api 上游查询余额",
   "Sync balance from the sub2api /v1/usage endpoint using the channel key, instead of the OpenAI billing endpoint": "用渠道密钥调用 sub2api 上游的 /v1/usage 端点同步余额，而非 OpenAI 计费端点",
-  "sub2api upstream admin key": "sub2api 上游管理员密钥",
-  "Admin API key (x-api-key) for reading upstream group cost multipliers": "用于读取上游分组成本倍率的管理员 API Key（x-api-key）",
   "Your downstream users and commission earnings": "Your downstream users and commission earnings",
   "Set users as agents and configure commission": "Set users as agents and configure commission",
   "Please enter a valid user ID": "Please enter a valid user ID",

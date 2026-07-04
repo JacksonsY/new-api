@@ -893,6 +893,15 @@ func (channel *Channel) GetChannelRatio() float64 {
 	return *channel.ChannelRatio
 }
 
+// UpdateChannelRatio 回写渠道成本倍率（上游分组倍率自动同步用）。仅更新单列；
+// 内存渠道缓存待 SyncChannelCache 周期刷新——倍率只影响统计口径，短暂滞后无碍。
+func UpdateChannelRatio(id int, ratio float64) error {
+	if ratio < 0 {
+		return errors.New("invalid channel ratio")
+	}
+	return DB.Model(&Channel{}).Where("id = ?", id).Update("channel_ratio", ratio).Error
+}
+
 // applyChannelRatio 按渠道计费倍率折算渠道维度用量；仅作用于渠道 used_quota 统计，不影响用户扣费。
 func applyChannelRatio(id int, quota int) int {
 	channel, err := CacheGetChannel(id)

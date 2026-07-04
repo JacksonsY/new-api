@@ -193,7 +193,8 @@ export const channelFormSchema = z
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
     sub2api_balance_query: z.boolean().optional(), // Query balance via sub2api upstream /v1/usage
-    sub2api_admin_key: z.string().optional(), // sub2api upstream admin key for reading group cost multipliers
+    upstream_ratio_sync: z.boolean().optional(), // 随余额更新自动同步成本倍率（sub2api 从用量推导 / new-api 按分组名取 pricing）
+    upstream_group_name: z.string().optional(), // 本渠道 Key 在上游所属分组，仅 new-api 上游的倍率同步需要
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
@@ -336,7 +337,8 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   system_prompt: '',
   system_prompt_override: false,
   sub2api_balance_query: false,
-  sub2api_admin_key: '',
+  upstream_ratio_sync: false,
+  upstream_group_name: '',
   // Type-specific settings
   is_enterprise_account: false,
   vertex_key_type: 'json',
@@ -376,7 +378,8 @@ export function transformChannelToFormDefaults(
     system_prompt: '',
     system_prompt_override: false,
     sub2api_balance_query: false,
-    sub2api_admin_key: '',
+    upstream_ratio_sync: false,
+    upstream_group_name: '',
   }
 
   if (channel.setting) {
@@ -390,7 +393,8 @@ export function transformChannelToFormDefaults(
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
         sub2api_balance_query: parsed.sub2api_balance_query || false,
-        sub2api_admin_key: parsed.sub2api_admin_key || '',
+        upstream_ratio_sync: parsed.upstream_ratio_sync || false,
+        upstream_group_name: parsed.upstream_group_name || '',
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -510,7 +514,8 @@ function buildSettingJSON(formData: ChannelFormValues): string {
     system_prompt: formData.system_prompt || '',
     system_prompt_override: formData.system_prompt_override || false,
     sub2api_balance_query: formData.sub2api_balance_query || false,
-    sub2api_admin_key: formData.sub2api_admin_key || '',
+    upstream_ratio_sync: formData.upstream_ratio_sync || false,
+    upstream_group_name: formData.upstream_group_name || '',
   }
   return JSON.stringify(settingObj)
 }

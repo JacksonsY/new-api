@@ -16,9 +16,14 @@ type ChannelSettings struct {
 	// Sub2ApiBalanceQuery 为 true 时，更新余额走 sub2api 上游的 /v1/usage 端点
 	// （用渠道 Key 以 Bearer 鉴权，读取 remaining 字段），而非 OpenAI 计费端点。
 	Sub2ApiBalanceQuery bool `json:"sub2api_balance_query,omitempty"`
-	// Sub2ApiAdminKey 是 sub2api 上游的管理员 API Key（x-api-key），用于只读拉取
-	// 上游分组成本倍率（/api/v1/admin/groups/all）。仅供展示，不参与计费。
-	Sub2ApiAdminKey string `json:"sub2api_admin_key,omitempty"`
+	// UpstreamRatioSync 随余额更新自动同步渠道成本倍率 channel_ratio：
+	//   - sub2api 上游：/v1/usage 的 actual_cost/cost 推有效倍率（需该 Key 有用量）；
+	//   - new-api 上游：按 UpstreamGroupName 取公开 /api/pricing 的分组倍率。
+	// 全程只用渠道 Key（我们只是上游中转站的客户，没有管理面权限）。
+	UpstreamRatioSync bool `json:"upstream_ratio_sync,omitempty"`
+	// UpstreamGroupName 本渠道 Key 在上游所属的分组名，仅 new-api 上游的倍率同步
+	// 需要（sub2api 从用量数据推导，无需分组名）。
+	UpstreamGroupName string `json:"upstream_group_name,omitempty"`
 }
 
 type VertexKeyType string
