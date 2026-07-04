@@ -5213,8 +5213,6 @@
     "Banner JSON": "JSON de bannière",
     "Markdown or HTML supported.": "Markdown ou HTML pris en charge.",
     "Banner JSON is invalid": "Le JSON de bannière est invalide",
-    "Contact Support": "Contacter le support",
-    "WeChat QR Code": "QR code WeChat",
     "Creating codes pre-deducts from your own API quota. Deleting an unused code refunds it.": "La création de codes prélève sur votre quota API ; supprimer un code inutilisé le rembourse.",
     "No redemption codes yet": "Aucun code pour le moment",
     "1 day": "1 jour",

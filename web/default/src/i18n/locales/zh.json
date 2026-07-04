@@ -5213,8 +5213,6 @@
     "Banner JSON": "Banner JSON",
     "Markdown or HTML supported.": "支持 Markdown 或 HTML。",
     "Banner JSON is invalid": "Banner JSON 格式不合法",
-    "Contact Support": "联系客服",
-    "WeChat QR Code": "微信二维码",
     "Creating codes pre-deducts from your own API quota. Deleting an unused code refunds it.": "创建兑换码会从你自己的 API 额度预扣;删除未使用的码会退回额度。",
     "No redemption codes yet": "还没有兑换码",
     "1 day": "1 天",

@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ContactFloat } from '@/components/contact-float'
 import { PremiumFooter } from '@/features/home/premium/components/premium-footer'
 import '@/features/home/premium/premium.css'
 import type { TopNavLink } from '../types'
@@ -76,7 +75,6 @@ export function PremiumPublicLayout(props: PremiumPublicLayoutProps) {
       )}
 
       {showFooter && <PremiumFooter />}
-      <ContactFloat />
     </div>
   )
 }
