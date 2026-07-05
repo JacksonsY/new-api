@@ -24,6 +24,22 @@ var httpClient = &http.Client{
 
 const maxResponseBytes = 1 << 20
 
+// NonJSONResponseError 表示平台返回了 HTTP 响应，但响应体不是 JSON（通常是 HTML 错误页，
+// 如 ThinkPHP 的「系统发生错误」）。它与传输层错误（DNS/连接/超时）本质不同：拿到它恰恰
+// 说明平台地址是**可达**的，问题多为接口地址或协议不匹配——最典型的是平台不支持 v2(RSA)
+// 新版 REST 接口（api/pay/*），此时应改用 v1(MD5)。
+type NonJSONResponseError struct {
+	Preview     string
+	ContentType string
+}
+
+func (e *NonJSONResponseError) Error() string {
+	if e.ContentType != "" {
+		return "epay: non-json response (content-type=" + e.ContentType + "): " + e.Preview
+	}
+	return "epay: non-json response: " + e.Preview
+}
+
 func doRequest(req *http.Request) (map[string]any, error) {
 	req.Header.Set("Accept", "*/*")
 	resp, err := httpClient.Do(req)
@@ -44,11 +60,11 @@ func doRequest(req *http.Request) (map[string]any, error) {
 	decoder.UseNumber()
 	var raw map[string]any
 	if err := decoder.Decode(&raw); err != nil {
-		preview := string(body)
+		preview := strings.TrimSpace(string(body))
 		if len(preview) > 200 {
 			preview = preview[:200]
 		}
-		return nil, fmt.Errorf("epay: non-json response: %s", preview)
+		return nil, &NonJSONResponseError{Preview: preview, ContentType: resp.Header.Get("Content-Type")}
 	}
 	return raw, nil
 }

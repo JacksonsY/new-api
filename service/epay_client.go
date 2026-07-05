@@ -67,3 +67,66 @@ func GetEpayClient() epay.Client {
 	}
 	return client
 }
+
+// ProbeEpayCapabilities 供「商户接口能力检测」使用。与支付运行时同样优先 RSA(v2)，
+// 但当 v2 接口不可用（典型：平台只有经典版接口、api/pay/* 返回 HTML 错误页）且配置了
+// MD5 时，**自动改用 v1(MD5) 再探一次**，并在结论里说明——让管理员一眼看清平台到底
+// 支持哪种协议、该保留哪套密钥。这是一次真实往返（查一个不存在的订单号），无资金副作用。
+func ProbeEpayCapabilities() *epay.CapabilityReport {
+	if operation_setting.PayAddress == "" || operation_setting.EpayId == "" {
+		return nil
+	}
+	hasRSA := operation_setting.EpayPlatformPublicKey != "" && operation_setting.EpayMerchantPrivateKey != ""
+	hasMD5 := operation_setting.EpayKey != ""
+	if !hasRSA && !hasMD5 {
+		return nil
+	}
+
+	if hasRSA {
+		v2, err := epay.NewClient(&epay.Config{
+			Version:            epay.VersionV2,
+			BaseURL:            operation_setting.PayAddress,
+			PID:                operation_setting.EpayId,
+			PlatformPublicKey:  operation_setting.EpayPlatformPublicKey,
+			MerchantPrivateKey: operation_setting.EpayMerchantPrivateKey,
+		})
+		if err != nil {
+			// RSA 密钥都解析不了：有 MD5 就直接测 MD5，否则回报 RSA 配置错误。
+			if hasMD5 {
+				return probeEpayV1WithNote("RSA 密钥无效（" + err.Error() + "），已改用 MD5(v1) 检测")
+			}
+			return &epay.CapabilityReport{Version: epay.VersionV2, Summary: "RSA 密钥无效：" + err.Error()}
+		}
+		report := v2.ProbeCapabilities()
+		if report.Reachable && report.CredentialsValid {
+			return report // v2 可用，直接采用
+		}
+		// v2 不可用，且有 MD5 兜底 → 再测 v1，用得上就改推 MD5。
+		if hasMD5 {
+			return probeEpayV1WithNote("v2(RSA) 接口不可用（" + report.Summary + "）；已自动改用 MD5(v1) 检测")
+		}
+		return report // 无 MD5 兜底：返回 v2 结论（其中已含「改用 MD5」的建议）
+	}
+
+	// 仅配置了 MD5。
+	return probeEpayV1WithNote("")
+}
+
+// probeEpayV1WithNote 用 MD5(v1) 凭证探测能力；note 非空时作为前缀补进结论，
+// 说明为何走到 v1（RSA 不可用而自动降级等）。
+func probeEpayV1WithNote(note string) *epay.CapabilityReport {
+	client, err := epay.NewClient(&epay.Config{
+		Version: epay.VersionV1,
+		BaseURL: operation_setting.PayAddress,
+		PID:     operation_setting.EpayId,
+		Key:     operation_setting.EpayKey,
+	})
+	if err != nil {
+		return &epay.CapabilityReport{Version: epay.VersionV1, Summary: "MD5 客户端初始化失败：" + err.Error()}
+	}
+	report := client.ProbeCapabilities()
+	if note != "" {
+		report.Summary = note + "。" + report.Summary
+	}
+	return report
+}

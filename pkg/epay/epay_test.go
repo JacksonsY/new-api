@@ -475,6 +475,57 @@ func TestV2ProbeCapabilitiesRejectsBadSignature(t *testing.T) {
 	assert.False(t, report.CredentialsValid, "响应验签失败必须判为凭证无效")
 }
 
+// 回归：平台对 v2 端点回 HTML 错误页（经典版易支付没有 api/pay/* 接口）时，
+// 必须判为「可达但接口不匹配」（reachable=true），而非误报「平台地址不可达」，
+// 并在结论里建议改用 MD5(v1)。这是本次修复的核心契约。
+func TestV2ProbeCapabilitiesHTMLResponseIsReachable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<!DOCTYPE html>\n<html><head><title>系统发生错误</title></head><body>error</body></html>"))
+	}))
+	defer server.Close()
+
+	client, _ := newV2TestSetup(t, server.URL)
+	report := client.ProbeCapabilities()
+	assert.True(t, report.Reachable, "拿到 HTML 响应说明平台可达，不能判为不可达")
+	assert.False(t, report.CredentialsValid, "接口返回非 JSON 时凭证无法确认，判为不可用")
+	assert.NotContains(t, report.Summary, "平台地址不可达", "HTML 响应不得再被描述为不可达")
+	assert.Contains(t, report.Summary, "非 JSON", "结论应说明是接口返回了非 JSON")
+}
+
+// 回归：v2 能力检测必须按官方 SDK 用 trade_no 查单（而非 out_trade_no），
+// 否则平台取到空 trade_no 会抛 HTML 异常页。锁死这个字段防再次迁移错。
+func TestV2ProbeCapabilitiesQueriesByTradeNo(t *testing.T) {
+	var gotTradeNo, gotOutTradeNo string
+	var platformKey *rsa.PrivateKey
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		gotTradeNo = r.PostFormValue("trade_no")
+		gotOutTradeNo = r.PostFormValue("out_trade_no")
+		// 回一个"订单不存在"的验签响应，模拟平台对不存在 trade_no 的正常应答
+		resp := map[string]string{
+			"code": "0", "msg": "查询成功", "status": "0",
+			"timestamp": strconv.FormatInt(time.Now().Unix(), 10),
+		}
+		signAsPlatform(t, platformKey, resp)
+		payload := make(map[string]any, len(resp))
+		for k, v := range resp {
+			payload[k] = v
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer server.Close()
+
+	client, key := newV2TestSetup(t, server.URL)
+	platformKey = key
+	report := client.ProbeCapabilities()
+	assert.Equal(t, probeOrderNo, gotTradeNo, "查单必须带 trade_no（与官方 SDK 一致）")
+	assert.Empty(t, gotOutTradeNo, "查单不应发 out_trade_no")
+	assert.True(t, report.Reachable)
+	assert.True(t, report.CredentialsValid, "验签通过应判为凭证有效")
+}
+
 // C1 安全回归：平台公钥全平台共享，他人商户的合法签名回调必须因 pid 不符被拒，
 // 否则攻击者可用自己商户号的合法回调冒充本商户骗取入账（资损）。
 func TestVerifyNotifyRejectsMismatchedPID(t *testing.T) {

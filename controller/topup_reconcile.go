@@ -61,15 +61,14 @@ func EpayReconcile(c *gin.Context) {
 // EpayDetectCapabilities 检测当前 Epay 配置的商户是否具备各接口能力
 // （无副作用探测：查一个不存在的订单号，据往返结果判断可达性/凭证/端点）。
 func EpayDetectCapabilities(c *gin.Context) {
-	client := service.GetEpayClient()
-	if client == nil {
+	report := service.ProbeEpayCapabilities()
+	if report == nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": "Epay 未配置或配置不完整（请先填写平台地址、商户 ID 及对应签名方式的密钥）",
+			"message": "Epay 未配置或配置不完整（请先填写平台地址、商户 ID 及 RSA 或 MD5 密钥）",
 		})
 		return
 	}
-	report := client.ProbeCapabilities()
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

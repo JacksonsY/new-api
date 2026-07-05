@@ -1,10 +1,18 @@
 package epay
 
 import (
+	"errors"
 	"net/url"
 	"strconv"
 	"strings"
 )
+
+// isNonJSONResponse 判断错误是否为「平台返回了非 JSON（HTML 错误页）」——
+// 这类错误代表平台可达但接口/协议不匹配，与传输层不可达要区别对待。
+func isNonJSONResponse(err error) bool {
+	var nonJSON *NonJSONResponseError
+	return errors.As(err, &nonJSON)
+}
 
 // 能力检测的设计：绝不产生真实订单/资金副作用。用"查一个几乎不可能存在的随机商户单号"
 // 做一次真实往返——平台会回"订单不存在"这类业务错误,但这恰好证明了：
@@ -49,7 +57,8 @@ func buildCapabilityReport(version string, reachable, credentialsValid bool, cre
 	case !reachable:
 		report.Summary = "平台地址不可达：" + credentialDetail
 	case !credentialsValid:
-		report.Summary = "平台可达，但凭证/签名校验未通过：" + credentialDetail
+		// 可达但检测未通过，具体原因（凭证错误 / 接口协议不匹配）由 credentialDetail 说明
+		report.Summary = "平台可达，但接口检测未通过：" + credentialDetail
 	default:
 		report.Summary = "检测通过：平台可达、凭证有效，各接口预期可用"
 	}
@@ -66,6 +75,10 @@ func (c *clientV1) ProbeCapabilities() *CapabilityReport {
 	query.Set("out_trade_no", probeOrderNo)
 	raw, err := httpGetJSON(joinURL(c.baseURL, "api.php") + "?" + query.Encode())
 	if err != nil {
+		if isNonJSONResponse(err) {
+			return buildCapabilityReport(VersionV1, true, false,
+				"接口返回非 JSON（HTML 错误页），请核对平台地址是否正确（v1 查单端点为 api.php）")
+		}
 		return buildCapabilityReport(VersionV1, false, false, err.Error())
 	}
 	// 拿到 JSON 即可达。判断 key 是否被接受：平台对 key 错误通常回明确的签名/权限错误文案。
@@ -84,9 +97,12 @@ func (c *clientV1) ProbeCapabilities() *CapabilityReport {
 // ProbeCapabilities v2：查一个随机不存在订单号。execute 会对成功响应验签；
 // 订单不存在时平台回非零 code（execute 报错但那是业务错误,不代表凭证无效）。
 // 因此用 executeProbe 拿到"验签是否通过"的确切信号来判断凭证有效性。
+//
+// 查单字段与官方 SDK 对齐用 trade_no（平台交易号）：平台的 api/pay/query 以 trade_no
+// 取值，只发 out_trade_no 会让平台取到空 trade_no 抛异常回 HTML 错误页（曾误判为不可达）。
 func (c *clientV2) ProbeCapabilities() *CapabilityReport {
 	reachable, verified, detail := c.executeProbe("api/pay/query", map[string]string{
-		"out_trade_no": probeOrderNo,
+		"trade_no": probeOrderNo,
 	})
 	return buildCapabilityReport(VersionV2, reachable, verified, detail)
 }
@@ -104,6 +120,12 @@ func (c *clientV2) executeProbe(subPath string, params map[string]string) (reach
 	}
 	raw, err := httpPostFormJSON(joinURL(c.baseURL, subPath), form)
 	if err != nil {
+		if isNonJSONResponse(err) {
+			// 平台可达（拿到了 HTTP 响应），但返回的是 HTML/非 JSON。把 reachable 置 true，
+			// 避免误报「平台地址不可达」；具体多为平台地址填错、或平台未开启 v2(RSA) 新版接口。
+			return true, false,
+				"接口返回非 JSON（HTML 错误页）：平台可达但接口报错，请核对平台地址是否正确、以及平台是否已开启 v2(RSA) 新版接口（api/pay/*）"
+		}
 		return false, false, err.Error()
 	}
 	// 有响应即可达。若带 sign 字段则验签：通过=凭证有效；不通过=平台公钥或签名配置错。
