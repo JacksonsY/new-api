@@ -90,6 +90,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
+			// 渠道开了错误脱敏时，把上游原始报错换成通用文案（原文已进上面的服务端日志）
+			service.MaskUpstreamErrorForClient(c, newAPIError)
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
 			if relayFormat == types.RelayFormatOpenAIRealtime {
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -377,8 +379,10 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
 	if service.ShouldDisableChannel(err) && channelError.AutoBan {
+		// 在 goroutine 外取值：err 是共享指针，响应出口的脱敏可能在 goroutine 运行前改写它
+		disableReason := err.ErrorWithStatusCode()
 		gopool.Go(func() {
-			service.DisableChannel(channelError, err.ErrorWithStatusCode())
+			service.DisableChannel(channelError, disableReason)
 		})
 	}
 
@@ -408,13 +412,20 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
 		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
+		// 错误日志的 content 用户可见：渠道开了脱敏时 content 存通用文案（与客户实际收到一致），
+		// 上游原文放 admin_info（formatUserLogs 会对普通用户剥掉），管理员排障不受影响
+		errorLogContent := err.MaskSensitiveErrorWithStatusCode()
+		if err.GetErrorType() != types.ErrorTypeNewAPIError && service.ShouldMaskUpstreamError(c) {
+			adminInfo["upstream_error"] = errorLogContent
+			errorLogContent = fmt.Sprintf("status_code=%d, %s", err.StatusCode, service.UpstreamErrorMaskedMessage)
+		}
 		other["admin_info"] = adminInfo
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, errorLogContent, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 
 }
@@ -452,13 +463,18 @@ func RelayMidjourney(c *gin.Context) {
 			mjErr.Result = "当前分组负载已饱和，请稍后再试，或升级账户以提升服务质量。"
 			statusCode = http.StatusTooManyRequests
 		}
+		description := fmt.Sprintf("%s %s", mjErr.Description, mjErr.Result)
+		channelId := c.GetInt("channel_id")
+		logger.LogError(c, fmt.Sprintf("relay error (channel #%d, status code %d): %s", channelId, statusCode, description))
+		// 渠道开了错误脱敏时对下游隐藏 MJ 上游报错细节（原文已进上面的服务端日志）
+		if service.ShouldMaskUpstreamError(c) {
+			description = service.UpstreamErrorMaskedMessage
+		}
 		c.JSON(statusCode, gin.H{
-			"description": fmt.Sprintf("%s %s", mjErr.Description, mjErr.Result),
+			"description": description,
 			"type":        "upstream_error",
 			"code":        mjErr.Code,
 		})
-		channelId := c.GetInt("channel_id")
-		logger.LogError(c, fmt.Sprintf("relay error (channel #%d, status code %d): %s", channelId, statusCode, fmt.Sprintf("%s %s", mjErr.Description, mjErr.Result)))
 	}
 }
 
@@ -627,6 +643,12 @@ func RelayTask(c *gin.Context) {
 func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
+	}
+	// 渠道开了错误脱敏时，上游来源的 task 错误对下游换通用文案（本地错误保留）
+	if !taskErr.LocalError && service.ShouldMaskUpstreamError(c) {
+		logger.LogError(c, fmt.Sprintf("task upstream error masked for client: %s", common.LocalLogPreview(taskErr.Message)))
+		taskErr.Message = service.UpstreamErrorMaskedMessage
+		taskErr.Data = nil
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
 }

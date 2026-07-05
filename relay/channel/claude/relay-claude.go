@@ -833,8 +833,13 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 }
 
 func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) {
+	// 上游漏报 input_tokens（常见于订阅转 API 类中转），用请求期预估值兜底，防漏计费
 	if claudeInfo.Usage.PromptTokens == 0 {
-		//上游出错
+		if estimate := info.GetEstimatePromptTokens(); estimate > 0 {
+			common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
+			claudeInfo.Usage.PromptTokens = estimate
+			claudeInfo.Usage.TotalTokens = claudeInfo.Usage.PromptTokens + claudeInfo.Usage.CompletionTokens
+		}
 	}
 	if claudeInfo.Usage.CompletionTokens == 0 || !claudeInfo.Done {
 		if common.DebugEnabled {
@@ -915,6 +920,31 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		claudeInfo.Usage.PromptTokensDetails.CachedCreationTokens = claudeResponse.Usage.CacheCreationInputTokens
 		claudeInfo.Usage.ClaudeCacheCreation5mTokens = claudeResponse.Usage.GetCacheCreation5mTokens()
 		claudeInfo.Usage.ClaudeCacheCreation1hTokens = claudeResponse.Usage.GetCacheCreation1hTokens()
+	}
+	// 上游漏报 usage（整体缺失或 input_tokens=0，常见于订阅转 API 类中转）时本地估算兜底，防漏计费
+	usagePatched := false
+	if claudeInfo.Usage.PromptTokens == 0 {
+		if estimate := info.GetEstimatePromptTokens(); estimate > 0 {
+			claudeInfo.Usage.PromptTokens = estimate
+			usagePatched = true
+		}
+	}
+	if claudeInfo.Usage.CompletionTokens == 0 {
+		var respText strings.Builder
+		for _, block := range claudeResponse.Content {
+			respText.WriteString(block.GetText())
+			if block.Thinking != nil {
+				respText.WriteString(*block.Thinking)
+			}
+		}
+		if respText.Len() > 0 {
+			claudeInfo.Usage.CompletionTokens = service.EstimateTokenByModel(info.UpstreamModelName, respText.String())
+			usagePatched = true
+		}
+	}
+	if usagePatched {
+		common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
+		claudeInfo.Usage.TotalTokens = claudeInfo.Usage.PromptTokens + claudeInfo.Usage.CompletionTokens
 	}
 	var responseData []byte
 	switch info.RelayFormat {

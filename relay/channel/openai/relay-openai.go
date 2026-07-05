@@ -179,6 +179,15 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		usage.CompletionTokens += toolCount * 7
 	}
 
+	// 上游报了 usage 但 prompt_tokens=0（常见于订阅转 API 类中转漏报），用请求期预估值兜底，防漏计费
+	if usage.PromptTokens == 0 {
+		if estimate := info.GetEstimatePromptTokens(); estimate > 0 {
+			common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
+			usage.PromptTokens = estimate
+			usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+		}
+	}
+
 	applyUsagePostProcessing(info, usage, common.StringToByteSlice(lastStreamData))
 
 	HandleFinalResponse(c, info, lastStreamData, responseId, createAt, model, systemFingerprint, usage, containStreamUsage)

@@ -177,6 +177,29 @@ func (e *NewAPIError) SetMessage(message string) {
 	e.Err = errors.New(message)
 }
 
+// MaskClientMessage 把回给下游客户的错误正文整体替换为给定文案。
+// 序列化路径（ToOpenAIError/ToClaudeError）对上游包裹错误直接使用 RelayError，
+// 所以必须同时覆盖 Err 与 RelayError 的 Message，仅保留无泄漏风险的 Type/Code/Param。
+// 调用方须先把原文记入服务端日志。
+func (e *NewAPIError) MaskClientMessage(message string) {
+	if e == nil {
+		return
+	}
+	e.Err = errors.New(message)
+	switch relayErr := e.RelayError.(type) {
+	case OpenAIError:
+		relayErr.Message = message
+		e.RelayError = relayErr
+	case ClaudeError:
+		relayErr.Message = message
+		e.RelayError = relayErr
+	}
+	if len(e.Metadata) > 0 {
+		// OpenRouter 等透传的 metadata 可能含上游原始细节，一并丢弃
+		e.Metadata = nil
+	}
+}
+
 func (e *NewAPIError) ToOpenAIError() OpenAIError {
 	var result OpenAIError
 	switch e.errorType {

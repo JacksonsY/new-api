@@ -138,7 +138,7 @@ func writeOpenaiImageStreamChunk(c *gin.Context, data []byte) {
 	if eventName := strings.TrimSpace(payload.Type); eventName != "" {
 		c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", eventName)})
 	}
-	c.Render(-1, common.CustomEvent{Data: "data: " + string(data)})
+	c.Render(-1, common.CustomEvent{Data: "data: " + string(common.MaskResponseModelName(c, data))})
 	_ = helper.FlushWriter(c)
 }
 

@@ -46,6 +46,9 @@ func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
 		return
 	}
 
+	// 模型映射生效时把上游真实模型名改回客户请求名（须在计算 Content-Length 前完成）
+	data = common.MaskResponseModelName(c, data)
+
 	body := io.NopCloser(bytes.NewBuffer(data))
 
 	// We shouldn't set the header before we parse the response body, because the parse part may fail.

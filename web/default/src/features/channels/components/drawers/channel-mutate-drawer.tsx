@@ -4054,6 +4054,31 @@ export function ChannelMutateDrawer({
 
                               <FormField
                                 control={form.control}
+                                name='hide_upstream_errors'
+                                render={({ field }) => (
+                                  <FormItem className='flex items-center justify-between px-4 py-3'>
+                                    <div className='space-y-0.5'>
+                                      <FormLabel>
+                                        {t('Hide Upstream Errors')}
+                                      </FormLabel>
+                                      <FormDescription>
+                                        {t(
+                                          'Replace raw upstream error messages with a generic message for clients, hiding upstream station names, URLs and quota hints. Local errors (e.g. insufficient balance) stay intact; originals remain in server logs and error-log admin info.'
+                                        )}
+                                      </FormDescription>
+                                    </div>
+                                    <FormControl>
+                                      <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={form.control}
                                 name='disable_task_polling_sleep'
                                 render={({ field }) => (
                                   <FormItem className='flex items-center justify-between px-4 py-3'>

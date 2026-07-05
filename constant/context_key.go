@@ -37,6 +37,9 @@ const (
 	ContextKeyChannelIsMultiKey        ContextKey = "channel_is_multi_key"
 	ContextKeyChannelMultiKeyIndex     ContextKey = "channel_multi_key_index"
 	ContextKeyChannelKey               ContextKey = "channel_key"
+	// ContextKeyClientFacingModelName 模型映射生效时的客户原始请求模型名；
+	// 响应写出层据此把上游真实模型名改写回去（防供应链泄漏），空串表示无需改写
+	ContextKeyClientFacingModelName ContextKey = "client_facing_model_name"
 
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"

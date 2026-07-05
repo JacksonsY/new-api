@@ -195,6 +195,7 @@ export const channelFormSchema = z
     sub2api_balance_query: z.boolean().optional(), // Query balance via sub2api upstream /v1/usage
     upstream_ratio_sync: z.boolean().optional(), // 随余额更新自动同步成本倍率（sub2api 从用量推导 / new-api 按分组名取 pricing）
     upstream_group_name: z.string().optional(), // 本渠道 Key 在上游所属分组，仅 new-api 上游的倍率同步需要
+    hide_upstream_errors: z.boolean().optional(), // 对下游隐藏上游原始报错（供应链保密）
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
@@ -337,6 +338,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   system_prompt: '',
   system_prompt_override: false,
   sub2api_balance_query: false,
+  hide_upstream_errors: false,
   upstream_ratio_sync: false,
   upstream_group_name: '',
   // Type-specific settings
@@ -378,6 +380,7 @@ export function transformChannelToFormDefaults(
     system_prompt: '',
     system_prompt_override: false,
     sub2api_balance_query: false,
+    hide_upstream_errors: false,
     upstream_ratio_sync: false,
     upstream_group_name: '',
   }
@@ -393,6 +396,7 @@ export function transformChannelToFormDefaults(
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
         sub2api_balance_query: parsed.sub2api_balance_query || false,
+        hide_upstream_errors: parsed.hide_upstream_errors || false,
         upstream_ratio_sync: parsed.upstream_ratio_sync || false,
         upstream_group_name: parsed.upstream_group_name || '',
       }
@@ -514,6 +518,7 @@ function buildSettingJSON(formData: ChannelFormValues): string {
     system_prompt: formData.system_prompt || '',
     system_prompt_override: formData.system_prompt_override || false,
     sub2api_balance_query: formData.sub2api_balance_query || false,
+    hide_upstream_errors: formData.hide_upstream_errors || false,
     upstream_ratio_sync: formData.upstream_ratio_sync || false,
     upstream_group_name: formData.upstream_group_name || '',
   }
