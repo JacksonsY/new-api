@@ -128,6 +128,9 @@ func main() {
 	// jzlh-agent 反欺诈 IP 快表每日过期清理
 	service.StartIPRecordCleanupTask()
 
+	// jzlh 蓝图D：易支付主动对账，兜住回调丢失的漏单（自动扫近 10 分钟，更早的走管理端手动对账）
+	service.StartEpayReconcileTask()
+
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
 	service.StartSystemInstanceReporter()

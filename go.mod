@@ -75,6 +75,7 @@ require (
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/paulmach/orb v0.11.1 // indirect
+	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
@@ -82,7 +83,10 @@ require (
 	go.opentelemetry.io/otel/trace v1.34.0 // indirect
 )
 
-require github.com/Azure/go-ntlmssp v0.1.1
+require (
+	github.com/Azure/go-ntlmssp v0.1.1
+	github.com/KimMachineGun/automemlimit v0.7.5
+)
 
 require (
 	github.com/DmitriyVTitov/size v1.5.0 // indirect
