@@ -321,6 +321,10 @@ func migrateDB() error {
 			return err
 		}
 	}
+	// 二开：回填现存渠道未配置的 hide_upstream_errors=true（默认脱敏）；失败非致命，不阻塞启动
+	if err := migrateHideUpstreamErrorsDefault(); err != nil {
+		common.SysLog(fmt.Sprintf("hide_upstream_errors backfill failed (non-fatal): %v", err))
+	}
 	return nil
 }
 
@@ -632,6 +636,38 @@ func migrateTokenModelLimitsToText() error {
 			return fmt.Errorf("failed to migrate %s.%s to text: %w", tableName, columnName, err)
 		}
 		common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to text", tableName, columnName))
+	}
+	return nil
+}
+
+// migrateHideUpstreamErrorsDefault 一次性回填：把现存渠道中未显式配置 hide_upstream_errors 的
+// 写成 true（默认对客户脱敏上游报错）。用 LIKE 过滤跳过已含该字段的渠道，天然幂等；三库通用。
+func migrateHideUpstreamErrorsDefault() error {
+	if !DB.Migrator().HasTable("channels") {
+		return nil
+	}
+	var channels []*Channel
+	if err := DB.Where("setting IS NULL OR setting = '' OR setting NOT LIKE ?", "%hide_upstream_errors%").
+		Find(&channels).Error; err != nil {
+		return err
+	}
+	updated := 0
+	for _, channel := range channels {
+		setting := channel.GetSetting()
+		if setting.HideUpstreamErrors != nil {
+			continue
+		}
+		enabled := true
+		setting.HideUpstreamErrors = &enabled
+		channel.SetSetting(setting)
+		if err := DB.Model(channel).Update("setting", channel.Setting).Error; err != nil {
+			common.SysLog(fmt.Sprintf("backfill hide_upstream_errors failed: channel_id=%d, err=%v", channel.Id, err))
+			continue
+		}
+		updated++
+	}
+	if updated > 0 {
+		common.SysLog(fmt.Sprintf("migrated hide_upstream_errors=true on %d channel(s)", updated))
 	}
 	return nil
 }
