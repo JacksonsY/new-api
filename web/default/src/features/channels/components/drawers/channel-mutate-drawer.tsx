@@ -4281,30 +4281,32 @@ export function ChannelMutateDrawer({
                                 )}
                               />
 
-                              <FormField
-                                control={form.control}
-                                name='upstream_group_name'
-                                render={({ field }) => (
-                                  <FormItem className='px-4 py-3'>
-                                    <FormLabel>
-                                      {t('Upstream group name')}
-                                    </FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        placeholder={t(
-                                          'e.g. default / vip — the group this channel key belongs to on the upstream'
+                              {currentUpstreamRatioSync && (
+                                <FormField
+                                  control={form.control}
+                                  name='upstream_group_name'
+                                  render={({ field }) => (
+                                    <FormItem className='px-4 py-3'>
+                                      <FormLabel>
+                                        {t('Upstream group name')}
+                                      </FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          placeholder={t(
+                                            'e.g. default / vip — the group this channel key belongs to on the upstream'
+                                          )}
+                                          {...field}
+                                        />
+                                      </FormControl>
+                                      <FormDescription>
+                                        {t(
+                                          'Only needed for new-api upstreams: the group this channel key belongs to, used to pick the ratio from public pricing. sub2api upstreams can leave this empty.'
                                         )}
-                                        {...field}
-                                      />
-                                    </FormControl>
-                                    <FormDescription>
-                                      {t(
-                                        'Only needed for new-api upstreams: the group this channel key belongs to, used to pick the ratio from public pricing. sub2api upstreams can leave this empty.'
-                                      )}
-                                    </FormDescription>
-                                  </FormItem>
-                                )}
-                              />
+                                      </FormDescription>
+                                    </FormItem>
+                                  )}
+                                />
+                              )}
 
                               {isEditing && (
                                 <div className='space-y-2 px-4 py-3'>
