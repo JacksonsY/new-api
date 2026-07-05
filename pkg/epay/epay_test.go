@@ -19,8 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// v1 签名语义是现网支付的命门：待签名串的排序/过滤/拼接必须与 PHP SDK 和
-// 被替换的 go-epay 完全一致，用字面量钉死，防止任何重构悄悄改变行为。
+// v1 签名语义是现网支付的命门：待签名串的排序/过滤/拼接必须与官方 SDK
+// 和被替换的旧客户端完全一致，用字面量钉死，防止任何重构悄悄改变行为。
 func TestV1SignContentMatchesProtocol(t *testing.T) {
 	params := map[string]string{
 		"pid":          "1000",
@@ -146,7 +146,7 @@ func TestV1CreateOrderReturnsPaymentPayload(t *testing.T) {
 		require.Equal(t, "1.2.3.4", r.PostForm.Get("clientip"))
 		require.NotEmpty(t, r.PostForm.Get("sign"))
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":1,"msg":"","trade_no":"P123","payurl":"https://pay.example.com/pay/P123","qrcode":"weixin://wxpay/bizpayurl?pr=abc","urlscheme":""}`))
+		_, _ = w.Write([]byte(`{"code":1,"msg":"","trade_no":"P123","payurl":"https://pay.example.com/pay/P123","qrcode":"qrpay://example/abc","urlscheme":""}`))
 	}))
 	defer server.Close()
 
@@ -161,7 +161,7 @@ func TestV1CreateOrderReturnsPaymentPayload(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "P123", result.TradeNo)
 	assert.Equal(t, "https://pay.example.com/pay/P123", result.PayURL)
-	assert.Equal(t, "weixin://wxpay/bizpayurl?pr=abc", result.QRCode)
+	assert.Equal(t, "qrpay://example/abc", result.QRCode)
 }
 
 func TestV1CreateOrderSurfacesPlatformError(t *testing.T) {
@@ -295,17 +295,21 @@ func TestV2QueryOrderRejectsBadResponseSignature(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestV2CreateOrderVerifiesResponseAndReturnsPayload(t *testing.T) {
+// v2 create 必须带 method（默认 web），且响应按平台实测格式 pay_type+pay_info 解析，
+// pay_type=qrcode 归一到 QRCode。这是本轮扫码修复的核心契约。
+func TestV2CreateOrderSendsMethodAndParsesQRCode(t *testing.T) {
 	var platformKey *rsa.PrivateKey
+	var gotMethod string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, r.ParseForm())
 		require.Equal(t, "1000", r.PostForm.Get("pid"))
 		require.Equal(t, "5.6.7.8", r.PostForm.Get("clientip"))
 		require.NotEmpty(t, r.PostForm.Get("sign"))
+		gotMethod = r.PostForm.Get("method")
 
 		resp := map[string]string{
 			"code": "0", "msg": "ok", "trade_no": "P999",
-			"payurl": "https://pay.example.com/v2/P999", "qrcode": "alipays://xxx",
+			"pay_type": "qrcode", "pay_info": "qrpay://example/04IPMKM",
 			"timestamp": strconv.FormatInt(time.Now().Unix(), 10),
 		}
 		signAsPlatform(t, platformKey, resp)
@@ -321,15 +325,133 @@ func TestV2CreateOrderVerifiesResponseAndReturnsPayload(t *testing.T) {
 	client, key := newV2TestSetup(t, server.URL)
 	platformKey = key
 	result, err := client.CreateOrder(&PurchaseArgs{
-		Type: "alipay", ServiceTradeNo: "20240001", Name: "TUC", Money: "1.00", ClientIP: "5.6.7.8",
+		Type: "wxpay", ServiceTradeNo: "20240001", Name: "TUC", Money: "1.00", ClientIP: "5.6.7.8",
 	})
 	require.NoError(t, err)
+	assert.Equal(t, "web", gotMethod, "method 未传时必须默认 web，否则平台拒单")
 	assert.Equal(t, "P999", result.TradeNo)
-	assert.Equal(t, "https://pay.example.com/v2/P999", result.PayURL)
-	assert.Equal(t, "alipays://xxx", result.QRCode)
+	assert.Equal(t, "qrcode", result.PayType)
+	assert.Equal(t, "qrpay://example/04IPMKM", result.PayInfo)
+	assert.Equal(t, "qrpay://example/04IPMKM", result.QRCode, "pay_type=qrcode 应归一到 QRCode")
+	assert.Empty(t, result.PayURL)
 }
 
-// 回归：v2 响应含嵌套字段（如 data 是对象）时，验签必须跳过嵌套字段（对齐 PHP is_array），
+// pay_type=jump 时 pay_info 归一到 PayURL；且 method 可被显式覆盖。
+func TestV2CreateOrderParsesJumpAndHonorsMethod(t *testing.T) {
+	var platformKey *rsa.PrivateKey
+	var gotMethod string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		gotMethod = r.PostForm.Get("method")
+		resp := map[string]string{
+			"code": "0", "trade_no": "P1000",
+			"pay_type": "jump", "pay_info": "https://pay.example.com/cashier/P1000",
+			"timestamp": strconv.FormatInt(time.Now().Unix(), 10),
+		}
+		signAsPlatform(t, platformKey, resp)
+		payload := make(map[string]any, len(resp))
+		for k, v := range resp {
+			payload[k] = v
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer server.Close()
+
+	client, key := newV2TestSetup(t, server.URL)
+	platformKey = key
+	result, err := client.CreateOrder(&PurchaseArgs{
+		Type: "alipay", ServiceTradeNo: "20240002", Name: "TUC", Money: "1.00", Method: "jump",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "jump", gotMethod)
+	assert.Equal(t, "https://pay.example.com/cashier/P1000", result.PayURL, "pay_type=jump 应归一到 PayURL")
+	assert.Empty(t, result.QRCode)
+}
+
+// v2 退款支持仅按 out_trade_no（对账退款用），且 out_refund_no 选填、不传不出现在请求里。
+func TestV2RefundByOutTradeNoOmitsRefundNo(t *testing.T) {
+	var platformKey *rsa.PrivateKey
+	var gotOutTradeNo, gotTradeNo, gotOutRefundNo string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		gotOutTradeNo = r.PostForm.Get("out_trade_no")
+		gotTradeNo = r.PostForm.Get("trade_no")
+		gotOutRefundNo = r.PostForm.Get("out_refund_no")
+		resp := map[string]string{
+			"code": "0", "msg": "退款成功", "refund_no": "R123", "trade_no": "P999",
+			"money": "1.00", "reducemoney": "1.00",
+			"timestamp": strconv.FormatInt(time.Now().Unix(), 10),
+		}
+		signAsPlatform(t, platformKey, resp)
+		payload := make(map[string]any, len(resp))
+		for k, v := range resp {
+			payload[k] = v
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer server.Close()
+
+	client, key := newV2TestSetup(t, server.URL)
+	platformKey = key
+	result, err := client.Refund(&RefundArgs{OutTradeNo: "20240001", Money: "1.00"})
+	require.NoError(t, err)
+	assert.Equal(t, "20240001", gotOutTradeNo, "应支持仅按 out_trade_no 退款")
+	assert.Empty(t, gotTradeNo)
+	assert.Empty(t, gotOutRefundNo, "out_refund_no 未传时不应出现在请求里")
+	assert.Equal(t, "R123", result.RefundNo)
+	assert.Equal(t, "1.00", result.ReduceMoney)
+}
+
+// 代表性覆盖：新增的 v2-only 端点（余额）同样走 execute（请求签名+响应验签+解析）。
+func TestV2BalanceParsesResult(t *testing.T) {
+	var platformKey *rsa.PrivateKey
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		require.NotEmpty(t, r.PostForm.Get("sign"))
+		resp := map[string]string{
+			"code": "0", "available_money": "50.00", "transfer_rate": "3",
+			"timestamp": strconv.FormatInt(time.Now().Unix(), 10),
+		}
+		signAsPlatform(t, platformKey, resp)
+		payload := make(map[string]any, len(resp))
+		for k, v := range resp {
+			payload[k] = v
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer server.Close()
+
+	client, key := newV2TestSetup(t, server.URL)
+	platformKey = key
+	result, err := client.Balance()
+	require.NoError(t, err)
+	assert.Equal(t, "50.00", result.AvailableMoney)
+	assert.Equal(t, "3", result.TransferRate)
+}
+
+// v1(MD5) 协议下，v2 专有能力必须返回 errUnsupportedInV1（而非 panic 或假成功）。
+func TestV1AdvancedCapabilitiesUnsupported(t *testing.T) {
+	client := newV1TestClient(t, "https://pay.example.com")
+
+	_, err := client.RefundQuery("R1", "")
+	assert.ErrorIs(t, err, errUnsupportedInV1)
+	assert.ErrorIs(t, client.CloseOrder("O1", ""), errUnsupportedInV1)
+	_, err = client.MerchantInfoQuery()
+	assert.ErrorIs(t, err, errUnsupportedInV1)
+	_, err = client.ListOrders(0, 50, -1)
+	assert.ErrorIs(t, err, errUnsupportedInV1)
+	_, err = client.Transfer(&TransferArgs{Type: "alipay", Account: "a@a.com", Money: "1.00"})
+	assert.ErrorIs(t, err, errUnsupportedInV1)
+	_, err = client.TransferQuery("B1", "")
+	assert.ErrorIs(t, err, errUnsupportedInV1)
+	_, err = client.Balance()
+	assert.ErrorIs(t, err, errUnsupportedInV1)
+}
+
+// 回归：v2 响应含嵌套字段（如 data 是对象）时，验签必须跳过嵌套字段（对齐官方 SDK 的数组跳过），
 // 否则把嵌套结构转成字符串参与拼串会导致验签误判失败。
 func TestV2ResponseSignatureIgnoresNestedFields(t *testing.T) {
 	var platformKey *rsa.PrivateKey
@@ -500,8 +622,11 @@ func TestV2ProbeCapabilitiesQueriesByTradeNo(t *testing.T) {
 	var platformKey *rsa.PrivateKey
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
-		gotTradeNo = r.PostFormValue("trade_no")
-		gotOutTradeNo = r.PostFormValue("out_trade_no")
+		// 探测凭证有效后还会实测 merchant/info 与 balance；只记录查单这一路的字段。
+		if r.URL.Path == "/api/pay/query" {
+			gotTradeNo = r.PostFormValue("trade_no")
+			gotOutTradeNo = r.PostFormValue("out_trade_no")
+		}
 		// 回一个"订单不存在"的验签响应，模拟平台对不存在 trade_no 的正常应答
 		resp := map[string]string{
 			"code": "0", "msg": "查询成功", "status": "0",
@@ -524,6 +649,92 @@ func TestV2ProbeCapabilitiesQueriesByTradeNo(t *testing.T) {
 	assert.Empty(t, gotOutTradeNo, "查单不应发 out_trade_no")
 	assert.True(t, report.Reachable)
 	assert.True(t, report.CredentialsValid, "验签通过应判为凭证有效")
+}
+
+func capByName(t *testing.T, report *CapabilityReport, name string) CapabilityStatus {
+	t.Helper()
+	for _, c := range report.Capabilities {
+		if c.Name == name {
+			return c
+		}
+	}
+	t.Fatalf("capability %q not found in report", name)
+	return CapabilityStatus{}
+}
+
+// v2 能力检测应真实实测 merchant/info + balance，回填商户实时状态并据实标注能力可用性，
+// 而非“凭证有效即推断可用”。这是本轮把能力检测从推断升级为实测的核心契约。
+func TestV2ProbeCapabilitiesRealMerchantDetection(t *testing.T) {
+	var platformKey *rsa.PrivateKey
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		resp := map[string]string{"code": "0", "timestamp": strconv.FormatInt(time.Now().Unix(), 10)}
+		switch r.URL.Path {
+		case "/api/merchant/info":
+			resp["pay_status"], resp["settle_status"], resp["money"], resp["order_num"] = "1", "1", "50.00", "10"
+		case "/api/transfer/balance":
+			resp["available_money"], resp["transfer_rate"] = "50.00", "3"
+		default: // /api/pay/query
+			resp["status"] = "0"
+		}
+		signAsPlatform(t, platformKey, resp)
+		payload := make(map[string]any, len(resp))
+		for k, v := range resp {
+			payload[k] = v
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer server.Close()
+
+	client, key := newV2TestSetup(t, server.URL)
+	platformKey = key
+	report := client.ProbeCapabilities()
+
+	require.NotNil(t, report.Merchant, "应实测到商户状态")
+	assert.Equal(t, 1, report.Merchant.PayStatus)
+	assert.Equal(t, 1, report.Merchant.SettleStatus)
+	assert.Equal(t, "50.00", report.Merchant.Balance)
+	assert.Equal(t, "3", report.Merchant.TransferRate)
+	assert.Equal(t, 10, report.Merchant.OrderNum)
+	assert.True(t, capByName(t, report, "merchant_info").Available)
+	assert.Contains(t, capByName(t, report, "merchant_info").Detail, "实测")
+	assert.True(t, capByName(t, report, "balance").Available, "余额接口实测通过")
+	assert.True(t, capByName(t, report, "transfer").Available, "余额实测通过应判代付可用")
+}
+
+// balance 实测失败（如未开通代付）时，transfer/balance 必须据实标为不可用，而非笼统“可用”。
+func TestV2ProbeCapabilitiesTransferUnavailableWhenBalanceFails(t *testing.T) {
+	var platformKey *rsa.PrivateKey
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.URL.Path == "/api/transfer/balance" {
+			_, _ = w.Write([]byte(`{"code":-1,"msg":"未开通代付"}`)) // 平台非零 code → execute 报错
+			return
+		}
+		resp := map[string]string{"code": "0", "timestamp": strconv.FormatInt(time.Now().Unix(), 10)}
+		if r.URL.Path == "/api/merchant/info" {
+			resp["pay_status"], resp["money"] = "1", "50.00"
+		} else {
+			resp["status"] = "0"
+		}
+		signAsPlatform(t, platformKey, resp)
+		payload := make(map[string]any, len(resp))
+		for k, v := range resp {
+			payload[k] = v
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer server.Close()
+
+	client, key := newV2TestSetup(t, server.URL)
+	platformKey = key
+	report := client.ProbeCapabilities()
+
+	assert.True(t, capByName(t, report, "merchant_info").Available, "商户信息实测通过")
+	assert.False(t, capByName(t, report, "balance").Available, "余额实测失败应判不可用")
+	assert.False(t, capByName(t, report, "transfer").Available, "代付应据余额实测失败判不可用")
 }
 
 // C1 安全回归：平台公钥全平台共享，他人商户的合法签名回调必须因 pid 不符被拒，

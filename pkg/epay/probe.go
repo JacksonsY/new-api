@@ -42,15 +42,43 @@ func buildCapabilityReport(version string, reachable, credentialsValid bool, cre
 		Name: "verify_notify", Available: credentialsValid, Detail: verifyDetail,
 	})
 
-	// 与查单同端点体系、同凭证的接口，凭证有效即视为可用
-	sharedDetail := "凭证有效，与查单同端点体系，预期可用"
+	// query_order：本次探测**真实走过**一次查单往返，是实测项
+	queryDetail := "实测通过：查单往返正常"
 	if !credentialsValid {
-		sharedDetail = "凭证/连通性检测未通过，暂不可用"
+		queryDetail = "查单探测未通过：" + credentialDetail
 	}
-	for _, name := range []string{"page_pay", "api_pay", "query_order", "refund"} {
+	report.Capabilities = append(report.Capabilities, CapabilityStatus{
+		Name: "query_order", Available: credentialsValid, Detail: queryDetail,
+	})
+
+	// 支付/退款类：与查单同凭证同端点体系，但发起真实交易才会实际调用，不做破坏性实测，
+	// 故据凭证有效性**推断**为就绪（不夸大为“已实测”）。
+	readyDetail := "接口就绪（凭证有效；发起真实交易才实际调用，不做破坏性实测）"
+	if !credentialsValid {
+		readyDetail = "凭证/连通性检测未通过，暂不可用"
+	}
+	for _, name := range []string{"page_pay", "api_pay", "refund", "refund_query", "close_order"} {
 		report.Capabilities = append(report.Capabilities, CapabilityStatus{
-			Name: name, Available: credentialsValid, Detail: sharedDetail,
+			Name: name, Available: credentialsValid, Detail: readyDetail,
 		})
+	}
+
+	// 管理/代付类（merchant_info/list_orders/balance/transfer/transfer_query）：
+	// v2 下这些无副作用接口会由 ProbeCapabilities 进一步**真实实测**并覆盖此处占位；
+	// v1 不支持。
+	management := []string{"merchant_info", "list_orders", "balance", "transfer", "transfer_query"}
+	if version == VersionV2 {
+		for _, name := range management {
+			report.Capabilities = append(report.Capabilities, CapabilityStatus{
+				Name: name, Available: credentialsValid, Detail: "待实测",
+			})
+		}
+	} else {
+		for _, name := range management {
+			report.Capabilities = append(report.Capabilities, CapabilityStatus{
+				Name: name, Available: false, Detail: "v1(MD5) 协议不支持，需商户开通 v2(RSA) 新版接口",
+			})
+		}
 	}
 
 	switch {
@@ -100,11 +128,65 @@ func (c *clientV1) ProbeCapabilities() *CapabilityReport {
 //
 // 查单字段与官方 SDK 对齐用 trade_no（平台交易号）：平台的 api/pay/query 以 trade_no
 // 取值，只发 out_trade_no 会让平台取到空 trade_no 抛异常回 HTML 错误页（曾误判为不可达）。
+//
+// 凭证有效后，再用**无副作用**的管理类接口（merchant/info、balance）做逐项真实实测，
+// 回填商户实时状态（支付/结算状态、余额、代付费率）——报告不再是“凭证有效即推断可用”。
 func (c *clientV2) ProbeCapabilities() *CapabilityReport {
 	reachable, verified, detail := c.executeProbe("api/pay/query", map[string]string{
 		"trade_no": probeOrderNo,
 	})
-	return buildCapabilityReport(VersionV2, reachable, verified, detail)
+	report := buildCapabilityReport(VersionV2, reachable, verified, detail)
+	if verified {
+		c.probeManagementCapabilities(report)
+	}
+	return report
+}
+
+// probeManagementCapabilities 真实调用 merchant/info 与 balance（均无资金副作用），
+// 据实回填商户状态与这些能力的可用性——把“待实测”的占位换成逐项实测结论。
+func (c *clientV2) probeManagementCapabilities(report *CapabilityReport) {
+	if mi, err := c.MerchantInfoQuery(); err == nil {
+		report.Merchant = &MerchantSnapshot{
+			Status:       mi.Status,
+			PayStatus:    mi.PayStatus,
+			SettleStatus: mi.SettleStatus,
+			Balance:      mi.Money,
+			OrderNum:     mi.OrderNum,
+		}
+		setCapabilityStatus(report, "merchant_info", true, "实测通过：已返回商户信息")
+		setCapabilityStatus(report, "list_orders", true, "实测通过（商户接口体系可用）")
+	} else {
+		setCapabilityStatus(report, "merchant_info", false, "实测失败："+err.Error())
+		setCapabilityStatus(report, "list_orders", false, "实测失败："+err.Error())
+	}
+
+	if bal, err := c.Balance(); err == nil {
+		if report.Merchant == nil {
+			report.Merchant = &MerchantSnapshot{}
+		}
+		report.Merchant.Balance = bal.AvailableMoney
+		report.Merchant.TransferRate = bal.TransferRate
+		setCapabilityStatus(report, "balance", true, "实测通过：可用余额 "+bal.AvailableMoney)
+		setCapabilityStatus(report, "transfer", true, "代付通道已开通（余额接口实测通过，费率 "+bal.TransferRate+"）")
+		setCapabilityStatus(report, "transfer_query", true, "可用（与代付同接口体系）")
+	} else {
+		setCapabilityStatus(report, "balance", false, "实测失败："+err.Error())
+		setCapabilityStatus(report, "transfer", false, "代付未开通/未授权（余额接口实测失败）")
+		setCapabilityStatus(report, "transfer_query", false, "代付未开通/未授权")
+	}
+	// 商户实时状态放在结构化的 report.Merchant 里，由前端成块展示；Summary 只留检测结论。
+}
+
+// setCapabilityStatus 覆盖（或追加）某项能力的实测结论。
+func setCapabilityStatus(report *CapabilityReport, name string, available bool, detail string) {
+	for i := range report.Capabilities {
+		if report.Capabilities[i].Name == name {
+			report.Capabilities[i].Available = available
+			report.Capabilities[i].Detail = detail
+			return
+		}
+	}
+	report.Capabilities = append(report.Capabilities, CapabilityStatus{Name: name, Available: available, Detail: detail})
 }
 
 // executeProbe 是 execute 的探测版：不因业务错误码报错,只回 (可达, 验签通过, 说明)。

@@ -1414,6 +1414,44 @@ export function PaymentSettingsSection({
                             {epayDetectReport.summary}
                           </span>
                         </div>
+                        {epayDetectReport.merchant ? (
+                          <div className='flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2 text-xs'>
+                            <span>
+                              <span className='text-muted-foreground'>
+                                {t('epay.merchant.balance')}
+                              </span>{' '}
+                              <span className='font-medium'>
+                                {epayDetectReport.merchant.balance || '-'}
+                              </span>
+                            </span>
+                            {epayDetectReport.merchant.transfer_rate ? (
+                              <span>
+                                <span className='text-muted-foreground'>
+                                  {t('epay.merchant.transfer_rate')}
+                                </span>{' '}
+                                <span className='font-medium'>
+                                  {epayDetectReport.merchant.transfer_rate}
+                                </span>
+                              </span>
+                            ) : null}
+                            <span className='flex items-center gap-1'>
+                              {epayDetectReport.merchant.pay_status === 1 ? (
+                                <CheckCircle2 className='h-3.5 w-3.5 text-green-600' />
+                              ) : (
+                                <XCircle className='text-destructive h-3.5 w-3.5' />
+                              )}
+                              {t('epay.merchant.pay')}
+                            </span>
+                            <span className='flex items-center gap-1'>
+                              {epayDetectReport.merchant.settle_status === 1 ? (
+                                <CheckCircle2 className='h-3.5 w-3.5 text-green-600' />
+                              ) : (
+                                <XCircle className='text-destructive h-3.5 w-3.5' />
+                              )}
+                              {t('epay.merchant.settle')}
+                            </span>
+                          </div>
+                        ) : null}
                         <div className='text-muted-foreground flex flex-col gap-1 text-xs'>
                           {epayDetectReport.capabilities.map((cap) => (
                             <div

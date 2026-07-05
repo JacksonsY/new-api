@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// 与 PHP SDK getHttpResponse 对齐的超时；响应限读 1MiB 防异常平台回吐超大体。
+// 与 SDK getHttpResponse 对齐的超时；响应限读 1MiB 防异常平台回吐超大体。
 // 显式禁止重定向：支付客户端不应被平台/中间人的 3xx 引导到其它地址。
 var httpClient = &http.Client{
 	Timeout: 15 * time.Second,
@@ -25,7 +25,7 @@ var httpClient = &http.Client{
 const maxResponseBytes = 1 << 20
 
 // NonJSONResponseError 表示平台返回了 HTTP 响应，但响应体不是 JSON（通常是 HTML 错误页，
-// 如 ThinkPHP 的「系统发生错误」）。它与传输层错误（DNS/连接/超时）本质不同：拿到它恰恰
+// 如服务端框架的「系统发生错误」页）。它与传输层错误（DNS/连接/超时）本质不同：拿到它恰恰
 // 说明平台地址是**可达**的，问题多为接口地址或协议不匹配——最典型的是平台不支持 v2(RSA)
 // 新版 REST 接口（api/pay/*），此时应改用 v1(MD5)。
 type NonJSONResponseError struct {
@@ -129,6 +129,22 @@ func fieldString(raw map[string]any, key string) string {
 	default:
 		return fmt.Sprintf("%v", v)
 	}
+}
+
+// rawObjectArray 从平台响应里取出一个对象数组字段（如订单列表的 data）。
+// 非数组、或元素非对象时安全跳过，返回可能为空的切片。
+func rawObjectArray(raw map[string]any, key string) []map[string]any {
+	arr, ok := raw[key].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(arr))
+	for _, item := range arr {
+		if obj, ok := item.(map[string]any); ok {
+			out = append(out, obj)
+		}
+	}
+	return out
 }
 
 // fieldInt 宽容读取整型字段（"1" / 1 / 1.0 均可），缺失或不可解析返回 fallback。

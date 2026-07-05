@@ -1,12 +1,12 @@
-// Package epay 彩虹易支付客户端，同时支持两代商户协议：
+// Package epay 易支付客户端，同时支持两代商户协议：
 //
 //   - v1（MD5）：经典协议，submit.php 页面支付 / mapi.php 直付 / api.php 查单退款，
 //     参数 MD5 加盐签名，回调 GET/POST 表单。
 //   - v2（RSA）：新版协议，api/pay/* REST 端点，商户 RSA 私钥 SHA256 签请求、
 //     平台公钥验回调与响应，timestamp ±300s 防重放。
 //
-// 移植自官方 PHP SDK（EpayCore.class.php 新老两版），字段与签名语义逐行对齐；
-// 取代功能残缺的 github.com/Calcium-Ion/go-epay（只有发起支付+回调验签）。
+// 移植自官方 SDK 新老两版，字段与签名语义逐行对齐；
+// 取代功能残缺的旧客户端库（只有发起支付+回调验签）。
 package epay
 
 import (
@@ -61,24 +61,38 @@ type PurchaseArgs struct {
 	ReturnUrl *url.URL
 	// ClientIP 用户真实 IP，仅 API 直付（CreateOrder / mapi）需要；页面跳转可留空。
 	ClientIP string
+	// Method 仅 v2 API 直付用的接口类型（web/jump/jsapi/app/scan/applet）；留空默认 web
+	//（web 会按 device 自动返回 二维码/跳转 URL/小程序参数）。v1 忽略此字段。
+	Method string
+	// AuthCode 付款码支付（method=scan）时的用户付款码；其它场景留空。
+	AuthCode string
 }
 
 // CreateOrderResult API 直付（mapi / api/pay/create）结果：返回可直接渲染的支付载体，
 // 供站内收银台自行展示二维码 / 跳转，而非跳到平台收银台。
+//
+// v1(mapi) 直接给 payurl/qrcode/urlscheme；v2(api/pay/create) 给 pay_type + pay_info，
+// 我们据 pay_type 归一到 QRCode/PayURL（qrcode→QRCode，jump→PayURL），并原样保留
+// PayType/PayInfo 供 jsapi/app/小程序等端侧场景使用。
 type CreateOrderResult struct {
 	// TradeNo 平台交易号
 	TradeNo string
-	// PayURL 支付跳转链接（payurl，浏览器直接打开）
+	// PayURL 支付跳转链接（payurl / pay_type=jump 的 pay_info，浏览器直接打开）
 	PayURL string
-	// QRCode 二维码内容（qrcode，前端自行渲染成二维码图）
+	// QRCode 二维码内容（qrcode / pay_type=qrcode 的 pay_info，前端渲染成二维码图）
 	QRCode string
 	// URLScheme 小程序 / deeplink 跳转串（urlscheme，部分渠道返回）
 	URLScheme string
+	// PayType v2 支付载体类型（qrcode/jump/jsapi/scan/wxplugin/wxapp），v1 为空
+	PayType string
+	// PayInfo v2 支付载体原文：qrcode→二维码内容，jump→跳转 URL，
+	// jsapi/scan/wxplugin/wxapp→一段 JSON 参数串（交端侧 SDK 使用）
+	PayInfo string
 	// Raw 平台原始响应（审计留底用）
 	Raw map[string]any
 }
 
-// NotifyResult 异步回调验签结果（字段名与旧 go-epay 的 VerifyRes 对齐，平替迁移零改动）
+// NotifyResult 异步回调验签结果（字段名与旧客户端的 VerifyRes 对齐，平替迁移零改动）
 type NotifyResult struct {
 	// Type 支付类型
 	Type string
@@ -120,14 +134,106 @@ type OrderInfo struct {
 	Raw map[string]any
 }
 
-// RefundArgs 退款参数
+// RefundArgs 退款参数。TradeNo（平台单号）与 OutTradeNo（商户单号）必传其一。
 type RefundArgs struct {
-	// TradeNo 平台交易号
+	// TradeNo 平台交易号（与 OutTradeNo 二选一）
 	TradeNo string
-	// OutRefundNo 商户退款单号（仅 v2 需要，幂等标识）
+	// OutTradeNo 商户订单号（与 TradeNo 二选一）
+	OutTradeNo string
+	// OutRefundNo 商户退款单号（幂等标识，v2 选填、留空由平台生成；v1 不使用）
 	OutRefundNo string
 	// Money 退款金额（两位小数字符串）
 	Money string
+}
+
+// RefundResult 退款结果（v2 api/pay/refund；v1 仅回 code/msg，其余字段可能为空）。
+type RefundResult struct {
+	RefundNo    string // 平台退款单号
+	OutRefundNo string // 商户退款单号
+	TradeNo     string // 平台订单号
+	Money       string // 退款金额
+	ReduceMoney string // 实际扣减余额
+	Raw         map[string]any
+}
+
+// RefundQueryResult 退款查询结果（v2 api/pay/refundquery）。Success = status==1。
+type RefundQueryResult struct {
+	RefundNo    string
+	OutRefundNo string
+	TradeNo     string
+	OutTradeNo  string
+	Money       string
+	ReduceMoney string
+	Status      int    // 0 失败 / 1 成功
+	Success     bool   // status==1
+	AddTime     string // 退款时间
+	Raw         map[string]any
+}
+
+// MerchantInfo 商户信息（v2 api/merchant/info）。
+type MerchantInfo struct {
+	PID               string
+	Status            int    // 商户状态
+	PayStatus         int    // 支付状态
+	SettleStatus      int    // 结算状态
+	Money             string // 商户余额（元）
+	SettleType        int    // 结算方式
+	SettleAccount     string // 结算账户
+	SettleName        string // 结算账户姓名
+	OrderNum          int    // 订单总数
+	OrderNumToday     int    // 今日订单数
+	OrderNumLastday   int    // 昨日订单数
+	OrderMoneyToday   string // 今日订单收入
+	OrderMoneyLastday string // 昨日订单收入
+	Raw               map[string]any
+}
+
+// OrderListResult 商户订单列表（v2 api/merchant/orders）。Orders 为平台原始订单对象数组。
+type OrderListResult struct {
+	Orders []map[string]any
+	Raw    map[string]any
+}
+
+// TransferArgs 代付（转账）参数（v2 api/transfer/submit）。
+type TransferArgs struct {
+	Type     string // alipay/wxpay/qqpay/bank
+	Account  string // 收款账号（按 type 对应：账号 / openid / 银行卡号）
+	Name     string // 收款人姓名（选填；填了平台会校验）
+	Money    string // 金额（元，两位小数）
+	Remark   string // 备注（选填）
+	OutBizNo string // 商户转账单号（选填，防重）
+	BookID   string // 安全转账 bookid（特定通道选填）
+}
+
+// TransferResult 代付发起结果（v2 api/transfer/submit）。Status: 0 处理中 / 1 成功。
+type TransferResult struct {
+	Status    int
+	BizNo     string // 平台转账单号
+	OutBizNo  string // 商户转账单号
+	OrderID   string // 第三方转账订单号
+	PayDate   string // 完成时间
+	CostMoney string // 实际扣减余额
+	Raw       map[string]any
+}
+
+// TransferQueryResult 代付查询结果（v2 api/transfer/query）。Status: 0 处理中 / 1 成功 / 2 失败。
+type TransferQueryResult struct {
+	Status    int
+	ErrMsg    string // status==2 时的失败原因
+	BizNo     string
+	OutBizNo  string
+	OrderID   string
+	Amount    string
+	CostMoney string
+	PayDate   string
+	Raw       map[string]any
+}
+
+// BalanceResult 商户可用余额（v2 api/transfer/balance）。
+type BalanceResult struct {
+	AvailableMoney string // 可用余额（元）
+	TransferRate   string // 代付费率
+	Raw            map[string]any
 }
 
 // CapabilityStatus 单项能力的探测结论。
@@ -140,6 +246,23 @@ type CapabilityStatus struct {
 	Detail string `json:"detail"`
 }
 
+// MerchantSnapshot 能力检测时**实测**到的商户实时状态
+// （来自 api/merchant/info + api/transfer/balance，均无副作用）。仅 v2 且实测成功时有值。
+type MerchantSnapshot struct {
+	// Status 商户状态
+	Status int `json:"status"`
+	// PayStatus 支付状态（1=正常开通）
+	PayStatus int `json:"pay_status"`
+	// SettleStatus 结算状态（1=正常）
+	SettleStatus int `json:"settle_status"`
+	// Balance 商户余额（元）
+	Balance string `json:"balance"`
+	// TransferRate 代付费率（能取到即代付通道已开通）
+	TransferRate string `json:"transfer_rate"`
+	// OrderNum 订单总数
+	OrderNum int `json:"order_num"`
+}
+
 // CapabilityReport 商户接口能力检测报告。
 type CapabilityReport struct {
 	// Version 实际探测所用协议（v1/v2）
@@ -150,11 +273,20 @@ type CapabilityReport struct {
 	CredentialsValid bool `json:"credentials_valid"`
 	// Capabilities 各接口能力清单
 	Capabilities []CapabilityStatus `json:"capabilities"`
+	// Merchant v2 实测到的商户实时状态（支付/结算状态、余额、代付费率）；
+	// nil 表示未取到（v1 协议，或凭证无效未做进一步实测）。
+	Merchant *MerchantSnapshot `json:"merchant,omitempty"`
 	// Summary 总体结论一句话
 	Summary string `json:"summary"`
 }
 
+// errUnsupportedInV1 v2(RSA) 新版专有能力在 v1(MD5) 协议下不可用。
+var errUnsupportedInV1 = errors.New("epay: 该能力仅 v2(RSA) 新版协议支持，当前商户配置为 v1(MD5)")
+
 // Client 两代协议的统一门面。
+//
+// 前 6 个方法两代都支持（支付/查单/回调/退款）；其后为 v2(RSA) 新版专有能力
+// （退款查询、关单、商户信息、订单列表、代付三件套），v1(MD5) 下返回 errUnsupportedInV1。
 type Client interface {
 	// Purchase 生成页面跳转支付的 (提交地址, 已签名表单参数)
 	Purchase(args *PurchaseArgs) (string, map[string]string, error)
@@ -164,11 +296,28 @@ type Client interface {
 	VerifyNotify(params map[string]string) (*NotifyResult, error)
 	// QueryOrderByOutTradeNo 按商户订单号查单（主动对账用）
 	QueryOrderByOutTradeNo(outTradeNo string) (*OrderInfo, error)
-	// Refund 订单退款，返回平台原始响应
-	Refund(args *RefundArgs) (map[string]any, error)
+	// Refund 订单退款（TradeNo/OutTradeNo 二选一）
+	Refund(args *RefundArgs) (*RefundResult, error)
 	// ProbeCapabilities 用商户凭证做一次无副作用探测（查一个随机不存在的订单号），
 	// 据此判断平台可达性、凭证有效性，并推断各接口能力是否可用。
 	ProbeCapabilities() *CapabilityReport
+
+	// —— 以下为 v2(RSA) 新版专有能力，v1 返回 errUnsupportedInV1 ——
+
+	// RefundQuery 退款查询（商户退款单号 OutRefundNo 与平台退款单号 RefundNo 二选一）
+	RefundQuery(outRefundNo, refundNo string) (*RefundQueryResult, error)
+	// CloseOrder 关闭订单（OutTradeNo 与 TradeNo 二选一）
+	CloseOrder(outTradeNo, tradeNo string) error
+	// MerchantInfoQuery 查询商户信息（余额、结算、订单统计等）
+	MerchantInfoQuery() (*MerchantInfo, error)
+	// ListOrders 分页拉取商户订单（offset 从 0 起，limit≤50，status<0 表示不过滤）
+	ListOrders(offset, limit, status int) (*OrderListResult, error)
+	// Transfer 发起代付（转账）
+	Transfer(args *TransferArgs) (*TransferResult, error)
+	// TransferQuery 代付查询（商户转账单号 OutBizNo 与平台转账单号 BizNo 二选一）
+	TransferQuery(outBizNo, bizNo string) (*TransferQueryResult, error)
+	// Balance 查询商户可用余额
+	Balance() (*BalanceResult, error)
 }
 
 // NewClient 按 Config.Version 构建对应协议的客户端；Version 为空按 v1。

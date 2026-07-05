@@ -113,11 +113,22 @@ export interface EpayCapabilityStatus {
   detail: string
 }
 
+// 能力检测时实测到的商户实时状态（仅 v2 且实测成功时返回）
+export interface EpayMerchantSnapshot {
+  status: number
+  pay_status: number
+  settle_status: number
+  balance: string
+  transfer_rate: string
+  order_num: number
+}
+
 export interface EpayCapabilityReport {
   version: string
   reachable: boolean
   credentials_valid: boolean
   capabilities: EpayCapabilityStatus[]
+  merchant?: EpayMerchantSnapshot
   summary: string
 }
 

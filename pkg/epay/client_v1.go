@@ -5,14 +5,14 @@ import (
 	"net/url"
 )
 
-// clientV1 经典 MD5 协议（对齐 PHP SDK 老版 EpayCore + go-epay 现网行为）。
+// clientV1 经典 MD5 协议（对齐官方 SDK 老版行为）。
 type clientV1 struct {
 	pid     string
 	key     string
 	baseURL *url.URL
 }
 
-// Purchase 生成 submit.php 页面支付参数（与被替换的 go-epay 输出逐字段一致）。
+// Purchase 生成 submit.php 页面支付参数（与被替换的旧客户端输出逐字段一致）。
 func (c *clientV1) Purchase(args *PurchaseArgs) (string, map[string]string, error) {
 	if args == nil {
 		return "", nil, errors.New("epay: purchase args is nil")
@@ -84,22 +84,58 @@ func (c *clientV1) QueryOrderByOutTradeNo(outTradeNo string) (*OrderInfo, error)
 	return info, nil
 }
 
-// Refund 退款：POST api.php?act=refund，传 pid/key/trade_no/money。
-func (c *clientV1) Refund(args *RefundArgs) (map[string]any, error) {
-	if args == nil || args.TradeNo == "" || args.Money == "" {
-		return nil, errors.New("epay: refund requires trade_no and money")
+// Refund 退款：POST api.php?act=refund，传 pid/key/trade_no|out_trade_no/money（code==1 成功）。
+func (c *clientV1) Refund(args *RefundArgs) (*RefundResult, error) {
+	if args == nil || args.Money == "" {
+		return nil, errors.New("epay: refund requires money")
+	}
+	if args.TradeNo == "" && args.OutTradeNo == "" {
+		return nil, errors.New("epay: refund requires trade_no or out_trade_no")
 	}
 	form := url.Values{}
 	form.Set("pid", c.pid)
 	form.Set("key", c.key)
-	form.Set("trade_no", args.TradeNo)
 	form.Set("money", args.Money)
+	if args.TradeNo != "" {
+		form.Set("trade_no", args.TradeNo)
+	}
+	if args.OutTradeNo != "" {
+		form.Set("out_trade_no", args.OutTradeNo)
+	}
 	raw, err := httpPostFormJSON(joinURL(c.baseURL, "api.php")+"?act=refund", form)
 	if err != nil {
 		return nil, err
 	}
 	if fieldInt(raw, "code", 0) != 1 {
-		return raw, errors.New("epay: refund failed: " + fieldString(raw, "msg"))
+		return nil, errors.New("epay: refund failed: " + fieldString(raw, "msg"))
 	}
-	return raw, nil
+	return &RefundResult{
+		TradeNo: fieldString(raw, "trade_no"),
+		Money:   fieldString(raw, "money"),
+		Raw:     raw,
+	}, nil
 }
+
+// —— 以下为 v2(RSA) 新版专有能力，v1(MD5) 协议不提供，统一返回 errUnsupportedInV1 ——
+
+func (c *clientV1) RefundQuery(outRefundNo, refundNo string) (*RefundQueryResult, error) {
+	return nil, errUnsupportedInV1
+}
+
+func (c *clientV1) CloseOrder(outTradeNo, tradeNo string) error { return errUnsupportedInV1 }
+
+func (c *clientV1) MerchantInfoQuery() (*MerchantInfo, error) { return nil, errUnsupportedInV1 }
+
+func (c *clientV1) ListOrders(offset, limit, status int) (*OrderListResult, error) {
+	return nil, errUnsupportedInV1
+}
+
+func (c *clientV1) Transfer(args *TransferArgs) (*TransferResult, error) {
+	return nil, errUnsupportedInV1
+}
+
+func (c *clientV1) TransferQuery(outBizNo, bizNo string) (*TransferQueryResult, error) {
+	return nil, errUnsupportedInV1
+}
+
+func (c *clientV1) Balance() (*BalanceResult, error) { return nil, errUnsupportedInV1 }

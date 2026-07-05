@@ -22,11 +22,11 @@ func secureCompare(a, b string) bool {
 
 // signContent 生成两代协议共用的待签名串：参数按键名 ASCII 升序，
 // 跳过 sign/sign_type/空值，以 k=v&k=v 原文拼接（值不做 URL 编码）。
-// 与 PHP SDK 的 getSign/getSignContent 逐行对齐。
+// 与 SDK 的 getSign/getSignContent 逐行对齐。
 func signContent(params map[string]string) string {
 	keys := make([]string, 0, len(params))
 	for key, value := range params {
-		// 与彩虹 PHP SDK getSignContent 逐字对齐：仅剔除严格空串（不 trim），
+		// 与官方 SDK getSignContent 逐字对齐：仅剔除严格空串（不 trim），
 		// 否则纯空白值字段在两侧的取舍不同会导致合法回调验签假阴性丢单。
 		if key == "sign" || key == "sign_type" || value == "" {
 			continue
