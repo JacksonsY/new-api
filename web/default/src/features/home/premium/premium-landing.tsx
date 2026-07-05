@@ -16,19 +16,31 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { lazy, Suspense } from 'react'
+
 import { PublicHeader } from '@/components/layout/components/public-header'
+
 import { PremiumBento } from './components/premium-bento'
-import { PremiumFooter } from './components/premium-footer'
 import { PremiumCTA } from './components/premium-cta'
+import { PremiumFooter } from './components/premium-footer'
 import { PremiumGetstarted } from './components/premium-getstarted'
 import { PremiumHero } from './components/premium-hero'
 import { PremiumMarquee } from './components/premium-marquee'
-import { PremiumRouter } from './components/premium-router'
-import { PremiumWorldMap } from './components/premium-worldmap'
 import { PremiumQuickstart } from './components/premium-quickstart'
+import { PremiumRouter } from './components/premium-router'
 import { PremiumStats } from './components/premium-stats'
 import { useSmoothScroll } from './lib'
+
 import './premium.css'
+
+// Below-the-fold section whose only heavy dependency is `dotted-map` (embeds world
+// geo data). Split it out so the landing route's critical chunk — the hero — parses
+// and paints without waiting on the map; it loads as its own chunk on demand.
+const PremiumWorldMap = lazy(() =>
+  import('./components/premium-worldmap').then((m) => ({
+    default: m.PremiumWorldMap,
+  }))
+)
 
 /**
  * 「离火・白」 — the bespoke premium marketing landing. Light-first, glass,
@@ -56,7 +68,9 @@ export function PremiumLanding({
         <PremiumStats />
         <PremiumRouter />
         <PremiumBento />
-        <PremiumWorldMap />
+        <Suspense fallback={<div className='min-h-[600px]' />}>
+          <PremiumWorldMap />
+        </Suspense>
         <PremiumQuickstart />
         <PremiumGetstarted />
         <PremiumCTA isAuthenticated={isAuthenticated} />
