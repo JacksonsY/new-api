@@ -5358,7 +5358,7 @@
     "Cumulative ≥ {{amount}}": "累计 ≥ {{amount}}",
     "reached": "已达成",
     "Hide Upstream Errors": "隐藏上游报错",
-    "Replace raw upstream error messages with a generic message for clients, hiding upstream station names, URLs and quota hints. Local errors (e.g. insufficient balance) stay intact; originals remain in server logs and error-log admin info.": "把上游原始报错替换为通用文案后再回给客户，隐藏上游站名、URL、配额提示等供应链信息；本站错误（如余额不足）保留原文，原始报错仍可在服务端日志与错误日志的管理员信息中查看。",
+    "Replace raw upstream error messages with a generic message for clients, hiding upstream station names, URLs and quota hints. Local errors (e.g. insufficient balance) stay intact; originals remain in server logs and error-log admin info.": "上游报错对客户换成通用文案，藏住上游站名/URL/配额等信息；本站错误（如余额不足）保留原文，原文仍可在服务端日志/管理员信息里查。",
     "Batch Change Group": "批量调整分组",
     "Batch Adjust Quota": "批量调整额度",
     "Move {{count}} selected users to a target group": "把选中的 {{count}} 个用户移动到目标分组",

@@ -338,7 +338,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   system_prompt: '',
   system_prompt_override: false,
   sub2api_balance_query: false,
-  hide_upstream_errors: false,
+  hide_upstream_errors: true,
   upstream_ratio_sync: false,
   upstream_group_name: '',
   // Type-specific settings
