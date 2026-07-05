@@ -16,7 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
-	"github.com/Calcium-Ion/go-epay/epay"
+	"github.com/QuantumNous/new-api/pkg/epay"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 	"github.com/shopspring/decimal"
@@ -155,20 +155,6 @@ type AmountRequest struct {
 	Amount int64 `json:"amount"`
 }
 
-func GetEpayClient() *epay.Client {
-	if operation_setting.PayAddress == "" || operation_setting.EpayId == "" || operation_setting.EpayKey == "" {
-		return nil
-	}
-	withUrl, err := epay.NewClient(&epay.Config{
-		PartnerID: operation_setting.EpayId,
-		Key:       operation_setting.EpayKey,
-	}, operation_setting.PayAddress)
-	if err != nil {
-		return nil
-	}
-	return withUrl
-}
-
 func getPayMoney(amount int64, group string) float64 {
 	dAmount := decimal.NewFromInt(amount)
 	// 充值金额以“展示类型”为准：
@@ -243,7 +229,7 @@ func RequestEpay(c *gin.Context) {
 	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomSecureString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
-	client := GetEpayClient()
+	client := service.GetEpayClient()
 	if client == nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "当前管理员未配置支付信息"})
 		return
@@ -364,7 +350,7 @@ func EpayNotify(c *gin.Context) {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
-	client := GetEpayClient()
+	client := service.GetEpayClient()
 	if client == nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 client 未初始化 path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
 		_, err := c.Writer.Write([]byte("fail"))
@@ -373,7 +359,7 @@ func EpayNotify(c *gin.Context) {
 		}
 		return
 	}
-	verifyInfo, err := client.Verify(params)
+	verifyInfo, err := client.VerifyNotify(params)
 	if err == nil && verifyInfo.VerifyStatus {
 		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 验签成功 trade_no=%s callback_type=%s trade_status=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP(), common.GetJsonString(verifyInfo)))
 		_, err := c.Writer.Write([]byte("success"))
@@ -396,6 +382,12 @@ func EpayNotify(c *gin.Context) {
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
+		// 金额纵深校验（M1）：回调金额与本地订单不符则拒绝入账，与对账路径同强度。
+		if topUp := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo); topUp != nil &&
+			!service.EpayCallbackMoneyMatches(verifyInfo.Money, topUp.Money) {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 回调金额与订单不符，拒绝入账 trade_no=%s local_money=%.2f callback_money=%q client_ip=%s", verifyInfo.ServiceTradeNo, topUp.Money, verifyInfo.Money, c.ClientIP()))
+			return
+		}
 		// jzlh 蓝图C/D：结算收敛到模型层单事务（状态迁移+入账+自动切组原子完成），
 		// 修复原实现"标成功与入账分离,中间失败会造成标成功却没到账"的窗口。
 		userId, quotaToAdd, money, switchedGroup, err := model.CompleteEpayTopUp(verifyInfo.ServiceTradeNo, verifyInfo.Type)

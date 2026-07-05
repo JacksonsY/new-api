@@ -80,6 +80,17 @@ func GetTopUpByTradeNo(tradeNo string) *TopUp {
 	return topUp
 }
 
+// GetRecentPendingTopUps 取指定支付渠道、创建时间落在 [now-maxAge, now-minAge] 的 pending 单，
+// 供主动对账扫单（蓝图D）。
+func GetRecentPendingTopUps(paymentProvider string, minAgeSeconds int64, maxAgeSeconds int64, limit int) ([]*TopUp, error) {
+	now := common.GetTimestamp()
+	var topUps []*TopUp
+	err := DB.Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
+		paymentProvider, common.TopUpStatusPending, now-maxAgeSeconds, now-minAgeSeconds).
+		Order("id asc").Limit(limit).Find(&topUps).Error
+	return topUps, err
+}
+
 func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, targetStatus string) error {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")

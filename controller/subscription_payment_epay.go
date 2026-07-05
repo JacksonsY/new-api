@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Calcium-Ion/go-epay/epay"
+	"github.com/QuantumNous/new-api/pkg/epay"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -78,7 +79,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomSecureString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("SUBUSR%dNO%s", userId, tradeNo)
 
-	client := GetEpayClient()
+	client := service.GetEpayClient()
 	if client == nil {
 		common.ApiErrorMsg(c, "当前管理员未配置支付信息")
 		return
@@ -141,12 +142,12 @@ func SubscriptionEpayNotify(c *gin.Context) {
 		return
 	}
 
-	client := GetEpayClient()
+	client := service.GetEpayClient()
 	if client == nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
-	verifyInfo, err := client.Verify(params)
+	verifyInfo, err := client.VerifyNotify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
@@ -196,12 +197,12 @@ func SubscriptionEpayReturn(c *gin.Context) {
 		return
 	}
 
-	client := GetEpayClient()
+	client := service.GetEpayClient()
 	if client == nil {
 		c.Redirect(http.StatusFound, paymentReturnPath("/console/topup?pay=fail"))
 		return
 	}
-	verifyInfo, err := client.Verify(params)
+	verifyInfo, err := client.VerifyNotify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
 		c.Redirect(http.StatusFound, paymentReturnPath("/console/topup?pay=fail"))
 		return
@@ -209,6 +210,13 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
+		// 金额纵深校验（M1）：回调金额与订阅订单不符则拒绝，与对账路径同强度。
+		if order := model.GetSubscriptionOrderByTradeNo(verifyInfo.ServiceTradeNo); order != nil &&
+			!service.EpayCallbackMoneyMatches(verifyInfo.Money, order.Money) {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 订阅回调金额与订单不符，拒绝入账 trade_no=%s local_money=%.2f callback_money=%q", verifyInfo.ServiceTradeNo, order.Money, verifyInfo.Money))
+			c.Redirect(http.StatusFound, paymentReturnPath("/console/topup?pay=fail"))
+			return
+		}
 		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
 			c.Redirect(http.StatusFound, paymentReturnPath("/console/topup?pay=fail"))
 			return

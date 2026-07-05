@@ -13,6 +13,11 @@ var PayAddress = ""
 var CustomCallbackAddress = ""
 var EpayId = ""
 var EpayKey = ""
+
+// 易支付协议版本与 v2(RSA) 密钥。v1 用 EpayKey(MD5)；v2 用平台公钥验签 + 商户私钥签名。
+var EpayApiVersion = "v1"
+var EpayPlatformPublicKey = ""
+var EpayMerchantPrivateKey = ""
 var Price = 7.3
 var MinTopUp = 1
 var USDExchangeRate = 7.3

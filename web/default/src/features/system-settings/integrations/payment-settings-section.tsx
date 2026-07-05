@@ -18,7 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Code2, Eye, ShieldAlert } from 'lucide-react'
+import {
+  CheckCircle2,
+  Code2,
+  Eye,
+  Loader2,
+  ShieldAlert,
+  XCircle,
+} from 'lucide-react'
 import * as React from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -43,12 +50,24 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
-import { confirmPaymentCompliance } from '../api'
+import {
+  confirmPaymentCompliance,
+  detectEpayCapabilities,
+  type EpayCapabilityReport,
+} from '../api'
 import {
   SettingsForm,
   SettingsSwitchContent,
@@ -102,6 +121,9 @@ const paymentSchema = z.object({
   }, 'Provide a valid callback URL starting with http:// or https://'),
   EpayId: z.string(),
   EpayKey: z.string(),
+  EpayApiVersion: z.enum(['v1', 'v2']),
+  EpayPlatformPublicKey: z.string(),
+  EpayMerchantPrivateKey: z.string(),
   Price: z.coerce.number().min(0),
   MinTopUp: z.coerce.number().min(0),
   CustomCallbackAddress: z
@@ -237,6 +259,27 @@ export function PaymentSettingsSection({
     () => JSON.stringify(initialFormValues),
     [initialFormValues]
   )
+
+  const [epayDetecting, setEpayDetecting] = React.useState(false)
+  const [epayDetectReport, setEpayDetectReport] =
+    React.useState<EpayCapabilityReport | null>(null)
+
+  const handleDetectEpay = async () => {
+    setEpayDetecting(true)
+    setEpayDetectReport(null)
+    try {
+      const res = await detectEpayCapabilities()
+      if (res.success && res.data) {
+        setEpayDetectReport(res.data)
+      } else {
+        toast.error(res.message || t('Detection failed'))
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : t('Detection failed'))
+    } finally {
+      setEpayDetecting(false)
+    }
+  }
 
   const [payMethodsVisualMode, setPayMethodsVisualMode] = React.useState(true)
   const [amountOptionsVisualMode, setAmountOptionsVisualMode] =
@@ -421,6 +464,9 @@ export function PaymentSettingsSection({
       PayAddress: removeTrailingSlash(values.PayAddress),
       EpayId: values.EpayId.trim(),
       EpayKey: values.EpayKey.trim(),
+      EpayApiVersion: values.EpayApiVersion,
+      EpayPlatformPublicKey: values.EpayPlatformPublicKey.trim(),
+      EpayMerchantPrivateKey: values.EpayMerchantPrivateKey.trim(),
       Price: values.Price,
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
@@ -463,6 +509,10 @@ export function PaymentSettingsSection({
       PayAddress: removeTrailingSlash(initialRef.current.PayAddress),
       EpayId: initialRef.current.EpayId.trim(),
       EpayKey: initialRef.current.EpayKey.trim(),
+      EpayApiVersion: initialRef.current.EpayApiVersion ?? 'v1',
+      EpayPlatformPublicKey: initialRef.current.EpayPlatformPublicKey.trim(),
+      EpayMerchantPrivateKey:
+        initialRef.current.EpayMerchantPrivateKey.trim(),
       Price: initialRef.current.Price,
       MinTopUp: initialRef.current.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(
@@ -518,6 +568,30 @@ export function PaymentSettingsSection({
 
     if (sanitized.EpayKey && sanitized.EpayKey !== initial.EpayKey) {
       updates.push({ key: 'EpayKey', value: sanitized.EpayKey })
+    }
+
+    if (sanitized.EpayApiVersion !== initial.EpayApiVersion) {
+      updates.push({ key: 'EpayApiVersion', value: sanitized.EpayApiVersion })
+    }
+
+    if (
+      sanitized.EpayPlatformPublicKey &&
+      sanitized.EpayPlatformPublicKey !== initial.EpayPlatformPublicKey
+    ) {
+      updates.push({
+        key: 'EpayPlatformPublicKey',
+        value: sanitized.EpayPlatformPublicKey,
+      })
+    }
+
+    if (
+      sanitized.EpayMerchantPrivateKey &&
+      sanitized.EpayMerchantPrivateKey !== initial.EpayMerchantPrivateKey
+    ) {
+      updates.push({
+        key: 'EpayMerchantPrivateKey',
+        value: sanitized.EpayMerchantPrivateKey,
+      })
     }
 
     if (sanitized.Price !== initial.Price) {
@@ -1141,102 +1215,280 @@ export function PaymentSettingsSection({
                   </AlertDescription>
                 </Alert>
 
-                <div className='grid gap-6 md:grid-cols-2'>
-                  <FormField
-                    control={form.control}
-                    name='PayAddress'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Epay endpoint')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={t('https://pay.example.com')}
-                            {...field}
-                            onChange={(event) =>
-                              field.onChange(event.target.value)
-                            }
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t('Base address provided by your Epay service')}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <div className='grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]'>
+                  {/* 左：配置区 */}
+                  <div className='space-y-6'>
+                    <div className='grid gap-6 sm:grid-cols-2'>
+                      <FormField
+                        control={form.control}
+                        name='PayAddress'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Epay endpoint')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder={t('https://pay.example.com')}
+                                {...field}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t('Base address provided by your Epay service')}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                  <FormField
-                    control={form.control}
-                    name='CustomCallbackAddress'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Callback address')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={t('https://gateway.example.com')}
-                            {...field}
-                            onChange={(event) =>
-                              field.onChange(event.target.value)
+                      <FormField
+                        control={form.control}
+                        name='CustomCallbackAddress'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Callback address')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder={t('https://gateway.example.com')}
+                                {...field}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t(
+                                'Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className='grid gap-6 sm:grid-cols-2'>
+                      <FormField
+                        control={form.control}
+                        name='EpayId'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Epay merchant ID')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder='10001'
+                                autoComplete='off'
+                                {...field}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='EpayKey'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Epay secret key')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type='password'
+                                placeholder={t('Enter new key to update')}
+                                autoComplete='new-password'
+                                {...field}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t('Leave blank unless rotating the secret')}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name='EpayApiVersion'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Epay signature method')}</FormLabel>
+                          <Select
+                            value={field.value}
+                            onValueChange={(value) =>
+                              value !== null && field.onChange(value)
                             }
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t(
-                            'Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.'
+                          >
+                            <FormControl>
+                              <SelectTrigger className='w-full'>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent alignItemWithTrigger={false}>
+                              <SelectGroup>
+                                <SelectItem value='v1'>
+                                  {t(
+                                    'MD5 signature (compatibility mode, classic endpoints)'
+                                  )}
+                                </SelectItem>
+                                <SelectItem value='v2'>
+                                  {t(
+                                    'RSA signature (secure mode, api/pay endpoints)'
+                                  )}
+                                </SelectItem>
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            {t(
+                              'Match your Epay platform signature setting. MD5 works only when the platform allows compatibility mode; RSA works in both compatibility and secure mode. Switching here changes both the signing method and the API endpoints.'
+                            )}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {form.watch('EpayApiVersion') === 'v2' && (
+                      <div className='space-y-6 rounded-md border border-dashed p-4'>
+                        <FormField
+                          control={form.control}
+                          name='EpayPlatformPublicKey'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>
+                                {t('Epay platform public key')}
+                              </FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  rows={4}
+                                  placeholder={t('Enter new key to update')}
+                                  autoComplete='off'
+                                  {...field}
+                                  onChange={(event) =>
+                                    field.onChange(event.target.value)
+                                  }
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                {t(
+                                  'Base64 DER or PEM. Used to verify callbacks and query responses.'
+                                )}
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
                           )}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                        />
 
-                <div className='grid gap-6 md:grid-cols-2'>
-                  <FormField
-                    control={form.control}
-                    name='EpayId'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Epay merchant ID')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder='10001'
-                            autoComplete='off'
-                            {...field}
-                            onChange={(event) =>
-                              field.onChange(event.target.value)
-                            }
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
+                        <FormField
+                          control={form.control}
+                          name='EpayMerchantPrivateKey'
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>
+                                {t('Epay merchant private key')}
+                              </FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  rows={4}
+                                  placeholder={t('Enter new key to update')}
+                                  autoComplete='off'
+                                  {...field}
+                                  onChange={(event) =>
+                                    field.onChange(event.target.value)
+                                  }
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                {t(
+                                  'Base64 DER or PEM (PKCS8). Leave blank unless rotating.'
+                                )}
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
                     )}
-                  />
+                  </div>
 
-                  <FormField
-                    control={form.control}
-                    name='EpayKey'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Epay secret key')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type='password'
-                            placeholder={t('Enter new key to update')}
-                            autoComplete='new-password'
-                            {...field}
-                            onChange={(event) =>
-                              field.onChange(event.target.value)
-                            }
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t('Leave blank unless rotating the secret')}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
+                  {/* 右：诊断面板（随配置常驻） */}
+                  <div className='h-fit space-y-3 rounded-lg border bg-muted/30 p-4 lg:sticky lg:top-4'>
+                    <div className='flex items-center justify-between gap-2'>
+                      <span className='text-sm font-medium'>
+                        {t('Merchant capability check')}
+                      </span>
+                      <span className='bg-primary/10 text-primary rounded px-1.5 py-0.5 text-xs font-medium'>
+                        {form.watch('EpayApiVersion') === 'v2' ? 'RSA' : 'MD5'}
+                      </span>
+                    </div>
+                    <p className='text-muted-foreground text-xs'>
+                      {t(
+                        'Probe whether the configured merchant is reachable and its credentials/endpoints work. No order is created.'
+                      )}
+                    </p>
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='sm'
+                      className='w-full'
+                      onClick={handleDetectEpay}
+                      disabled={epayDetecting}
+                    >
+                      {epayDetecting ? (
+                        <Loader2 className='mr-1 h-4 w-4 animate-spin' />
+                      ) : null}
+                      {epayDetecting ? t('Checking...') : t('Run check')}
+                    </Button>
+
+                    {epayDetectReport ? (
+                      <div className='bg-background space-y-2 rounded-md border p-3'>
+                        <div className='flex items-center gap-2 text-sm'>
+                          {epayDetectReport.credentials_valid ? (
+                            <CheckCircle2 className='h-4 w-4 shrink-0 text-green-600' />
+                          ) : (
+                            <XCircle className='text-destructive h-4 w-4 shrink-0' />
+                          )}
+                          <span className='font-medium'>
+                            {epayDetectReport.summary}
+                          </span>
+                        </div>
+                        <div className='text-muted-foreground flex flex-col gap-1 text-xs'>
+                          {epayDetectReport.capabilities.map((cap) => (
+                            <div
+                              key={cap.name}
+                              className='flex items-center gap-1.5'
+                              title={cap.detail}
+                            >
+                              {cap.available ? (
+                                <CheckCircle2 className='h-3.5 w-3.5 shrink-0 text-green-600' />
+                              ) : (
+                                <XCircle className='text-destructive h-3.5 w-3.5 shrink-0' />
+                              )}
+                              <span className='truncate'>
+                                {t(`epay.cap.${cap.name}`)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className='text-muted-foreground rounded-md border border-dashed p-3 text-center text-xs'>
+                        {t(
+                          'Run a check to see credentials and endpoint status here.'
+                        )}
+                      </p>
                     )}
-                  />
+                  </div>
                 </div>
               </div>
             </TabsContent>

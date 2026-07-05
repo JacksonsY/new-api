@@ -110,6 +110,37 @@ export async function requestPayment(
 }
 
 /**
+ * Request Epay API direct pay (QR): server-side create order, returns a payment
+ * QR/link to render in-app instead of redirecting to the gateway.
+ */
+export async function requestEpayQRPayment(request: PaymentRequest): Promise<{
+  message: string
+  data?: {
+    trade_no: string
+    qrcode: string
+    payurl: string
+    urlscheme: string
+  }
+}> {
+  const res = await api.post('/api/user/epay/qr', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
+ * Poll the local status of an Epay order (for QR pay).
+ */
+export async function getEpayOrderStatus(
+  tradeNo: string
+): Promise<{ success: boolean; data?: { status: string } }> {
+  const res = await api.get('/api/user/epay/order-status', {
+    params: { trade_no: tradeNo },
+  })
+  return res.data
+}
+
+/**
  * Request Stripe payment
  */
 export async function requestStripePayment(

@@ -28,6 +28,7 @@ import { getSelf } from '@/lib/api'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
+import { EpayQRDialog } from './components/dialogs/epay-qr-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
 import { TransferDialog } from './components/dialogs/transfer-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
@@ -69,6 +70,7 @@ export function Wallet(props: WalletProps) {
     useState<PaymentMethod>()
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [qrDialogOpen, setQrDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [billingDialogOpen, setBillingDialogOpen] = useState(false)
   const [redemptionCode, setRedemptionCode] = useState('')
@@ -205,6 +207,20 @@ export function Wallet(props: WalletProps) {
       setConfirmDialogOpen(false)
       await fetchUser()
     }
+  }
+
+  // 当前选中的是否为 Epay 支付方式（仅 Epay 支持 API 直付扫码）
+  const isEpayPaymentMethod = Boolean(
+    selectedPaymentMethod &&
+      topupInfo?.pay_methods?.some(
+        (m) => m.type === selectedPaymentMethod.type
+      )
+  )
+
+  // 切换到扫码支付：关确认框，开二维码对话框（下单/轮询在对话框内完成）
+  const handleQRPay = () => {
+    setConfirmDialogOpen(false)
+    setQrDialogOpen(true)
   }
 
   // Handle redemption
@@ -349,6 +365,15 @@ export function Wallet(props: WalletProps) {
         processing={processing || pancakeProcessing}
         discountRate={getDiscountRate()}
         usdExchangeRate={effectiveUsdExchangeRate}
+        onQRPay={isEpayPaymentMethod ? handleQRPay : undefined}
+      />
+
+      <EpayQRDialog
+        open={qrDialogOpen}
+        onOpenChange={setQrDialogOpen}
+        amount={topupAmount}
+        paymentMethod={selectedPaymentMethod}
+        onSuccess={fetchUser}
       />
 
       <TransferDialog

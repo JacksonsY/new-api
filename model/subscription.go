@@ -249,6 +249,17 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 	return &order
 }
 
+// GetRecentPendingSubscriptionOrders 取指定支付渠道、创建时间落在 [now-maxAge, now-minAge] 的
+// pending 订阅单，供主动对账扫单（蓝图D）。
+func GetRecentPendingSubscriptionOrders(paymentProvider string, minAgeSeconds int64, maxAgeSeconds int64, limit int) ([]*SubscriptionOrder, error) {
+	now := common.GetTimestamp()
+	var orders []*SubscriptionOrder
+	err := DB.Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
+		paymentProvider, common.TopUpStatusPending, now-maxAgeSeconds, now-minAgeSeconds).
+		Order("id asc").Limit(limit).Find(&orders).Error
+	return orders, err
+}
+
 // User subscription instance
 type UserSubscription struct {
 	Id     int `json:"id"`

@@ -105,3 +105,27 @@ export async function fetchUpstreamRatios(request: FetchUpstreamRatiosRequest) {
   )
   return res.data
 }
+
+// Epay 商户能力检测（无副作用探测：查一个不存在的订单号判断可达/凭证/端点）
+export interface EpayCapabilityStatus {
+  name: string
+  available: boolean
+  detail: string
+}
+
+export interface EpayCapabilityReport {
+  version: string
+  reachable: boolean
+  credentials_valid: boolean
+  capabilities: EpayCapabilityStatus[]
+  summary: string
+}
+
+export async function detectEpayCapabilities() {
+  const res = await api.post<{
+    success: boolean
+    message: string
+    data?: EpayCapabilityReport
+  }>('/api/user/topup/epay/detect')
+  return res.data
+}

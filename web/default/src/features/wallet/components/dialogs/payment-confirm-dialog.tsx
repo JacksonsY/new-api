@@ -47,6 +47,8 @@ interface PaymentConfirmDialogProps {
   processing: boolean
   discountRate?: number
   usdExchangeRate?: number
+  /** 提供时展示"扫码支付"入口（仅 Epay 支付方式支持 API 直付） */
+  onQRPay?: () => void
 }
 
 export function PaymentConfirmDialog({
@@ -60,6 +62,7 @@ export function PaymentConfirmDialog({
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
   usdExchangeRate = 1,
+  onQRPay,
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
   const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
@@ -145,13 +148,22 @@ export function PaymentConfirmDialog({
           <AlertDialogCancel disabled={processing}>
             {t('Cancel')}
           </AlertDialogCancel>
+          {onQRPay && (
+            <AlertDialogAction
+              onClick={onQRPay}
+              disabled={processing || calculating}
+              variant='outline'
+            >
+              {t('Scan to Pay')}
+            </AlertDialogAction>
+          )}
           <AlertDialogAction
             onClick={onConfirm}
             disabled={processing}
             variant='cta'
           >
             {processing && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
-            {t('Confirm Payment')}
+            {t('Redirect to Pay')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
