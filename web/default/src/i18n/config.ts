@@ -20,27 +20,47 @@ import i18n from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
 
-import en from './locales/en.json'
-import fr from './locales/fr.json'
-import ja from './locales/ja.json'
-import ru from './locales/ru.json'
-import vi from './locales/vi.json'
-import zh from './locales/zh.json'
+import { normalizeInterfaceLanguage } from './languages'
 
-export const resources = {
-  en,
-  zh,
-  fr,
-  ru,
-  ja,
-  vi,
-} as const
+// Each locale bundle is ~350–530 KB of JSON. Static-importing all six put every
+// language into the initial chunk (~2.5 MB raw, the bulk of the entry bundle),
+// so every visitor downloaded five languages they will never see. Instead we
+// code-split each locale (dynamic import → its own chunk) and load only the
+// active language, plus English as the fallback, before first render.
+type LocaleModule = { default?: { translation: Record<string, string> } }
+
+const localeLoaders: Record<string, () => Promise<LocaleModule>> = {
+  en: () => import('./locales/en.json'),
+  zh: () => import('./locales/zh.json'),
+  fr: () => import('./locales/fr.json'),
+  ru: () => import('./locales/ru.json'),
+  ja: () => import('./locales/ja.json'),
+  vi: () => import('./locales/vi.json'),
+}
+
+const inFlight = new Map<string, Promise<void>>()
+
+function loadLanguage(lng: string): Promise<void> {
+  const code = localeLoaders[lng] ? lng : 'en'
+  const existing = inFlight.get(code)
+  if (existing) return existing
+
+  const task = localeLoaders[code]().then((mod) => {
+    const bundle =
+      mod.default ?? (mod as { translation: Record<string, string> })
+    i18n.addResourceBundle(code, 'translation', bundle.translation, true, true)
+  })
+  inFlight.set(code, task)
+  return task
+}
 
 i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    resources,
+    // Languages are added on demand via addResourceBundle (see loadLanguage).
+    resources: {},
+    partialBundledLanguages: true,
     fallbackLng: 'en',
     supportedLngs: ['en', 'zh', 'fr', 'ru', 'ja', 'vi'],
     load: 'languageOnly', // Convert zh-CN -> zh
@@ -53,6 +73,24 @@ i18n
       order: ['localStorage', 'navigator'],
       caches: ['localStorage'],
     },
+    react: {
+      // Locales are added on demand (addResourceBundle) after a language switch,
+      // so components must re-render on the store's "added" event too — otherwise
+      // switching to a not-yet-loaded language keeps showing the fallback text.
+      bindI18nStore: 'added',
+    },
   })
+
+// Resolves once the active language (and the English fallback) are loaded.
+// main.tsx awaits this before rendering so first paint is fully translated.
+export const i18nReady: Promise<void> = Promise.all([
+  loadLanguage('en'),
+  loadLanguage(normalizeInterfaceLanguage(i18n.language)),
+]).then(() => undefined)
+
+// Load a language bundle the first time the user switches to it.
+i18n.on('languageChanged', (lng) => {
+  void loadLanguage(normalizeInterfaceLanguage(lng))
+})
 
 export default i18n
