@@ -131,6 +131,19 @@ export interface ManageUserQuotaPayload {
   value: number
 }
 
+// 批量操作（/api/user/batch/*）
+export type BatchQuotaMode = 'add' | 'subtract' | 'override' | 'multiply'
+
+export interface BatchUserSkip {
+  user_id: number
+  reason: string
+}
+
+export interface BatchUserOpResult {
+  updated_count: number
+  skipped: BatchUserSkip[]
+}
+
 // ============================================================================
 // Dialog Types
 // ============================================================================

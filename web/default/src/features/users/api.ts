@@ -28,6 +28,8 @@ import type {
   ManageUserAction,
   ManageUserQuotaPayload,
   ApiResponse,
+  BatchQuotaMode,
+  BatchUserOpResult,
 } from './types'
 
 // ============================================================================
@@ -148,6 +150,33 @@ export async function resetUserTwoFA(id: number): Promise<ApiResponse> {
  */
 export async function getGroups(): Promise<ApiResponse<string[]>> {
   const res = await api.get('/api/group/')
+  return res.data
+}
+
+/**
+ * Batch move users to a target group
+ */
+export async function batchUpdateUserGroup(
+  userIds: number[],
+  group: string
+): Promise<ApiResponse<BatchUserOpResult>> {
+  const res = await api.post('/api/user/batch/group', {
+    user_ids: userIds,
+    group,
+  })
+  return res.data
+}
+
+/**
+ * Batch adjust user quota (add/subtract/override/multiply)
+ */
+export async function batchAdjustUserQuota(payload: {
+  user_ids: number[]
+  mode: BatchQuotaMode
+  amount?: number
+  factor?: number
+}): Promise<ApiResponse<BatchUserOpResult>> {
+  const res = await api.post('/api/user/batch/quota', payload)
   return res.data
 }
 
