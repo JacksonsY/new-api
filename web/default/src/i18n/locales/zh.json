@@ -5382,6 +5382,8 @@
     "RSA signature (secure mode, api/pay endpoints)": "RSA 签名（安全模式，api/pay 端点）",
     "Match your Epay platform signature setting. MD5 works only when the platform allows compatibility mode; RSA works in both compatibility and secure mode. Switching here changes both the signing method and the API endpoints.": "与你的Epay平台签名设置保持一致。MD5 仅在平台开启兼容模式时可用；RSA 在兼容模式和安全模式下都可用。切换此项会同时改变签名方式和 API 端点。",
     "Merchant capability check": "商户接口能力检测",
+    "Minimum GitHub account age (seconds)": "GitHub 账号最小年龄（秒）",
+    "Reject GitHub accounts younger than this at OAuth sign-in/binding, to curb bulk throwaway accounts farming bonuses. 0 disables. Example: 2592000 = 30 days.": "OAuth 登录/绑定时拒绝创建时间不足该秒数的 GitHub 账号，遏制批量新开小号薅注册/邀请赠额。0=关闭；例：2592000 = 30 天。",
     "Probe whether the configured merchant is reachable and its credentials/endpoints work. No order is created.": "探测已配置的商户是否可达、凭证与接口端点是否有效。不会产生真实订单。",
     "Run check": "开始检测",
     "Run a check to see credentials and endpoint status here.": "运行检测后，凭证与端点状态将显示在这里。",

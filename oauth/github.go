@@ -35,6 +35,8 @@ type gitHubUser struct {
 	Login string `json:"login"` // GitHub username (can be changed by user)
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	// CreatedAt GitHub 以 RFC3339 返回账号创建时间,供账号年龄门禁判断
+	CreatedAt string `json:"created_at"`
 }
 
 func (p *GitHubProvider) GetName() string {
@@ -149,11 +151,21 @@ func (p *GitHubProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*O
 	logger.LogDebug(ctx, "[OAuth-GitHub] GetUserInfo success: id=%d, login=%s, name=%s, email=%s",
 		githubUser.Id, githubUser.Login, githubUser.Name, githubUser.Email)
 
+	var accountCreatedAt *time.Time
+	if githubUser.CreatedAt != "" {
+		if createdAt, err := time.Parse(time.RFC3339, githubUser.CreatedAt); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("[OAuth-GitHub] GetUserInfo invalid created_at: %s", err.Error()))
+		} else {
+			accountCreatedAt = &createdAt
+		}
+	}
+
 	return &OAuthUser{
-		ProviderUserID: strconv.FormatInt(githubUser.Id, 10), // Use numeric ID as primary identifier
-		Username:       githubUser.Login,
-		DisplayName:    githubUser.Name,
-		Email:          githubUser.Email,
+		ProviderUserID:   strconv.FormatInt(githubUser.Id, 10), // Use numeric ID as primary identifier
+		Username:         githubUser.Login,
+		DisplayName:      githubUser.Name,
+		Email:            githubUser.Email,
+		AccountCreatedAt: accountCreatedAt,
 		Extra: map[string]any{
 			"legacy_id": githubUser.Login, // Store login for migration from old accounts
 		},

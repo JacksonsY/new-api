@@ -126,6 +126,7 @@ func InitOptionMap() {
 	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
 	common.OptionMap["GitHubClientId"] = ""
 	common.OptionMap["GitHubClientSecret"] = ""
+	common.OptionMap["GitHubMinimumAccountAgeSeconds"] = strconv.FormatInt(common.GitHubMinimumAccountAgeSeconds, 10)
 	common.OptionMap["TelegramBotToken"] = ""
 	common.OptionMap["TelegramBotName"] = ""
 	common.OptionMap["WeChatServerAddress"] = ""
@@ -500,6 +501,8 @@ func updateOptionMap(key string, value string) (err error) {
 		common.LinuxDOClientSecret = value
 	case "LinuxDOMinimumTrustLevel":
 		common.LinuxDOMinimumTrustLevel, _ = strconv.Atoi(value)
+	case "GitHubMinimumAccountAgeSeconds":
+		common.GitHubMinimumAccountAgeSeconds, _ = strconv.ParseInt(value, 10, 64)
 	case "Footer":
 		common.Footer = value
 	case "SystemName":

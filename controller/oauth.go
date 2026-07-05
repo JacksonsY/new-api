@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -119,6 +120,8 @@ func HandleOAuth(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgOAuthUserDeleted)
 		case *OAuthRegistrationDisabledError:
 			common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
+		case *OAuthAccountAgeTooLowError:
+			common.ApiErrorI18n(c, i18n.MsgOAuthAccountAgeTooLow)
 		default:
 			common.ApiError(c, err)
 		}
@@ -168,6 +171,11 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 			common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams(provider.GetName()))
 			return
 		}
+	}
+
+	if err := validateOAuthAccountAgeForNewAssociation(provider, oauthUser, time.Now()); err != nil {
+		handleOAuthError(c, err)
+		return
 	}
 
 	// Get current user from session
@@ -243,6 +251,10 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	// User doesn't exist, create new user if registration is enabled
 	if !common.RegisterEnabled {
 		return nil, &OAuthRegistrationDisabledError{}
+	}
+
+	if err := validateOAuthAccountAgeForNewAssociation(provider, oauthUser, time.Now()); err != nil {
+		return nil, err
 	}
 
 	// Set up new user
@@ -352,6 +364,30 @@ func (e *OAuthRegistrationDisabledError) Error() string {
 	return "registration is disabled"
 }
 
+type OAuthAccountAgeTooLowError struct{}
+
+func (e *OAuthAccountAgeTooLowError) Error() string {
+	return "oauth account age too low"
+}
+
+// validateOAuthAccountAgeForNewAssociation GitHub 账号年龄门禁:新建关联(注册或绑定)时,
+// 若开启门槛且 GitHub 账号年龄不足则拒绝。仅对 GitHub 生效,其它 provider 放行。
+func validateOAuthAccountAgeForNewAssociation(provider oauth.Provider, oauthUser *oauth.OAuthUser, now time.Time) error {
+	if _, ok := provider.(*oauth.GitHubProvider); !ok {
+		return nil
+	}
+	if common.GitHubMinimumAccountAgeSeconds <= 0 {
+		return nil
+	}
+	if oauthUser == nil || oauthUser.AccountCreatedAt == nil {
+		return &OAuthAccountAgeTooLowError{}
+	}
+	if now.Unix()-oauthUser.AccountCreatedAt.Unix() <= common.GitHubMinimumAccountAgeSeconds {
+		return &OAuthAccountAgeTooLowError{}
+	}
+	return nil
+}
+
 // handleOAuthError handles OAuth errors and returns translated message
 func handleOAuthError(c *gin.Context, err error) {
 	switch e := err.(type) {
@@ -365,6 +401,8 @@ func handleOAuthError(c *gin.Context, err error) {
 		common.ApiErrorMsg(c, e.Message)
 	case *oauth.TrustLevelError:
 		common.ApiErrorI18n(c, i18n.MsgOAuthTrustLevelLow)
+	case *OAuthAccountAgeTooLowError:
+		common.ApiErrorI18n(c, i18n.MsgOAuthAccountAgeTooLow)
 	default:
 		common.ApiError(c, err)
 	}

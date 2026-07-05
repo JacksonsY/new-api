@@ -1,5 +1,7 @@
 package oauth
 
+import "time"
+
 // OAuthToken represents the token received from OAuth provider
 type OAuthToken struct {
 	AccessToken  string `json:"access_token"`
@@ -20,6 +22,8 @@ type OAuthUser struct {
 	DisplayName string
 	// Email is the email from the OAuth provider
 	Email string
+	// AccountCreatedAt 是 OAuth 提供方的账号创建时间(目前仅 GitHub 提供),用于账号年龄门禁;nil = 未知
+	AccountCreatedAt *time.Time
 	// Extra contains any additional provider-specific data
 	Extra map[string]any
 }

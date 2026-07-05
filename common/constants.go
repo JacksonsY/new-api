@@ -129,6 +129,11 @@ var SMTPToken = ""
 
 var GitHubClientId = ""
 var GitHubClientSecret = ""
+
+// GitHubMinimumAccountAgeSeconds GitHub 账号年龄门禁:OAuth 注册/绑定时,GitHub 账号创建距今
+// 不足该秒数则拒绝(防批量新开小号薅注册/邀请赠额)。0 = 关闭;仅对 GitHub provider 生效。
+var GitHubMinimumAccountAgeSeconds int64 = 0
+
 var LinuxDOClientId = ""
 var LinuxDOClientSecret = ""
 var LinuxDOMinimumTrustLevel = 0
