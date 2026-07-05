@@ -5398,6 +5398,7 @@
     "Scan the QR code with {{method}} to complete payment": "使用 {{method}} 扫描二维码完成支付",
     "Waiting for payment...": "等待支付中…",
     "Payment successful": "支付成功",
-    "Failed to create payment": "创建支付失败"
+    "Failed to create payment": "创建支付失败",
+    "RSA (platform public key + merchant private key) and MD5 (merchant key) can both be set. RSA is used first; the system falls back to MD5 automatically when RSA is absent or fails to parse.": "RSA（平台公钥 + 商户私钥）与 MD5（商户密钥）可同时配置。系统优先使用 RSA，当 RSA 未配置或解析失败时自动降级为 MD5。"
   }
 }

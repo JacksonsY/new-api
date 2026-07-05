@@ -50,14 +50,6 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
@@ -511,8 +503,7 @@ export function PaymentSettingsSection({
       EpayKey: initialRef.current.EpayKey.trim(),
       EpayApiVersion: initialRef.current.EpayApiVersion ?? 'v1',
       EpayPlatformPublicKey: initialRef.current.EpayPlatformPublicKey.trim(),
-      EpayMerchantPrivateKey:
-        initialRef.current.EpayMerchantPrivateKey.trim(),
+      EpayMerchantPrivateKey: initialRef.current.EpayMerchantPrivateKey.trim(),
       Price: initialRef.current.Price,
       MinTopUp: initialRef.current.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(
@@ -1316,119 +1307,80 @@ export function PaymentSettingsSection({
                       />
                     </div>
 
-                    <FormField
-                      control={form.control}
-                      name='EpayApiVersion'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('Epay signature method')}</FormLabel>
-                          <Select
-                            value={field.value}
-                            onValueChange={(value) =>
-                              value !== null && field.onChange(value)
-                            }
-                          >
+                    <div className='space-y-6 rounded-md border border-dashed p-4'>
+                      <FormDescription>
+                        {t(
+                          'RSA (platform public key + merchant private key) and MD5 (merchant key) can both be set. RSA is used first; the system falls back to MD5 automatically when RSA is absent or fails to parse.'
+                        )}
+                      </FormDescription>
+                      <FormField
+                        control={form.control}
+                        name='EpayPlatformPublicKey'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              {t('Epay platform public key')}
+                            </FormLabel>
                             <FormControl>
-                              <SelectTrigger className='w-full'>
-                                <SelectValue />
-                              </SelectTrigger>
+                              <Textarea
+                                rows={4}
+                                placeholder={t('Enter new key to update')}
+                                autoComplete='off'
+                                {...field}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                              />
                             </FormControl>
-                            <SelectContent alignItemWithTrigger={false}>
-                              <SelectGroup>
-                                <SelectItem value='v1'>
-                                  {t(
-                                    'MD5 signature (compatibility mode, classic endpoints)'
-                                  )}
-                                </SelectItem>
-                                <SelectItem value='v2'>
-                                  {t(
-                                    'RSA signature (secure mode, api/pay endpoints)'
-                                  )}
-                                </SelectItem>
-                              </SelectGroup>
-                            </SelectContent>
-                          </Select>
-                          <FormDescription>
-                            {t(
-                              'Match your Epay platform signature setting. MD5 works only when the platform allows compatibility mode; RSA works in both compatibility and secure mode. Switching here changes both the signing method and the API endpoints.'
-                            )}
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                            <FormDescription>
+                              {t(
+                                'Base64 DER or PEM. Used to verify callbacks and query responses.'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                    {form.watch('EpayApiVersion') === 'v2' && (
-                      <div className='space-y-6 rounded-md border border-dashed p-4'>
-                        <FormField
-                          control={form.control}
-                          name='EpayPlatformPublicKey'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>
-                                {t('Epay platform public key')}
-                              </FormLabel>
-                              <FormControl>
-                                <Textarea
-                                  rows={4}
-                                  placeholder={t('Enter new key to update')}
-                                  autoComplete='off'
-                                  {...field}
-                                  onChange={(event) =>
-                                    field.onChange(event.target.value)
-                                  }
-                                />
-                              </FormControl>
-                              <FormDescription>
-                                {t(
-                                  'Base64 DER or PEM. Used to verify callbacks and query responses.'
-                                )}
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name='EpayMerchantPrivateKey'
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>
-                                {t('Epay merchant private key')}
-                              </FormLabel>
-                              <FormControl>
-                                <Textarea
-                                  rows={4}
-                                  placeholder={t('Enter new key to update')}
-                                  autoComplete='off'
-                                  {...field}
-                                  onChange={(event) =>
-                                    field.onChange(event.target.value)
-                                  }
-                                />
-                              </FormControl>
-                              <FormDescription>
-                                {t(
-                                  'Base64 DER or PEM (PKCS8). Leave blank unless rotating.'
-                                )}
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    )}
+                      <FormField
+                        control={form.control}
+                        name='EpayMerchantPrivateKey'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              {t('Epay merchant private key')}
+                            </FormLabel>
+                            <FormControl>
+                              <Textarea
+                                rows={4}
+                                placeholder={t('Enter new key to update')}
+                                autoComplete='off'
+                                {...field}
+                                onChange={(event) =>
+                                  field.onChange(event.target.value)
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t(
+                                'Base64 DER or PEM (PKCS8). Leave blank unless rotating.'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                   </div>
 
                   {/* 右：诊断面板（随配置常驻） */}
-                  <div className='h-fit space-y-3 rounded-lg border bg-muted/30 p-4 lg:sticky lg:top-4'>
+                  <div className='bg-muted/30 h-fit space-y-3 rounded-lg border p-4 lg:sticky lg:top-4'>
                     <div className='flex items-center justify-between gap-2'>
                       <span className='text-sm font-medium'>
                         {t('Merchant capability check')}
                       </span>
                       <span className='bg-primary/10 text-primary rounded px-1.5 py-0.5 text-xs font-medium'>
-                        {form.watch('EpayApiVersion') === 'v2' ? 'RSA' : 'MD5'}
+                        RSA→MD5
                       </span>
                     </div>
                     <p className='text-muted-foreground text-xs'>
