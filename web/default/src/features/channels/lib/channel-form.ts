@@ -380,7 +380,7 @@ export function transformChannelToFormDefaults(
     system_prompt: '',
     system_prompt_override: false,
     sub2api_balance_query: false,
-    hide_upstream_errors: false,
+    hide_upstream_errors: true,
     upstream_ratio_sync: false,
     upstream_group_name: '',
   }
@@ -396,7 +396,7 @@ export function transformChannelToFormDefaults(
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
         sub2api_balance_query: parsed.sub2api_balance_query || false,
-        hide_upstream_errors: parsed.hide_upstream_errors || false,
+        hide_upstream_errors: parsed.hide_upstream_errors ?? true,
         upstream_ratio_sync: parsed.upstream_ratio_sync || false,
         upstream_group_name: parsed.upstream_group_name || '',
       }

@@ -23,7 +23,7 @@ func newMaskTestContext(t *testing.T, hideUpstreamErrors bool, role int) *gin.Co
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{HideUpstreamErrors: hideUpstreamErrors})
+	common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{HideUpstreamErrors: &hideUpstreamErrors})
 	if role > 0 {
 		c.Set("role", role)
 	}
@@ -93,4 +93,13 @@ func TestMaskUpstreamErrorRespectsSwitchAndRole(t *testing.T) {
 	bare, _ := gin.CreateTestContext(httptest.NewRecorder())
 	bare.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	assert.False(t, ShouldMaskUpstreamError(bare))
+}
+
+// 默认开启：渠道未显式配置 hide_upstream_errors（nil）时，上游错误对非管理员仍脱敏。
+func TestMaskUpstreamErrorDefaultsOnWhenUnset(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{})
+	assert.True(t, ShouldMaskUpstreamError(c), "未配置该开关时默认脱敏")
 }

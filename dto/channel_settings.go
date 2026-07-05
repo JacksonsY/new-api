@@ -26,7 +26,8 @@ type ChannelSettings struct {
 	UpstreamGroupName string `json:"upstream_group_name,omitempty"`
 	// HideUpstreamErrors 对下游客户隐藏上游原始报错（换通用文案），防止上游站名/URL/
 	// 配额提示等供应链信息泄漏；原始报错仍进服务端日志与错误日志的 admin_info。
-	HideUpstreamErrors bool `json:"hide_upstream_errors,omitempty"`
+	// *bool 三态：nil（未配置）默认开启脱敏，仅显式 false 才透传上游原文。
+	HideUpstreamErrors *bool `json:"hide_upstream_errors,omitempty"`
 }
 
 type VertexKeyType string
