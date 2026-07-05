@@ -16,22 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-'use client'
-
-import { Controls as ControlsPrimitive } from '@xyflow/react'
-import type { ComponentProps } from 'react'
-
-import { cn } from '@/lib/utils'
-
-export type ControlsProps = ComponentProps<typeof ControlsPrimitive>
-
-export const Controls = ({ className, ...props }: ControlsProps) => (
-  <ControlsPrimitive
-    className={cn(
-      'bg-card gap-px overflow-hidden rounded-md border p-1 shadow-none!',
-      '[&>button]:hover:bg-secondary! [&>button]:rounded-md [&>button]:border-none! [&>button]:bg-transparent!',
-      className
-    )}
-    {...props}
-  />
-)
+/**
+ * Lightweight placeholder for a provider icon: shown while the lazy LobeHub
+ * chunk loads and when an icon name cannot be resolved. Deliberately dependency
+ * -free so it never drags `@lobehub/icons` into the caller's chunk.
+ */
+export function LobeIconFallback(props: { size: number; label: string }) {
+  return (
+    <div
+      className='bg-muted text-muted-foreground flex items-center justify-center rounded-full text-xs font-medium'
+      style={{ width: props.size, height: props.size }}
+    >
+      {props.label}
+    </div>
+  )
+}
