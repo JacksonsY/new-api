@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -568,6 +569,14 @@ type upstreamPricingProbe struct {
 	GroupRatio map[string]float64 `json:"group_ratio"`
 }
 
+// upstreamResponseLooksLikeHTML 上游未开放对应接口时，常返回登录页 / 404 / SPA 首页，
+// 响应体以 '<' 开头（HTML）。直接丢给 JSON 解析器只会得到晦涩的
+// "invalid character '<' looking for beginning of value"，据此提前给出可诊断的错误。
+func upstreamResponseLooksLikeHTML(body []byte) bool {
+	trimmed := bytes.TrimSpace(body)
+	return len(trimmed) > 0 && trimmed[0] == '<'
+}
+
 // fetchNewAPIGroupRates 从 new-api 上游的公开 /api/pricing 拉分组倍率
 // （pricing 模块公开时匿名可访问），映射成与 sub2api 分组同构的行供前端同一张表展示。
 func fetchNewAPIGroupRates(channel *model.Channel) ([]Sub2APIAdminGroup, error) {
@@ -575,6 +584,9 @@ func fetchNewAPIGroupRates(channel *model.Channel) ([]Sub2APIAdminGroup, error) 
 	body, err := GetResponseBody("GET", url, channel, http.Header{})
 	if err != nil {
 		return nil, err
+	}
+	if upstreamResponseLooksLikeHTML(body) {
+		return nil, errors.New("上游 /api/pricing 返回的不是 JSON（可能不是 new-api 上游，或未公开定价模块；若上游是 sub2api，请在渠道设置里开启「sub2api 余额查询」）")
 	}
 	probe := upstreamPricingProbe{}
 	if err := common.Unmarshal(body, &probe); err != nil {
@@ -611,6 +623,9 @@ func fetchUpstreamGroupRates(channel *model.Channel) ([]Sub2APIAdminGroup, error
 		body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
 		if err != nil {
 			return nil, err
+		}
+		if upstreamResponseLooksLikeHTML(body) {
+			return nil, errors.New("上游 /v1/usage 返回的不是 JSON（base_url 可能配置有误，或该地址不是 sub2api 上游）")
 		}
 		response := Sub2APIUsageResponse{}
 		if err = common.Unmarshal(body, &response); err != nil {

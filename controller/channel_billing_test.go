@@ -85,3 +85,27 @@ func TestUsdExchangeRateOrDefault(t *testing.T) {
 	operation_setting.USDExchangeRate = -1
 	assert.Equal(t, 7.3, usdExchangeRateOrDefault())
 }
+
+// TestUpstreamResponseLooksLikeHTML 上游未开放接口时返回登录页/404/SPA 首页（HTML）应被识别，
+// 避免把 '<' 丢给 JSON 解析器得到 "invalid character '<'"；合法 JSON 与空/空白响应不误判。
+func TestUpstreamResponseLooksLikeHTML(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"doctype", "<!DOCTYPE html><html></html>", true},
+		{"html_tag", "<html><head></head></html>", true},
+		{"leading_ws_html", "  \n\t<html>", true},
+		{"json_object", `{"success":true,"group_ratio":{}}`, false},
+		{"json_array", `[{"id":1}]`, false},
+		{"leading_ws_json", "  \n{\"ok\":true}", false},
+		{"empty", "", false},
+		{"whitespace_only", "   \n\t", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, upstreamResponseLooksLikeHTML([]byte(tc.body)))
+		})
+	}
+}
