@@ -241,6 +241,21 @@ export type ModelSettings = {
   'channel_affinity_setting.max_entries': number
   'channel_affinity_setting.default_ttl_seconds': number
   'channel_affinity_setting.rules': string
+  'adaptive_routing_setting.enabled': boolean
+  'adaptive_routing_setting.alpha': number
+  'adaptive_routing_setting.ttft_ref_ms': number
+  'adaptive_routing_setting.ttft_penalty': number
+  'adaptive_routing_setting.error_penalty': number
+  'adaptive_routing_setting.health_floor': number
+  'adaptive_routing_setting.inflight_penalty': number
+  'adaptive_routing_setting.top_k': number
+  'adaptive_routing_setting.circuit_enabled': boolean
+  'adaptive_routing_setting.open_threshold': number
+  'adaptive_routing_setting.cooldown_seconds': number
+  'adaptive_routing_setting.half_open_factor': number
+  'adaptive_routing_setting.escape_enabled': boolean
+  'adaptive_routing_setting.escape_ttft_ms': number
+  'adaptive_routing_setting.escape_error_rate': number
   'model_deployment.ionet.api_key': string
   'model_deployment.ionet.enabled': boolean
 }

@@ -20,6 +20,7 @@ import { ChannelAffinitySection } from '../general/channel-affinity'
 import { IoNetDeploymentSettingsSection } from '../integrations/ionet-deployment-settings-section'
 import type { ModelSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { AdaptiveRoutingSection } from './adaptive-routing-section'
 import { ClaudeSettingsCard } from './claude-settings-card'
 import { GeminiSettingsCard } from './gemini-settings-card'
 import { GlobalSettingsCard } from './global-settings-card'
@@ -163,6 +164,46 @@ const MODELS_SECTIONS = [
             settings['channel_affinity_setting.default_ttl_seconds'],
           'channel_affinity_setting.rules':
             settings['channel_affinity_setting.rules'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'adaptive-routing',
+    titleKey: 'Adaptive Routing',
+    build: (settings: ModelSettings) => (
+      <AdaptiveRoutingSection
+        defaultValues={{
+          'adaptive_routing_setting.enabled':
+            settings['adaptive_routing_setting.enabled'],
+          'adaptive_routing_setting.alpha':
+            settings['adaptive_routing_setting.alpha'],
+          'adaptive_routing_setting.ttft_ref_ms':
+            settings['adaptive_routing_setting.ttft_ref_ms'],
+          'adaptive_routing_setting.ttft_penalty':
+            settings['adaptive_routing_setting.ttft_penalty'],
+          'adaptive_routing_setting.error_penalty':
+            settings['adaptive_routing_setting.error_penalty'],
+          'adaptive_routing_setting.health_floor':
+            settings['adaptive_routing_setting.health_floor'],
+          'adaptive_routing_setting.inflight_penalty':
+            settings['adaptive_routing_setting.inflight_penalty'],
+          'adaptive_routing_setting.top_k':
+            settings['adaptive_routing_setting.top_k'],
+          'adaptive_routing_setting.circuit_enabled':
+            settings['adaptive_routing_setting.circuit_enabled'],
+          'adaptive_routing_setting.open_threshold':
+            settings['adaptive_routing_setting.open_threshold'],
+          'adaptive_routing_setting.cooldown_seconds':
+            settings['adaptive_routing_setting.cooldown_seconds'],
+          'adaptive_routing_setting.half_open_factor':
+            settings['adaptive_routing_setting.half_open_factor'],
+          'adaptive_routing_setting.escape_enabled':
+            settings['adaptive_routing_setting.escape_enabled'],
+          'adaptive_routing_setting.escape_ttft_ms':
+            settings['adaptive_routing_setting.escape_ttft_ms'],
+          'adaptive_routing_setting.escape_error_rate':
+            settings['adaptive_routing_setting.escape_error_rate'],
         }}
       />
     ),

@@ -23,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	channelhealth "github.com/QuantumNous/new-api/pkg/channel_health"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/router"
@@ -352,6 +353,9 @@ func InitResources() error {
 	}
 
 	perfmetrics.Init()
+
+	// Start cluster sync for adaptive-routing circuit breaker (no-op without Redis).
+	channelhealth.StartClusterSync()
 
 	// 启动系统监控
 	common.StartSystemMonitor()

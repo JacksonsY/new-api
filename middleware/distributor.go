@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	channelhealth "github.com/QuantumNous/new-api/pkg/channel_health"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -101,7 +102,13 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 
-				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found && channelhealth.ShouldEscapeAffinity(preferredChannelID) {
+					// The affinity-anchored channel has degraded past the absolute
+					// escape thresholds (circuit open / high error rate / slow TTFT).
+					// Abandon the anchor — forfeiting its warm prompt cache is worth
+					// it now — and fall through to adaptive selection below.
+					service.ClearCurrentChannelAffinityCache(c)
+				} else if found {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled &&

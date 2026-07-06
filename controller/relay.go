@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	channelhealth "github.com/QuantumNous/new-api/pkg/channel_health"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -224,19 +225,27 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
-		switch relayFormat {
-		case types.RelayFormatOpenAIRealtime:
-			newAPIError = relay.WssHelper(c, relayInfo)
-		case types.RelayFormatClaude:
-			newAPIError = relay.ClaudeHelper(c, relayInfo)
-		case types.RelayFormatGemini:
-			newAPIError = geminiRelayHandler(c, relayInfo)
-		default:
-			newAPIError = relayHandler(c, relayInfo)
-		}
+		// Track in-flight requests per channel for peak-weighted adaptive routing.
+		// The deferred release runs even on a relay panic (caught by the outer
+		// recover), so a slot is never leaked.
+		channelhealth.AcquireInflight(channel.Id)
+		func() {
+			defer channelhealth.ReleaseInflight(channel.Id)
+			switch relayFormat {
+			case types.RelayFormatOpenAIRealtime:
+				newAPIError = relay.WssHelper(c, relayInfo)
+			case types.RelayFormatClaude:
+				newAPIError = relay.ClaudeHelper(c, relayInfo)
+			case types.RelayFormatGemini:
+				newAPIError = geminiRelayHandler(c, relayInfo)
+			default:
+				newAPIError = relayHandler(c, relayInfo)
+			}
+		}()
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
+			channelhealth.ReportResult(channel.Id, true, false, channelHealthTtftMs(relayInfo))
 			return
 		}
 
@@ -244,6 +253,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.LastError = newAPIError
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+		channelhealth.ReportResult(channel.Id, false, isChannelFaultForHealth(newAPIError), 0)
 
 		// 响应已开始写出（状态码/正文已发给客户端），禁止重试，直接终止
 		if c.Writer.Written() {
@@ -279,6 +289,31 @@ func addUsedChannel(c *gin.Context, channelId int) {
 	useChannel := c.GetStringSlice("use_channel")
 	useChannel = append(useChannel, fmt.Sprintf("%d", channelId))
 	c.Set("use_channel", useChannel)
+}
+
+// channelHealthTtftMs extracts the first-token latency for a successful attempt,
+// mirroring perf_metrics: only meaningful for streaming responses that have
+// started emitting. Returns 0 (skip) otherwise.
+func channelHealthTtftMs(info *relaycommon.RelayInfo) int64 {
+	if info != nil && info.IsStream && info.HasSendResponse() {
+		return info.FirstResponseTime.Sub(info.StartTime).Milliseconds()
+	}
+	return 0
+}
+
+// isChannelFaultForHealth reports whether a failed attempt should count against
+// the channel's health. Channel-tagged errors and upstream 429/5xx are the
+// channel's fault; client/business errors (400/402/quota) are not, so a channel
+// is never penalized for user mistakes.
+func isChannelFaultForHealth(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	if types.IsChannelError(err) {
+		return true
+	}
+	code := err.StatusCode
+	return code == http.StatusTooManyRequests || code >= http.StatusInternalServerError
 }
 
 func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {

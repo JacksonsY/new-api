@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	channelhealth "github.com/QuantumNous/new-api/pkg/channel_health"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
@@ -169,6 +170,22 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 
 	if len(targetChannels) == 0 {
 		return nil, errors.New(fmt.Sprintf("no channel found, group: %s, model: %s, priority: %d", group, model, targetPriority))
+	}
+
+	// Adaptive routing: re-rank this priority layer by passive channel health
+	// (TTFT/error EWMA + circuit breaker). At full health the distribution
+	// matches the legacy weighted-random below; Select returns ok=false (fall
+	// through) when disabled or when the breaker excluded every candidate.
+	if channelhealth.Enabled() {
+		cands := make([]channelhealth.Candidate, 0, len(targetChannels))
+		for _, ch := range targetChannels {
+			cands = append(cands, channelhealth.Candidate{ChannelID: ch.Id, Weight: ch.GetWeight()})
+		}
+		if chosenID, ok := channelhealth.Select(cands); ok {
+			if ch, exists := channelsIDM[chosenID]; exists {
+				return ch, nil
+			}
+		}
 	}
 
 	// smoothing factor and adjustment
