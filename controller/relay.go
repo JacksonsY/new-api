@@ -227,7 +227,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		// Track in-flight requests per channel for peak-weighted adaptive routing.
 		// The deferred release runs even on a relay panic (caught by the outer
-		// recover), so a slot is never leaked.
+		// recover), so a slot is never leaked. attemptStart is per-attempt so a
+		// retried success isn't charged the failed attempt's latency.
+		attemptStart := time.Now()
 		channelhealth.AcquireInflight(channel.Id)
 		func() {
 			defer channelhealth.ReleaseInflight(channel.Id)
@@ -245,7 +247,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
-			channelhealth.ReportResult(channel.Id, true, false, channelHealthTtftMs(relayInfo))
+			channelhealth.ReportResult(channel.Id, true, false, channelHealthTtftMs(relayInfo, attemptStart))
 			return
 		}
 
@@ -291,12 +293,14 @@ func addUsedChannel(c *gin.Context, channelId int) {
 	c.Set("use_channel", useChannel)
 }
 
-// channelHealthTtftMs extracts the first-token latency for a successful attempt,
-// mirroring perf_metrics: only meaningful for streaming responses that have
-// started emitting. Returns 0 (skip) otherwise.
-func channelHealthTtftMs(info *relaycommon.RelayInfo) int64 {
-	if info != nil && info.IsStream && info.HasSendResponse() {
-		return info.FirstResponseTime.Sub(info.StartTime).Milliseconds()
+// channelHealthTtftMs extracts this attempt's first-token latency for a
+// successful streaming response, measured from attemptStart (not the request
+// start) so a retry that succeeds isn't charged the prior failed attempt's time.
+// Returns 0 (skip) for non-streaming or when no token was emitted after the
+// attempt began.
+func channelHealthTtftMs(info *relaycommon.RelayInfo, attemptStart time.Time) int64 {
+	if info != nil && info.IsStream && info.HasSendResponse() && info.FirstResponseTime.After(attemptStart) {
+		return info.FirstResponseTime.Sub(attemptStart).Milliseconds()
 	}
 	return 0
 }

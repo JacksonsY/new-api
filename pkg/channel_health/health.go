@@ -88,8 +88,17 @@ func ReleaseInflight(channelID int) {
 		return
 	}
 	s := v.(*channelStat)
-	if s.inflight.Add(-1) < 0 {
-		s.inflight.Store(0)
+	// Decrement, clamped at zero via CAS so a stray release (only possible if the
+	// feature is toggled on mid-request) can neither go negative nor clobber a
+	// concurrent AcquireInflight increment.
+	for {
+		cur := s.inflight.Load()
+		if cur <= 0 {
+			return
+		}
+		if s.inflight.CompareAndSwap(cur, cur-1) {
+			return
+		}
 	}
 }
 

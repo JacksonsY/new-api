@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/go-redis/redis/v8"
 )
 
 // Cluster coordination for the circuit breaker.
@@ -37,6 +38,22 @@ var (
 	sharedCircuits  atomic.Value // map[int]int64 (channelID -> openUntilUnixNano)
 	clusterSyncOnce sync.Once
 )
+
+// pruneStaleCircuitsScript deletes hash fields whose openUntil is older than the
+// threshold, re-reading each value server-side so it is atomic w.r.t. a
+// concurrent publishOpen — a freshly re-tripped channel is never wiped.
+var pruneStaleCircuitsScript = redis.NewScript(`
+local entries = redis.call('HGETALL', KEYS[1])
+local threshold = tonumber(ARGV[1])
+local removed = 0
+for i = 1, #entries, 2 do
+	local v = tonumber(entries[i + 1])
+	if v == nil or v < threshold then
+		redis.call('HDEL', KEYS[1], entries[i])
+		removed = removed + 1
+	end
+end
+return removed`)
 
 func init() {
 	sharedCircuits.Store(map[int]int64{})
@@ -148,18 +165,20 @@ func syncSharedCircuits() {
 	}
 	staleBefore := time.Now().Add(-sharedStaleGrace).UnixNano()
 	next := make(map[int]int64, len(res))
-	var stale []string
 	for field, val := range res {
 		id, err1 := strconv.Atoi(field)
 		openUntil, err2 := strconv.ParseInt(val, 10, 64)
 		if err1 != nil || err2 != nil || openUntil < staleBefore {
-			stale = append(stale, field)
-			continue
+			continue // skip malformed / stale locally; Lua prunes them in Redis
 		}
 		next[id] = openUntil
 	}
 	sharedCircuits.Store(next)
-	if len(stale) > 0 {
-		common.RDB.HDel(context.Background(), sharedCircuitsKey, stale...)
-	}
+	// Prune truly-stale fields server-side. A Lua script re-reads each value
+	// inside Redis, so a field re-tripped (HSet with a fresh future openUntil)
+	// concurrently with this cleanup is never wiped — unlike a value-blind HDel
+	// keyed on the names read a moment earlier.
+	_ = pruneStaleCircuitsScript.Run(
+		context.Background(), common.RDB, []string{sharedCircuitsKey}, staleBefore,
+	).Err()
 }

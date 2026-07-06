@@ -30,9 +30,15 @@ func GetChannelHealth(c *gin.Context) {
 func ResetChannelHealth(c *gin.Context) {
 	channelID := 0
 	if raw := c.Query("channel_id"); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil {
-			channelID = parsed
+		// A malformed channel_id must NOT silently fall through to channelID=0,
+		// which is the "reset everything" path — reject it so a typo can't wipe
+		// every channel's health and open circuit cluster-wide.
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid channel_id"})
+			return
 		}
+		channelID = parsed
 	}
 	channelhealth.Reset(channelID)
 	c.JSON(http.StatusOK, gin.H{"success": true})
