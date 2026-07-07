@@ -31,6 +31,38 @@ const (
 	circuitOpen
 )
 
+// rollingWindow is a fixed 60-second ring of per-second counters used for RPM /
+// TPM. Each bucket records the unix-second it currently represents; a stale
+// bucket is zeroed lazily on write, so there is no sweeper goroutine and sum()
+// simply skips any bucket outside the trailing 60s. The owning channelStat's mu
+// serializes all access.
+const rollingWindowSeconds = 60
+
+type rollingWindow struct {
+	counts [rollingWindowSeconds]int64
+	stamps [rollingWindowSeconds]int64 // unix second each bucket currently holds
+}
+
+func (w *rollingWindow) add(nowSec, n int64) {
+	idx := nowSec % rollingWindowSeconds
+	if w.stamps[idx] != nowSec {
+		w.stamps[idx] = nowSec
+		w.counts[idx] = 0
+	}
+	w.counts[idx] += n
+}
+
+func (w *rollingWindow) sum(nowSec int64) int64 {
+	cutoff := nowSec - rollingWindowSeconds + 1
+	var total int64
+	for i := 0; i < rollingWindowSeconds; i++ {
+		if w.stamps[i] >= cutoff && w.stamps[i] <= nowSec {
+			total += w.counts[i]
+		}
+	}
+	return total
+}
+
 type channelStat struct {
 	// inflight is the number of requests this instance currently has in flight
 	// to the channel. Atomic, independent of mu, updated on the relay hot path.
@@ -45,6 +77,24 @@ type channelStat struct {
 	errEWMA  float64 // [0,1]
 	hasTtft  bool
 	ttftEWMA float64 // ms
+
+	// Observability-only signals (never affect routing/circuit). Fed by
+	// ReportTraffic, surfaced through StatView for the ops-monitor page.
+	hasLatency  bool
+	latencyEWMA float64 // ms, total response time
+	hasTps      bool
+	tpsEWMA     float64 // output tokens/sec
+	lastUsedAt  int64   // unix seconds; 0 = never observed
+	lastErrCode int     // last channel-fault HTTP status; 0 = none
+	lastErrAt   int64   // unix seconds; 0 = none
+
+	// Rolling 60s windows (RPM / TPM) and cumulative channel-fault tallies by
+	// class (429 rate-limit / 5xx server / other incl. network & code 0).
+	reqWindow rollingWindow
+	tokWindow rollingWindow
+	err429    int64
+	err5xx    int64
+	errOther  int64
 
 	consecutiveFailures int
 	state               circuitState
@@ -199,6 +249,86 @@ func ReportResult(channelID int, success bool, channelFault bool, ttftMs int64) 
 	}
 }
 
+// Traffic carries passive, observability-only signals for one relay attempt:
+// total latency, output-token throughput, and last-activity / last-error
+// markers. Unlike ReportResult these never affect routing or the circuit
+// breaker — they exist only to enrich the ops-monitor view — and require no
+// probing (every value is a by-product of a request that already happened).
+type Traffic struct {
+	Success      bool
+	ChannelFault bool
+	LatencyMs    int64
+	OutputTokens int64
+	GenerationMs int64
+	ErrCode      int
+}
+
+// ReportTraffic folds one attempt's observability signals into a channel's
+// stats. No-op when adaptive routing is off. lastUsedAt advances on every
+// attempt; latency/throughput EWMAs update on success with usable samples; the
+// last channel-fault error code/time is recorded on upstream failures only, so
+// a client 400 never shows up as the channel's fault.
+func ReportTraffic(channelID int, tr Traffic) {
+	if channelID <= 0 {
+		return
+	}
+	setting := operation_setting.GetAdaptiveRoutingSetting()
+	if !setting.Enabled {
+		return
+	}
+	alpha := setting.Alpha
+	if alpha <= 0 || alpha > 1 {
+		alpha = 0.2
+	}
+
+	s := getStat(channelID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	nowSec := time.Now().Unix()
+	s.lastUsedAt = nowSec
+	s.reqWindow.add(nowSec, 1)
+
+	if tr.Success {
+		if tr.LatencyMs > 0 {
+			sample := float64(tr.LatencyMs)
+			if s.hasLatency {
+				s.latencyEWMA = alpha*sample + (1-alpha)*s.latencyEWMA
+			} else {
+				s.latencyEWMA = sample
+				s.hasLatency = true
+			}
+		}
+		if tr.OutputTokens > 0 {
+			s.tokWindow.add(nowSec, tr.OutputTokens)
+			if tr.GenerationMs > 0 {
+				sample := float64(tr.OutputTokens) / (float64(tr.GenerationMs) / 1000.0)
+				if s.hasTps {
+					s.tpsEWMA = alpha*sample + (1-alpha)*s.tpsEWMA
+				} else {
+					s.tpsEWMA = sample
+					s.hasTps = true
+				}
+			}
+		}
+	} else if tr.ChannelFault {
+		if tr.ErrCode > 0 {
+			s.lastErrCode = tr.ErrCode
+			s.lastErrAt = nowSec
+		}
+		// Classify every channel fault so the ops view can tell rate-limiting
+		// (429) from upstream 5xx from network/other faults (code 0 included).
+		switch {
+		case tr.ErrCode == 429:
+			s.err429++
+		case tr.ErrCode >= 500:
+			s.err5xx++
+		default:
+			s.errOther++
+		}
+	}
+}
+
 // trip opens the circuit; caller holds s.mu.
 func (s *channelStat) trip(setting *operation_setting.AdaptiveRoutingSetting) {
 	cooldown := setting.CooldownSeconds
@@ -216,23 +346,58 @@ type snapshot struct {
 	ttftMs    float64
 	inflight  int64
 	state     circuitState
+
+	hasLatency  bool
+	latencyMs   float64
+	hasTps      bool
+	tps         float64
+	lastUsedAt  int64
+	lastErrCode int
+	lastErrAt   int64
+	cooldownMs  int64 // remaining until this instance's half-open probe; 0 when not open
+	rpm         int64
+	tpm         int64
+	err429      int64
+	err5xx      int64
+	errOther    int64
 }
 
 // read returns the current stats, lazily transitioning open->half-open once the
 // cooldown has elapsed so recovery happens from real traffic (no synthetic probe).
 func (s *channelStat) read() snapshot {
 	inflight := s.inflight.Load()
+	now := time.Now()
 	s.mu.Lock()
-	if s.state == circuitOpen && time.Now().After(s.openUntil) {
+	if s.state == circuitOpen && now.After(s.openUntil) {
 		s.state = circuitHalfOpen
 	}
+	var cooldownMs int64
+	if s.state == circuitOpen {
+		if remaining := s.openUntil.Sub(now).Milliseconds(); remaining > 0 {
+			cooldownMs = remaining
+		}
+	}
+	nowSec := now.Unix()
 	snap := snapshot{
-		hasErr:    s.hasErr,
-		errorRate: s.errEWMA,
-		hasTtft:   s.hasTtft,
-		ttftMs:    s.ttftEWMA,
-		inflight:  inflight,
-		state:     s.state,
+		hasErr:      s.hasErr,
+		errorRate:   s.errEWMA,
+		hasTtft:     s.hasTtft,
+		ttftMs:      s.ttftEWMA,
+		inflight:    inflight,
+		state:       s.state,
+		hasLatency:  s.hasLatency,
+		latencyMs:   s.latencyEWMA,
+		hasTps:      s.hasTps,
+		tps:         s.tpsEWMA,
+		lastUsedAt:  s.lastUsedAt,
+		lastErrCode: s.lastErrCode,
+		lastErrAt:   s.lastErrAt,
+		cooldownMs:  cooldownMs,
+		rpm:         s.reqWindow.sum(nowSec),
+		tpm:         s.tokWindow.sum(nowSec),
+		err429:      s.err429,
+		err5xx:      s.err5xx,
+		errOther:    s.errOther,
 	}
 	s.mu.Unlock()
 
@@ -343,9 +508,30 @@ type StatView struct {
 	Inflight    int64   `json:"inflight"`
 	CircuitOpen bool    `json:"circuit_open"`
 	CircuitHalf bool    `json:"circuit_half_open"`
+
+	// Observability-only enrichments (see Traffic / ReportTraffic).
+	HasLatency  bool    `json:"has_latency"`
+	LatencyMs   float64 `json:"latency_ms"`
+	HasTps      bool    `json:"has_tps"`
+	Tps         float64 `json:"tps"`           // output tokens/sec
+	LastUsedAt  int64   `json:"last_used_at"`  // unix seconds; 0 = never
+	LastErrCode int     `json:"last_err_code"` // last channel-fault HTTP status; 0 = none
+	LastErrAt   int64   `json:"last_err_at"`   // unix seconds; 0 = none
+	CooldownMs  int64   `json:"cooldown_ms"`   // remaining until half-open; 0 unless open
+	Rpm         int64   `json:"rpm"`           // requests in the last 60s
+	Tpm         int64   `json:"tpm"`           // output tokens in the last 60s
+	Err429      int64   `json:"err_429"`       // cumulative rate-limit faults
+	Err5xx      int64   `json:"err_5xx"`       // cumulative upstream 5xx faults
+	ErrOther    int64   `json:"err_other"`     // cumulative other channel faults (incl. network)
+	Weight      float64 `json:"weight"`        // current health-derived routing multiplier, [0,1]
 }
 
 func viewFromSnapshot(channelID int, snap snapshot) StatView {
+	// The health multiplier is what routing would currently apply to this
+	// channel (penalize-only, [floor,1], ×halfOpenFactor when half-open, 0 when
+	// open) — surfaced so an operator can see why a channel gets more/less
+	// traffic, not just its raw stats.
+	weight, _ := healthMultiplier(snap, operation_setting.GetAdaptiveRoutingSetting())
 	return StatView{
 		ChannelID:   channelID,
 		HasData:     snap.hasErr || snap.hasTtft,
@@ -355,6 +541,20 @@ func viewFromSnapshot(channelID int, snap snapshot) StatView {
 		Inflight:    snap.inflight,
 		CircuitOpen: snap.state == circuitOpen,
 		CircuitHalf: snap.state == circuitHalfOpen,
+		HasLatency:  snap.hasLatency,
+		LatencyMs:   snap.latencyMs,
+		HasTps:      snap.hasTps,
+		Tps:         snap.tps,
+		LastUsedAt:  snap.lastUsedAt,
+		LastErrCode: snap.lastErrCode,
+		LastErrAt:   snap.lastErrAt,
+		CooldownMs:  snap.cooldownMs,
+		Rpm:         snap.rpm,
+		Tpm:         snap.tpm,
+		Err429:      snap.err429,
+		Err5xx:      snap.err5xx,
+		ErrOther:    snap.errOther,
+		Weight:      weight,
 	}
 }
 

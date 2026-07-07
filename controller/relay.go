@@ -248,6 +248,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError == nil {
 			relayInfo.LastError = nil
 			channelhealth.ReportResult(channel.Id, true, false, channelHealthTtftMs(relayInfo, attemptStart))
+			channelhealth.ReportTraffic(channel.Id, channelHealthTraffic(relayInfo, attemptStart))
 			return
 		}
 
@@ -255,7 +256,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.LastError = newAPIError
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
-		channelhealth.ReportResult(channel.Id, false, isChannelFaultForHealth(newAPIError), 0)
+		channelFault := isChannelFaultForHealth(newAPIError)
+		channelhealth.ReportResult(channel.Id, false, channelFault, 0)
+		channelhealth.ReportTraffic(channel.Id, channelhealth.Traffic{Success: false, ChannelFault: channelFault, ErrCode: newAPIError.StatusCode})
 
 		// 响应已开始写出（状态码/正文已发给客户端），禁止重试，直接终止
 		if c.Writer.Written() {
@@ -303,6 +306,30 @@ func channelHealthTtftMs(info *relaycommon.RelayInfo, attemptStart time.Time) in
 		return info.FirstResponseTime.Sub(attemptStart).Milliseconds()
 	}
 	return 0
+}
+
+// channelHealthTraffic builds the observability-only Traffic sample for a
+// successful attempt: total latency, the generation window (post-first-token
+// for streams so throughput isn't diluted by prompt-processing time), and the
+// billed output tokens. Every value is a by-product of the completed request,
+// so this adds no upstream cost.
+func channelHealthTraffic(info *relaycommon.RelayInfo, attemptStart time.Time) channelhealth.Traffic {
+	now := time.Now()
+	latencyMs := now.Sub(attemptStart).Milliseconds()
+	generationMs := latencyMs
+	if info != nil && info.IsStream && info.HasSendResponse() && info.FirstResponseTime.After(attemptStart) {
+		generationMs = now.Sub(info.FirstResponseTime).Milliseconds()
+	}
+	var outputTokens int64
+	if info != nil && info.Usage != nil {
+		outputTokens = int64(info.Usage.CompletionTokens)
+	}
+	return channelhealth.Traffic{
+		Success:      true,
+		LatencyMs:    latencyMs,
+		OutputTokens: outputTokens,
+		GenerationMs: generationMs,
+	}
 }
 
 // isChannelFaultForHealth reports whether a failed attempt should count against

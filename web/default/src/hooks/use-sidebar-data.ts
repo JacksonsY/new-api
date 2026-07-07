@@ -22,6 +22,7 @@ import {
   CreditCard,
   FileText,
   FlaskConical,
+  HeartPulse,
   Key,
   LayoutDashboard,
   ListTodo,
@@ -38,7 +39,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { type SidebarData } from '@/components/layout/types'
+import type { SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -198,6 +199,11 @@ export function useSidebarData(): SidebarData {
               id: 'system',
               title: t('System'),
               items: [
+                {
+                  title: t('Ops Monitor'),
+                  url: '/ops-monitor',
+                  icon: HeartPulse,
+                },
                 {
                   title: t('System Info'),
                   url: '/system-info',

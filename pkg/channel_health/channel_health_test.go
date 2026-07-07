@@ -314,3 +314,94 @@ func mustView(t *testing.T, id int) StatView {
 	require.True(t, ok)
 	return v
 }
+
+func TestReportTrafficThroughputAndLatency(t *testing.T) {
+	configureAdaptive(t)
+
+	// First success seeds the EWMAs directly: 100 tokens over 2000ms = 50 tok/s.
+	ReportTraffic(1, Traffic{Success: true, LatencyMs: 3000, OutputTokens: 100, GenerationMs: 2000})
+	view := mustView(t, 1)
+	assert.True(t, view.HasLatency)
+	assert.InDelta(t, 3000, view.LatencyMs, 0.001)
+	assert.True(t, view.HasTps)
+	assert.InDelta(t, 50, view.Tps, 0.001)
+	assert.NotZero(t, view.LastUsedAt)
+
+	// Second success (alpha=0.2): latency 0.2*1000+0.8*3000=2600;
+	// tps sample 200/2s=100 -> 0.2*100+0.8*50=60.
+	ReportTraffic(1, Traffic{Success: true, LatencyMs: 1000, OutputTokens: 200, GenerationMs: 2000})
+	view = mustView(t, 1)
+	assert.InDelta(t, 2600, view.LatencyMs, 0.001)
+	assert.InDelta(t, 60, view.Tps, 0.001)
+}
+
+func TestReportTrafficLastErrorGating(t *testing.T) {
+	configureAdaptive(t)
+
+	// A channel-fault failure records the last upstream error code + time.
+	ReportTraffic(1, Traffic{Success: false, ChannelFault: true, ErrCode: 502})
+	view := mustView(t, 1)
+	assert.Equal(t, 502, view.LastErrCode)
+	assert.NotZero(t, view.LastErrAt)
+
+	// A client fault (4xx, not the channel's fault) must not overwrite it.
+	ReportTraffic(1, Traffic{Success: false, ChannelFault: false, ErrCode: 400})
+	view = mustView(t, 1)
+	assert.Equal(t, 502, view.LastErrCode, "client fault must not overwrite last channel error")
+}
+
+func TestReportTrafficDisabledIsNoop(t *testing.T) {
+	configureAdaptive(t)
+	operation_setting.GetAdaptiveRoutingSetting().Enabled = false
+	ReportTraffic(1, Traffic{Success: true, LatencyMs: 1000, OutputTokens: 100, GenerationMs: 1000})
+	_, ok := GetStatView(1)
+	assert.False(t, ok, "no stats recorded while adaptive routing is off")
+}
+
+func TestCooldownRemainingExposed(t *testing.T) {
+	s := configureAdaptive(t)
+	s.OpenThreshold = 1
+	s.CooldownSeconds = 30
+
+	// One channel-fault failure trips the circuit (threshold 1).
+	ReportResult(1, false, true, 0)
+	view := mustView(t, 1)
+	require.True(t, view.CircuitOpen)
+	assert.Greater(t, view.CooldownMs, int64(0))
+	assert.LessOrEqual(t, view.CooldownMs, int64(30_000))
+}
+
+func TestRollingWindowAndErrorClasses(t *testing.T) {
+	configureAdaptive(t)
+
+	// Five successes (10 output tokens each) + three channel faults of distinct
+	// classes, all within the same rolling window.
+	for i := 0; i < 5; i++ {
+		ReportTraffic(1, Traffic{Success: true, LatencyMs: 100, OutputTokens: 10, GenerationMs: 100})
+	}
+	ReportTraffic(1, Traffic{Success: false, ChannelFault: true, ErrCode: 429})
+	ReportTraffic(1, Traffic{Success: false, ChannelFault: true, ErrCode: 503})
+	ReportTraffic(1, Traffic{Success: false, ChannelFault: true, ErrCode: 0}) // network -> other
+
+	view := mustView(t, 1)
+	assert.Equal(t, int64(8), view.Rpm, "every attempt counts toward RPM")
+	assert.Equal(t, int64(50), view.Tpm, "5 successes * 10 output tokens")
+	assert.Equal(t, int64(1), view.Err429)
+	assert.Equal(t, int64(1), view.Err5xx)
+	assert.Equal(t, int64(1), view.ErrOther)
+}
+
+func TestWeightReflectsHealth(t *testing.T) {
+	s := configureAdaptive(t)
+
+	// Healthy + fast (ttft below the reference) => full weight 1.0.
+	ReportResult(1, true, false, 500)
+	assert.InDelta(t, 1.0, mustView(t, 1).Weight, 0.001)
+
+	// A tripped circuit excludes the channel => weight 0.
+	s.OpenThreshold = 1
+	ReportResult(2, false, true, 0)
+	v := mustView(t, 2)
+	require.True(t, v.CircuitOpen)
+	assert.InDelta(t, 0, v.Weight, 0.001)
+}
