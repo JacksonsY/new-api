@@ -160,7 +160,6 @@ function BillingBreakdown(props: {
   const { t } = useTranslation()
   const { log, other, isAdmin } = props
   const isPerCall = isPerCallBilling(other.model_price)
-  const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const tieredSummary = getTieredBillingSummary(other)
 
@@ -227,7 +226,11 @@ function BillingBreakdown(props: {
     })
   }
 
-  if (!isTieredExpr && isClaude && hasAnyCacheTokens(other)) {
+  // 缓存价格展示不限定 Claude：非 Claude 路径（/v1/responses、OpenAI 兼容等）
+  // 后端同样写入 cache_tokens/cache_ratio（GenerateTextOtherInfo），此前用
+  // other.claude 门控导致这些日志的缓存读取价不显示（上游 issue #6011）。
+  // Claude 特有的缓存创建各行仍按各自字段存在与否渲染，非 Claude 不受影响。
+  if (!isTieredExpr && hasAnyCacheTokens(other)) {
     if (other.cache_ratio != null && other.cache_ratio !== 1) {
       rows.push({
         label: t('Cache Read'),
