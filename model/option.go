@@ -197,6 +197,7 @@ func InitOptionMap() {
 	}
 
 	common.OptionMapRWMutex.Unlock()
+	migrateLegacyReliabilityDefaults()
 	loadOptionsFromDatabase()
 }
 
