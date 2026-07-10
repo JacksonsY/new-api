@@ -97,6 +97,25 @@ For commercial licensing, please contact support@quantumnous.com
     background-clip: text;
     color: transparent;
   }
+  /* 品牌加载态（与 index.html 开屏页同一视觉）：logo 呼吸光晕 + 离火渐变
+   * 进度条。供 BrandLoader 组件（路由跳转 pending / 页面级加载）使用。 */
+  .brand-loader-logo {
+    animation: brand-loader-breathe 2.2s ease-in-out infinite;
+  }
+  .brand-loader-track {
+    width: 132px;
+    height: 3px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--foreground) 10%, transparent);
+    overflow: hidden;
+  }
+  .brand-loader-fill {
+    width: 40%;
+    height: 100%;
+    border-radius: 999px;
+    background-image: var(--gradient-lihuo);
+    animation: brand-loader-slide 1.1s ease-in-out infinite alternate;
+  }
   .bg-gradient-lihuo {
     background-image: var(--gradient-lihuo);
   }
@@ -650,6 +669,38 @@ For commercial licensing, please contact support@quantumnous.com
   .terminal-demo-blink,
   .terminal-demo-spin,
   .terminal-demo-pulse {
+    animation: none !important;
+  }
+}
+
+@keyframes brand-loader-breathe {
+  0%,
+  100% {
+    filter: drop-shadow(
+      0 0 12px color-mix(in oklab, var(--brand-violet) 35%, transparent)
+    );
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(
+      0 0 26px color-mix(in oklab, var(--brand-ember) 45%, transparent)
+    );
+    transform: scale(1.04);
+  }
+}
+
+@keyframes brand-loader-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-loader-logo,
+  .brand-loader-fill {
     animation: none !important;
   }
 }

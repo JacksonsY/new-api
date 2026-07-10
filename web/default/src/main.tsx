@@ -28,6 +28,7 @@ import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 import { toast } from 'sonner'
 
+import { RoutePendingLoader } from '@/components/brand-loader'
 import { getStatus } from '@/lib/api'
 import { installBuildMetadata } from '@/lib/build-metadata'
 import { applyFaviconToDom } from '@/lib/dom-utils'
@@ -106,6 +107,11 @@ const router = createRouter({
   context: { queryClient },
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
+  // 路由跳转/懒加载 chunk 的等待界面复用品牌开屏视觉：超过 200ms 才出现
+  // （快跳转不闪 loader），一旦出现至少停留 300ms（避免一闪而过）。
+  defaultPendingComponent: RoutePendingLoader,
+  defaultPendingMs: 200,
+  defaultPendingMinMs: 300,
 })
 
 // Register the router instance for type safety
