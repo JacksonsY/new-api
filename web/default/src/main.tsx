@@ -107,11 +107,12 @@ const router = createRouter({
   context: { queryClient },
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
-  // 路由跳转/懒加载 chunk 的等待界面复用品牌开屏视觉：超过 200ms 才出现
-  // （快跳转不闪 loader），一旦出现至少停留 300ms（避免一闪而过）。
+  // 路由跳转/懒加载 chunk 的等待界面复用品牌开屏视觉：只要跳转有真实等待
+  // （>50ms：拉取 chunk、跑 loader）就显示，且一旦出现至少停留 400ms 保证
+  // 品牌动效可感知。纯同步的即时跳转（chunk 已缓存）不进 pending，保持干脆。
   defaultPendingComponent: RoutePendingLoader,
-  defaultPendingMs: 200,
-  defaultPendingMinMs: 300,
+  defaultPendingMs: 50,
+  defaultPendingMinMs: 400,
 })
 
 // Register the router instance for type safety
@@ -165,15 +166,21 @@ const rootElement = document.getElementById('root')!
     /* empty */
   }
 })()
-// 淡出 index.html 内联的开屏加载页（连同其样式），在 React 首帧绘制后调用。
+// 开屏页最短可见时长（自页面导航起算）：加载很快时避免 logo 闪一下就消失。
+const SPLASH_MIN_VISIBLE_MS = 500
+
+// 淡出 index.html 内联的开屏加载页（连同其样式）。幂等：重复调用无副作用。
 function dismissSplash() {
   const splash = document.getElementById('splash')
-  if (!splash) return
-  splash.classList.add('splash-leave')
+  if (!splash || splash.classList.contains('splash-leave')) return
+  const delay = Math.max(0, SPLASH_MIN_VISIBLE_MS - performance.now())
   window.setTimeout(() => {
-    splash.remove()
-    document.getElementById('splash-style')?.remove()
-  }, 400)
+    splash.classList.add('splash-leave')
+    window.setTimeout(() => {
+      splash.remove()
+      document.getElementById('splash-style')?.remove()
+    }, 400)
+  }, delay)
 }
 
 if (!rootElement.innerHTML) {
@@ -194,7 +201,15 @@ if (!rootElement.innerHTML) {
         </QueryClientProvider>
       </StrictMode>
     )
-    // 双 rAF：等浏览器真正绘制出 React 首帧内容后再撤开屏，避免闪空白。
-    requestAnimationFrame(() => requestAnimationFrame(dismissSplash))
+    // 等首个路由完全解析（懒加载 chunk、beforeLoad/loader 都完成、重定向链
+    // 走到终点）后再撤开屏——root.render 只是挂载了外壳，此时页面内容往往
+    // 还没渲染，过早撤屏会露白。双 rAF 确保浏览器已把解析后的内容绘制出来。
+    const unsubscribe = router.subscribe('onResolved', () => {
+      unsubscribe()
+      requestAnimationFrame(() => requestAnimationFrame(dismissSplash))
+    })
+    // 兜底：初始导航异常（路由报错等）时 onResolved 不会触发，10s 强制撤屏，
+    // 让 errorComponent 可见（index.html 里另有独立于主包的 15s 最终兜底）。
+    window.setTimeout(dismissSplash, 10_000)
   })
 }
