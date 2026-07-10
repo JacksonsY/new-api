@@ -53,6 +53,12 @@ const createWorkerSchema = (t: (key: string) => string) =>
     }, t('Provide a valid URL starting with http:// or https://')),
     WorkerValidKey: z.string(),
     WorkerAllowHttpImageRequestEnabled: z.boolean(),
+    GlobalProxyUrl: z.string().refine((value) => {
+      const trimmed = value.trim()
+      if (!trimmed) return true
+      return /^(https?|socks5h?):\/\//i.test(trimmed)
+    }, t('Provide a valid proxy URL starting with http://, https://, socks5:// or socks5h://')),
+    GlobalProxyDirectFallbackEnabled: z.boolean(),
   })
 
 type WorkerFormValues = z.infer<ReturnType<typeof createWorkerSchema>>
@@ -98,6 +104,21 @@ export function WorkerSettingsSection({
       updates.push({
         key: 'WorkerAllowHttpImageRequestEnabled',
         value: values.WorkerAllowHttpImageRequestEnabled,
+      })
+    }
+
+    const sanitizedGlobalProxyUrl = values.GlobalProxyUrl.trim()
+    if (sanitizedGlobalProxyUrl !== defaultValues.GlobalProxyUrl.trim()) {
+      updates.push({ key: 'GlobalProxyUrl', value: sanitizedGlobalProxyUrl })
+    }
+
+    if (
+      values.GlobalProxyDirectFallbackEnabled !==
+      defaultValues.GlobalProxyDirectFallbackEnabled
+    ) {
+      updates.push({
+        key: 'GlobalProxyDirectFallbackEnabled',
+        value: values.GlobalProxyDirectFallbackEnabled,
       })
     }
 
@@ -176,6 +197,54 @@ export function WorkerSettingsSection({
                   <FormDescription>
                     {t(
                       'Enable when proxying workers that fetch images over HTTP.'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='GlobalProxyUrl'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Global Proxy URL')}</FormLabel>
+                <FormControl>
+                  <Input
+                    inputMode='url'
+                    placeholder='socks5h://user:pass@127.0.0.1:1080'
+                    autoComplete='off'
+                    {...field}
+                    onChange={(event) => field.onChange(event.target.value)}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Global outbound proxy for upstream requests. Supports http://, https://, socks5:// and socks5h://. Channel-specific proxies take precedence. Leave blank to disable.'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='GlobalProxyDirectFallbackEnabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Direct connection fallback')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'When the global proxy fails, retry the request over a direct connection.'
                     )}
                   </FormDescription>
                 </SettingsSwitchContent>

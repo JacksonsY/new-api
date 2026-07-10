@@ -88,6 +88,9 @@ const OPERATIONS_SECTIONS = [
           WorkerValidKey: settings.WorkerValidKey,
           WorkerAllowHttpImageRequestEnabled:
             settings.WorkerAllowHttpImageRequestEnabled,
+          GlobalProxyUrl: settings.GlobalProxyUrl,
+          GlobalProxyDirectFallbackEnabled:
+            settings.GlobalProxyDirectFallbackEnabled,
         }}
       />
     ),

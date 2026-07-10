@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -197,6 +198,19 @@ func UpdateOption(c *gin.Context) {
 				"message": "无法启用微信登录，请先填入微信登录相关配置信息！",
 			})
 			return
+		}
+	case "GlobalProxyUrl":
+		if trimmed := strings.TrimSpace(option.Value.(string)); trimmed != "" {
+			parsedURL, err := url.Parse(trimmed)
+			if err != nil || parsedURL.Host == "" ||
+				(parsedURL.Scheme != "http" && parsedURL.Scheme != "https" &&
+					parsedURL.Scheme != "socks5" && parsedURL.Scheme != "socks5h") {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "全局代理地址无效，仅支持 http://、https://、socks5:// 或 socks5h:// 协议",
+				})
+				return
+			}
 		}
 	case "TurnstileCheckEnabled":
 		if option.Value == "true" && common.TurnstileSiteKey == "" {
