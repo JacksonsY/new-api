@@ -203,9 +203,22 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
+	// 同渠道快速重试状态：pinnedChannel 非 nil 时下一轮不重新选路，直接复用
+	// 该渠道（网络层瞬时错误不换渠道，保住优先级与粘性亲和的提示词缓存）。
+	var pinnedChannel *model.Channel
+	sameChannelRetries := 0
+
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
-		channel, channelErr := getChannel(c, relayInfo, retryParam)
+		var channel *model.Channel
+		var channelErr *types.NewAPIError
+		if pinnedChannel != nil {
+			channel = pinnedChannel
+			pinnedChannel = nil
+			channelErr = middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName)
+		} else {
+			channel, channelErr = getChannel(c, relayInfo, retryParam)
+		}
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
@@ -259,10 +272,28 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channelFault := isChannelFaultForHealth(newAPIError)
 		channelhealth.ReportResult(channel.Id, false, channelFault, 0)
 		channelhealth.ReportTraffic(channel.Id, channelhealth.Traffic{Success: false, ChannelFault: channelFault, ErrCode: newAPIError.StatusCode})
+		maybeApplyRateLimitCooldown(c, channel, newAPIError)
 
 		// 响应已开始写出（状态码/正文已发给客户端），禁止重试，直接终止
 		if c.Writer.Written() {
 			logger.LogWarn(c, "response already written to client, abort retry")
+			break
+		}
+
+		if shouldFastRetrySameChannel(c, newAPIError, sameChannelRetries) {
+			sameChannelRetries++
+			pinnedChannel = channel
+			// 不消耗跨渠道重试次数：下一次 IncreaseRetry 为 no-op
+			retryParam.ResetRetryNextTry()
+			rs := operation_setting.GetReliabilitySetting()
+			logger.LogWarn(c, fmt.Sprintf("transient network error on channel #%d, fast retrying same channel in %dms (%d/%d): %s",
+				channel.Id, rs.SameChannelRetryDelayMs, sameChannelRetries, rs.SameChannelRetryTimes, common.LocalLogPreview(newAPIError.Error())))
+			select {
+			case <-c.Request.Context().Done():
+				// 客户端已断开，无意义再试
+			case <-time.After(time.Duration(rs.SameChannelRetryDelayMs) * time.Millisecond):
+				continue
+			}
 			break
 		}
 
@@ -438,6 +469,56 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 		return false
 	}
 	return operation_setting.ShouldRetryByStatusCode(code)
+}
+
+// maybeApplyRateLimitCooldown 在上游 429 时把渠道熔断到限流重置点：优先用
+// RelayErrorHandler 从响应头解析出的重置时长，缺失时用默认冷却，并统一钳制
+// 在最大冷却时长内。多 key 渠道跳过——其 429 多为单个 key 的限流，按整个
+// 渠道冷却会把故障面放大到其余健康 key。
+func maybeApplyRateLimitCooldown(c *gin.Context, channel *model.Channel, err *types.NewAPIError) {
+	if err == nil || err.StatusCode != http.StatusTooManyRequests {
+		return
+	}
+	rs := operation_setting.GetReliabilitySetting()
+	if !rs.RateLimitCooldownEnabled {
+		return
+	}
+	if channel == nil || channel.ChannelInfo.IsMultiKey {
+		return
+	}
+	cooldown := err.RateLimitResetAfter()
+	if cooldown <= 0 {
+		cooldown = time.Duration(rs.RateLimitCooldownDefaultSeconds) * time.Second
+	}
+	if maxCooldown := time.Duration(rs.RateLimitCooldownMaxSeconds) * time.Second; maxCooldown > 0 && cooldown > maxCooldown {
+		cooldown = maxCooldown
+	}
+	if cooldown <= 0 {
+		return
+	}
+	channelhealth.ForceOpenUntil(channel.Id, time.Now().Add(cooldown))
+	logger.LogWarn(c, fmt.Sprintf("channel #%d rate limited (429), cooling down for %s", channel.Id, cooldown.Round(time.Second)))
+}
+
+// shouldFastRetrySameChannel 判断是否在原渠道快速重试：仅限请求未送达上游的
+// 网络层错误（ErrorCodeDoRequestFailed），且客户端未断开、非指定渠道调试请求。
+// 同渠道重试不换渠道，天然保留粘性亲和（含 SkipRetryOnFailure 规则的语义——
+// 锚定渠道没变），也不消耗跨渠道重试次数。
+func shouldFastRetrySameChannel(c *gin.Context, err *types.NewAPIError, used int) bool {
+	rs := operation_setting.GetReliabilitySetting()
+	if !rs.SameChannelRetryEnabled || used >= rs.SameChannelRetryTimes {
+		return false
+	}
+	if err == nil || err.GetErrorCode() != types.ErrorCodeDoRequestFailed {
+		return false
+	}
+	if c.Request.Context().Err() != nil {
+		return false
+	}
+	if _, ok := c.Get("specific_channel_id"); ok {
+		return false
+	}
+	return true
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {

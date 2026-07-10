@@ -22,6 +22,10 @@ var channelsIDM map[int]*Channel                     // all channels include dis
 // channel2advancedCustomConfig caches parsed Advanced Custom (type 58) configs so
 // path-aware selection avoids re-parsing JSON per request. Refreshed on full sync.
 var channel2advancedCustomConfig map[int]*dto.AdvancedCustomConfig
+
+// channel2maxConcurrency caches each channel's max_concurrency (>0 only) so the
+// per-request concurrency filter avoids re-parsing channel settings JSON.
+var channel2maxConcurrency map[int]int
 var channelSyncLock sync.RWMutex
 
 func InitChannelCache() {
@@ -30,6 +34,7 @@ func InitChannelCache() {
 	}
 	newChannelId2channel := make(map[int]*Channel)
 	newChannel2advancedCustomConfig := make(map[int]*dto.AdvancedCustomConfig)
+	newChannel2maxConcurrency := make(map[int]int)
 	var channels []*Channel
 	DB.Find(&channels)
 	for _, channel := range channels {
@@ -38,6 +43,9 @@ func InitChannelCache() {
 			if config := channel.GetOtherSettings().AdvancedCustom; config != nil {
 				newChannel2advancedCustomConfig[channel.Id] = config
 			}
+		}
+		if limit := channel.GetSetting().MaxConcurrency; limit > 0 {
+			newChannel2maxConcurrency[channel.Id] = limit
 		}
 	}
 	var abilities []*Ability
@@ -94,6 +102,7 @@ func InitChannelCache() {
 	}
 	channelsIDM = newChannelId2channel
 	channel2advancedCustomConfig = newChannel2advancedCustomConfig
+	channel2maxConcurrency = newChannel2maxConcurrency
 	channelSyncLock.Unlock()
 	common.SysLog("channels synced from database")
 }
@@ -155,12 +164,10 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	targetPriority := int64(sortedUniquePriorities[retry])
 
 	// get the priority for the given retry number
-	var sumWeight = 0
 	var targetChannels []*Channel
 	for _, channelId := range channels {
 		if channel, ok := channelsIDM[channelId]; ok {
 			if channel.GetPriority() == targetPriority {
-				sumWeight += channel.GetWeight()
 				targetChannels = append(targetChannels, channel)
 			}
 		} else {
@@ -170,6 +177,15 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 
 	if len(targetChannels) == 0 {
 		return nil, errors.New(fmt.Sprintf("no channel found, group: %s, model: %s, priority: %d", group, model, targetPriority))
+	}
+
+	// 渠道级并发上限：剔除本实例在飞数已达 max_concurrency 的渠道。
+	// 同层候选全部超限时放行原集合（fail-open，可用性优先于限流精度）。
+	targetChannels = filterChannelsByConcurrencyLimit(targetChannels)
+
+	var sumWeight = 0
+	for _, channel := range targetChannels {
+		sumWeight += channel.GetWeight()
 	}
 
 	// Adaptive routing: re-rank this priority layer by passive channel health
@@ -217,6 +233,29 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	}
 	// return null if no channel is not found
 	return nil, errors.New("channel not found")
+}
+
+// filterChannelsByConcurrencyLimit drops channels whose in-flight count (this
+// instance) has reached their configured max_concurrency. When every candidate
+// is saturated the original slice is returned unchanged — fail-open: smoothing
+// load matters less than never stranding a request. Channels without a limit
+// (absent from channel2maxConcurrency) always pass.
+// Caller must hold channelSyncLock (read lock). The input slice is never mutated.
+func filterChannelsByConcurrencyLimit(channels []*Channel) []*Channel {
+	if len(channels) == 0 || len(channel2maxConcurrency) == 0 {
+		return channels
+	}
+	filtered := make([]*Channel, 0, len(channels))
+	for _, channel := range channels {
+		if limit, ok := channel2maxConcurrency[channel.Id]; ok && channelhealth.CurrentInflight(channel.Id) >= int64(limit) {
+			continue
+		}
+		filtered = append(filtered, channel)
+	}
+	if len(filtered) == 0 {
+		return channels
+	}
+	return filtered
 }
 
 // filterChannelsByRequestPath restricts candidates by request path. Only Advanced

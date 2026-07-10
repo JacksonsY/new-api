@@ -29,6 +29,7 @@ import (
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -101,6 +102,11 @@ func main() {
 		}()
 
 		go model.SyncChannelCache(common.SyncFrequency)
+	} else if operation_setting.GetAdaptiveRoutingSetting().Enabled {
+		// 自适应路由/熔断只在内存渠道缓存路径生效，直查数据库时静默失效
+		common.SysLog("warning: adaptive routing is enabled but memory cache is disabled; " +
+			"adaptive routing and the channel circuit breaker are inactive. " +
+			"Set MEMORY_CACHE_ENABLED=true or enable Redis to activate them")
 	}
 
 	// 热更新配置

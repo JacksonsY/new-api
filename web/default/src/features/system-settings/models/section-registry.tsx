@@ -86,6 +86,18 @@ const MODELS_SECTIONS = [
             settings['monitor_setting.auto_test_channel_minutes'],
           'monitor_setting.channel_test_mode':
             settings['monitor_setting.channel_test_mode'],
+          'reliability_setting.rate_limit_cooldown_enabled':
+            settings['reliability_setting.rate_limit_cooldown_enabled'],
+          'reliability_setting.rate_limit_cooldown_default_seconds':
+            settings['reliability_setting.rate_limit_cooldown_default_seconds'],
+          'reliability_setting.rate_limit_cooldown_max_seconds':
+            settings['reliability_setting.rate_limit_cooldown_max_seconds'],
+          'reliability_setting.same_channel_retry_enabled':
+            settings['reliability_setting.same_channel_retry_enabled'],
+          'reliability_setting.same_channel_retry_times':
+            settings['reliability_setting.same_channel_retry_times'],
+          'reliability_setting.same_channel_retry_delay_ms':
+            settings['reliability_setting.same_channel_retry_delay_ms'],
         }}
       />
     ),

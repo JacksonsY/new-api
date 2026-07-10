@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 )
@@ -96,6 +97,25 @@ type NewAPIError struct {
 	errorCode      ErrorCode
 	StatusCode     int
 	Metadata       json.RawMessage
+	// rateLimitResetAfter 是从上游 429 响应头解析出的建议冷却时长；
+	// 0 表示上游未给出可解析的重置时间。
+	rateLimitResetAfter time.Duration
+}
+
+// SetRateLimitResetAfter 记录上游 429 给出的限流重置时长（负值忽略）。
+func (e *NewAPIError) SetRateLimitResetAfter(d time.Duration) {
+	if e == nil || d <= 0 {
+		return
+	}
+	e.rateLimitResetAfter = d
+}
+
+// RateLimitResetAfter 返回上游建议的限流重置时长；0 表示未知。
+func (e *NewAPIError) RateLimitResetAfter() time.Duration {
+	if e == nil {
+		return 0
+	}
+	return e.rateLimitResetAfter
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.

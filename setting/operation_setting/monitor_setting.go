@@ -18,11 +18,14 @@ const (
 	ChannelTestModePassiveRecovery = "passive_recovery"
 )
 
-// 默认配置
+// 默认配置。fork 默认开启定时测活并使用 passive_recovery 模式：
+// 只探测已被自动禁用的渠道用于自动复活（配合 AutomaticEnableChannelEnabled），
+// 不主动探测健康渠道，因此不消耗正常渠道配额、也不会因探测误禁渠道。
+// 5 分钟间隔决定坏渠道恢复后重新回池的最大延迟。
 var monitorSetting = MonitorSetting{
-	AutoTestChannelEnabled: false,
-	AutoTestChannelMinutes: 10,
-	ChannelTestMode:        ChannelTestModeScheduledAll,
+	AutoTestChannelEnabled: true,
+	AutoTestChannelMinutes: 5,
+	ChannelTestMode:        ChannelTestModePassiveRecovery,
 }
 
 func init() {

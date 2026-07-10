@@ -63,11 +63,13 @@ type AdaptiveRoutingSetting struct {
 	EscapeErrorRate float64 `json:"escape_error_rate"`
 }
 
-// adaptiveRoutingSetting holds conservative defaults: adaptive routing is OFF
-// by default (opt-in), and the escape thresholds are deliberately blunt so
-// enabling it does not churn warm prompt caches.
+// adaptiveRoutingSetting: fork 默认开启自适应路由（上游为 opt-in）。
+// 依赖内存渠道缓存(MemoryCacheEnabled)生效，直查数据库路径不参与。
+// OpenThreshold=3：客户端错误不计入连败，3 次连续渠道故障已高度可信，
+// 更快切断坏渠道；半开(0.3 权重)+30s 冷却让恢复代价很低。
+// 逃逸阈值保持钝化(8s/50%)，避免为边际延迟差抛弃温热的提示词缓存。
 var adaptiveRoutingSetting = AdaptiveRoutingSetting{
-	Enabled: false,
+	Enabled: true,
 
 	Alpha: 0.2,
 
@@ -79,7 +81,7 @@ var adaptiveRoutingSetting = AdaptiveRoutingSetting{
 	TopK:            0,
 
 	CircuitEnabled:  true,
-	OpenThreshold:   5,
+	OpenThreshold:   3,
 	CooldownSeconds: 30,
 	HalfOpenFactor:  0.3,
 

@@ -154,8 +154,12 @@ var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
 var ChannelDisableThreshold = 5.0
-var AutomaticDisableChannelEnabled = false
-var AutomaticEnableChannelEnabled = false
+
+// fork 默认开启渠道自动禁用/启用：坏渠道(401/关键字命中)自动下线，
+// 配合 monitor_setting 的 passive_recovery 定时测活自动复活。管理员可在
+// 系统设置→模型→路由与可靠性 关闭。
+var AutomaticDisableChannelEnabled = true
+var AutomaticEnableChannelEnabled = true
 var QuotaRemindThreshold = 1000
 var PreConsumedQuota = 500
 
@@ -185,7 +189,9 @@ var ChannelBalanceAlertThresholdDays = 0
 // 蓝图A 渠道余额告警检查间隔（分钟），走 system task 调度（多主去重+运行历史）。
 var ChannelBalanceAlertIntervalMinutes = 1440
 
-var RetryTimes = 0
+// fork 默认开启跨渠道重试(上游默认 0=不重试)。重试按优先级逐层降级，
+// 3 次可覆盖三层渠道布防；错误是否可重试由 AutomaticRetryStatusCodeRanges 决定。
+var RetryTimes = 3
 
 //var RootUserEmail = ""
 

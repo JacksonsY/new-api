@@ -86,6 +86,16 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
 	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 
+	// 429 时把上游给出的限流重置时长带在错误上（defer 保证覆盖函数内
+	// 所有重建 newApiErr 的返回路径），供渠道级 429 冷却使用。
+	if resp.StatusCode == http.StatusTooManyRequests {
+		if d, ok := ParseRateLimitReset(resp.Header); ok {
+			defer func() {
+				newApiErr.SetRateLimitResetAfter(d)
+			}()
+		}
+	}
+
 	// jzlh-fix: 限制上游错误体读取上限,防异常上游回吐超大 body 打爆内存/日志 IO。
 	const maxUpstreamErrBody = 1 << 20 // 1MiB
 	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, maxUpstreamErrBody+1))

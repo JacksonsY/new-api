@@ -117,13 +117,54 @@ func Enabled() bool {
 }
 
 // AcquireInflight marks one request as in flight to a channel (call before the
-// upstream attempt). Pair with ReleaseInflight. No-op when adaptive routing is
-// off, so there is zero hot-path cost until the feature is enabled.
+// upstream attempt). Pair with ReleaseInflight. Counted unconditionally (one
+// atomic add): besides adaptive routing's peak weighting, the per-channel
+// max-concurrency limit reads this counter and must work even when adaptive
+// routing is turned off.
 func AcquireInflight(channelID int) {
-	if channelID <= 0 || !operation_setting.GetAdaptiveRoutingSetting().Enabled {
+	if channelID <= 0 {
 		return
 	}
 	getStat(channelID).inflight.Add(1)
+}
+
+// CurrentInflight returns this instance's in-flight request count for a channel.
+func CurrentInflight(channelID int) int64 {
+	if v, ok := stats.Load(channelID); ok {
+		return v.(*channelStat).inflight.Load()
+	}
+	return 0
+}
+
+// ForceOpenUntil force-opens a channel's circuit until the given time — used by
+// the 429 rate-limit cooldown to keep a rate-limited channel out of selection
+// until the upstream window resets. It only ever extends an existing open (a
+// shorter forced window never shortens a live trip), and after `until` elapses
+// the normal half-open → closed recovery applies, so no synthetic probe is
+// needed. The trip is broadcast to the cluster like a passive trip.
+//
+// Gated on adaptive routing + circuit breaker being enabled because exclusion
+// is enforced in Select; without them the cooldown would be recorded but never
+// honored, which would only mislead the ops view.
+func ForceOpenUntil(channelID int, until time.Time) {
+	if channelID <= 0 || !until.After(time.Now()) {
+		return
+	}
+	setting := operation_setting.GetAdaptiveRoutingSetting()
+	if !setting.Enabled || !setting.CircuitEnabled {
+		return
+	}
+	s := getStat(channelID)
+	s.mu.Lock()
+	extended := until.After(s.openUntil)
+	if extended {
+		s.state = circuitOpen
+		s.openUntil = until
+	}
+	s.mu.Unlock()
+	if extended {
+		publishOpen(channelID, until)
+	}
 }
 
 // ReleaseInflight marks one in-flight request as finished. Safe to call even

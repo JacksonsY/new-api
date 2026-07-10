@@ -4239,6 +4239,33 @@ export function ChannelMutateDrawer({
 
                             <FormField
                               control={form.control}
+                              name='max_concurrency'
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>{t('Max Concurrency')}</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type='number'
+                                      min={0}
+                                      placeholder='0'
+                                      {...field}
+                                      onChange={(e) =>
+                                        field.onChange(Number(e.target.value))
+                                      }
+                                    />
+                                  </FormControl>
+                                  <FormDescription>
+                                    {t(
+                                      'Skip this channel during selection once its in-flight requests reach the limit (fail-open when all candidates are saturated). 0 = unlimited.'
+                                    )}
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={form.control}
                               name='system_prompt'
                               render={({ field }) => (
                                 <FormItem>

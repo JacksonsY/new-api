@@ -11,6 +11,10 @@ type ChannelSettings struct {
 	ThinkingToContent      bool   `json:"thinking_to_content,omitempty"`
 	Proxy                  string `json:"proxy"`
 	PassThroughBodyEnabled bool   `json:"pass_through_body_enabled,omitempty"`
+	// MaxConcurrency 渠道级并发上限（按本实例在飞请求数计）。选路时跳过已达
+	// 上限的渠道；同优先级候选全部超限时放行（fail-open，可用性优先）。
+	// 0 = 不限制。仅内存缓存选路路径生效。
+	MaxConcurrency int `json:"max_concurrency,omitempty"`
 	SystemPrompt           string `json:"system_prompt,omitempty"`
 	SystemPromptOverride   bool   `json:"system_prompt_override,omitempty"`
 	// Sub2ApiBalanceQuery 为 true 时，更新余额走 sub2api 上游的 /v1/usage 端点

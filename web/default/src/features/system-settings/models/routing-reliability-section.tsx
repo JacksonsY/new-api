@@ -83,6 +83,22 @@ const routingReliabilitySchema = z
         .min(1, 'Interval must be at least 1 minute'),
       channel_test_mode: z.enum(channelTestModes),
     }),
+    reliability_setting: z.object({
+      rate_limit_cooldown_enabled: z.boolean(),
+      rate_limit_cooldown_default_seconds: z.coerce
+        .number()
+        .int()
+        .min(1, 'Cooldown must be at least 1 second')
+        .max(3600),
+      rate_limit_cooldown_max_seconds: z.coerce
+        .number()
+        .int()
+        .min(1, 'Max cooldown must be at least 1 second')
+        .max(86400),
+      same_channel_retry_enabled: z.boolean(),
+      same_channel_retry_times: z.coerce.number().int().min(1).max(3),
+      same_channel_retry_delay_ms: z.coerce.number().int().min(0).max(5000),
+    }),
   })
   .superRefine((values, ctx) => {
     const disableParsed = parseHttpStatusCodeRules(
@@ -127,6 +143,12 @@ type RoutingReliabilitySectionProps = {
     'monitor_setting.auto_test_channel_enabled': boolean
     'monitor_setting.auto_test_channel_minutes': number
     'monitor_setting.channel_test_mode': ChannelTestMode
+    'reliability_setting.rate_limit_cooldown_enabled': boolean
+    'reliability_setting.rate_limit_cooldown_default_seconds': number
+    'reliability_setting.rate_limit_cooldown_max_seconds': number
+    'reliability_setting.same_channel_retry_enabled': boolean
+    'reliability_setting.same_channel_retry_times': number
+    'reliability_setting.same_channel_retry_delay_ms': number
   }
 }
 
@@ -145,6 +167,12 @@ type NormalizedRoutingReliabilityValues = {
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_mode': ChannelTestMode
+  'reliability_setting.rate_limit_cooldown_enabled': boolean
+  'reliability_setting.rate_limit_cooldown_default_seconds': number
+  'reliability_setting.rate_limit_cooldown_max_seconds': number
+  'reliability_setting.same_channel_retry_enabled': boolean
+  'reliability_setting.same_channel_retry_times': number
+  'reliability_setting.same_channel_retry_delay_ms': number
 }
 
 function normalizeChannelTestMode(value?: string): ChannelTestMode {
@@ -172,6 +200,20 @@ const buildFormDefaults = (
       defaults['monitor_setting.channel_test_mode']
     ),
   },
+  reliability_setting: {
+    rate_limit_cooldown_enabled:
+      defaults['reliability_setting.rate_limit_cooldown_enabled'],
+    rate_limit_cooldown_default_seconds:
+      defaults['reliability_setting.rate_limit_cooldown_default_seconds'],
+    rate_limit_cooldown_max_seconds:
+      defaults['reliability_setting.rate_limit_cooldown_max_seconds'],
+    same_channel_retry_enabled:
+      defaults['reliability_setting.same_channel_retry_enabled'],
+    same_channel_retry_times:
+      defaults['reliability_setting.same_channel_retry_times'],
+    same_channel_retry_delay_ms:
+      defaults['reliability_setting.same_channel_retry_delay_ms'],
+  },
 })
 
 const normalizeDefaults = (
@@ -197,6 +239,18 @@ const normalizeDefaults = (
   'monitor_setting.channel_test_mode': normalizeChannelTestMode(
     defaults['monitor_setting.channel_test_mode']
   ),
+  'reliability_setting.rate_limit_cooldown_enabled':
+    defaults['reliability_setting.rate_limit_cooldown_enabled'],
+  'reliability_setting.rate_limit_cooldown_default_seconds':
+    defaults['reliability_setting.rate_limit_cooldown_default_seconds'],
+  'reliability_setting.rate_limit_cooldown_max_seconds':
+    defaults['reliability_setting.rate_limit_cooldown_max_seconds'],
+  'reliability_setting.same_channel_retry_enabled':
+    defaults['reliability_setting.same_channel_retry_enabled'],
+  'reliability_setting.same_channel_retry_times':
+    defaults['reliability_setting.same_channel_retry_times'],
+  'reliability_setting.same_channel_retry_delay_ms':
+    defaults['reliability_setting.same_channel_retry_delay_ms'],
 })
 
 const normalizeFormValues = (
@@ -220,6 +274,18 @@ const normalizeFormValues = (
   'monitor_setting.auto_test_channel_minutes':
     values.monitor_setting.auto_test_channel_minutes,
   'monitor_setting.channel_test_mode': values.monitor_setting.channel_test_mode,
+  'reliability_setting.rate_limit_cooldown_enabled':
+    values.reliability_setting.rate_limit_cooldown_enabled,
+  'reliability_setting.rate_limit_cooldown_default_seconds':
+    values.reliability_setting.rate_limit_cooldown_default_seconds,
+  'reliability_setting.rate_limit_cooldown_max_seconds':
+    values.reliability_setting.rate_limit_cooldown_max_seconds,
+  'reliability_setting.same_channel_retry_enabled':
+    values.reliability_setting.same_channel_retry_enabled,
+  'reliability_setting.same_channel_retry_times':
+    values.reliability_setting.same_channel_retry_times,
+  'reliability_setting.same_channel_retry_delay_ms':
+    values.reliability_setting.same_channel_retry_delay_ms,
 })
 
 export function RoutingReliabilitySection({
@@ -473,6 +539,155 @@ export function RoutingReliabilitySection({
                       />
                     </FormControl>
                   </SettingsSwitchItem>
+                )}
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className='flex min-w-0 flex-col gap-4'>
+            <div className='flex flex-col gap-1'>
+              <h4 className='text-sm font-medium'>
+                {t('Reliability guards')}
+              </h4>
+            </div>
+            <div className='grid min-w-0 gap-6 lg:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='reliability_setting.rate_limit_cooldown_enabled'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>{t('429 rate-limit cooldown')}</FormLabel>
+                      <FormDescription>
+                        {t(
+                          'On upstream 429, cool the channel down until the reset time parsed from Retry-After / rate-limit headers. Multi-key channels are exempt. Requires adaptive routing.'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='reliability_setting.same_channel_retry_enabled'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>{t('Same-channel fast retry')}</FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Retry transient network send failures on the same channel first, preserving priority and session affinity without consuming cross-channel retries.'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='reliability_setting.rate_limit_cooldown_default_seconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Default cooldown (seconds)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='1'
+                        max='3600'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Used when the 429 response carries no parsable reset time.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='reliability_setting.rate_limit_cooldown_max_seconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Max cooldown (seconds)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='1'
+                        max='86400'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Upper bound for header-derived cooldowns, guarding against poisonous reset headers.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='reliability_setting.same_channel_retry_times'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Fast retry attempts')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='1'
+                        max='3'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Maximum same-channel retries per request (1-3).')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='reliability_setting.same_channel_retry_delay_ms'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Fast retry delay (ms)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        max='5000'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Wait before retrying on the same channel.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
                 )}
               />
             </div>
