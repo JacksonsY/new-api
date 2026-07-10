@@ -20,22 +20,25 @@ import i18n from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
 
-import { normalizeInterfaceLanguage } from './languages'
+import { convertDetectedLanguage, normalizeInterfaceLanguage } from './languages'
 
-// Each locale bundle is ~350–530 KB of JSON. Static-importing all six put every
-// language into the initial chunk (~2.5 MB raw, the bulk of the entry bundle),
-// so every visitor downloaded five languages they will never see. Instead we
-// code-split each locale (dynamic import → its own chunk) and load only the
-// active language, plus English as the fallback, before first render.
+// Each locale bundle is ~350–530 KB of JSON. Static-importing all seven put
+// every language into the initial chunk (~2.5 MB raw, the bulk of the entry
+// bundle), so every visitor downloaded six languages they will never see.
+// Instead we code-split each locale (dynamic import → its own chunk) and load
+// only the active language, plus English as the fallback, before first render.
+// Keys must match the interface language codes (`zhCN` / `zhTW`, see
+// languages.ts) that normalizeInterfaceLanguage / convertDetectedLanguage emit.
 type LocaleModule = { default?: { translation: Record<string, string> } }
 
 const localeLoaders: Record<string, () => Promise<LocaleModule>> = {
   en: () => import('./locales/en.json'),
-  zh: () => import('./locales/zh.json'),
+  zhCN: () => import('./locales/zh.json'),
   fr: () => import('./locales/fr.json'),
   ru: () => import('./locales/ru.json'),
   ja: () => import('./locales/ja.json'),
   vi: () => import('./locales/vi.json'),
+  zhTW: () => import('./locales/zh-TW.json'),
 }
 
 const inFlight = new Map<string, Promise<void>>()
@@ -62,8 +65,8 @@ i18n
     resources: {},
     partialBundledLanguages: true,
     fallbackLng: 'en',
-    supportedLngs: ['en', 'zh', 'fr', 'ru', 'ja', 'vi'],
-    load: 'languageOnly', // Convert zh-CN -> zh
+    supportedLngs: ['en', 'zhCN', 'fr', 'ru', 'ja', 'vi', 'zhTW'],
+    load: 'currentOnly',
     nsSeparator: false, // Allow literal colons in keys (e.g., URLs, labels)
     debug: import.meta.env.DEV,
     interpolation: {
@@ -72,6 +75,9 @@ i18n
     detection: {
       order: ['localStorage', 'navigator'],
       caches: ['localStorage'],
+      // Browsers report `zh-CN`/`zh-TW`/`zh`; map them onto our `zhCN`/`zhTW`
+      // codes (non-Chinese codes pass through for normal supportedLngs matching).
+      convertDetectedLanguage,
     },
     react: {
       // Locales are added on demand (addResourceBundle) after a language switch,

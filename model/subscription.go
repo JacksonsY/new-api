@@ -307,6 +307,16 @@ type SubscriptionSummary struct {
 	Subscription *UserSubscription `json:"subscription"`
 }
 
+type SubscriptionResetResult struct {
+	PlanId           int    `json:"plan_id"`
+	MatchedCount     int    `json:"matched_count"`
+	ResetCount       int    `json:"reset_count"`
+	UserCount        int    `json:"user_count"`
+	AdvanceResetTime bool   `json:"advance_reset_time"`
+	PlanTitle        string `json:"-"`
+	AffectedUserIds  []int  `json:"-"`
+}
+
 func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 	if plan == nil {
 		return 0, errors.New("plan is nil")
@@ -576,9 +586,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	var upgradeGroup string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改条件原子 UPDATE 抢占状态迁移，
-		// 赢得迁移的事务才创建订阅并入账，RowsAffected==0 视为已被并发处理（幂等返回）。
-		if err := tx.Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
@@ -690,8 +698,7 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改条件原子 UPDATE 抢占状态迁移。
-		if err := tx.Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
@@ -778,8 +785,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		}
 
 		var user User
-		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改余额守卫的条件原子 UPDATE 防并发超扣。
-		if err := tx.Where("id = ?", userId).First(&user).Error; err != nil {
+		if err := lockForUpdate(tx).Where("id = ?", userId).First(&user).Error; err != nil {
 			return err
 		}
 		if requiredQuota > 0 {
@@ -929,8 +935,8 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改条件原子 UPDATE 抢占状态迁移。
-		if err := tx.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+		if err := lockForUpdate(tx).
+			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
 		userId = sub.UserId
@@ -980,8 +986,8 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		// jzlh-fix 删除失效的 GORM v1 FOR UPDATE；硬删除本身原子，读取仅用于计算降组。
-		if err := tx.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+		if err := lockForUpdate(tx).
+			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
 		userId = sub.UserId
@@ -1008,6 +1014,125 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
 	}
 	return "", nil
+}
+
+func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *SubscriptionPlan, now int64, advanceResetTime bool) error {
+	if tx == nil || sub == nil || plan == nil {
+		return errors.New("invalid reset args")
+	}
+	sub.AmountUsed = 0
+	if advanceResetTime {
+		nextReset := calcNextResetTime(time.Unix(now, 0), plan, sub.EndTime)
+		sub.NextResetTime = nextReset
+		if nextReset > 0 {
+			sub.LastResetTime = now
+		} else {
+			sub.LastResetTime = 0
+		}
+	}
+	return tx.Save(sub).Error
+}
+
+func buildSubscriptionResetResult(plan *SubscriptionPlan, subs []UserSubscription, advanceResetTime bool) *SubscriptionResetResult {
+	userIds := make([]int, 0, len(subs))
+	seenUsers := make(map[int]struct{}, len(subs))
+	for _, sub := range subs {
+		if _, ok := seenUsers[sub.UserId]; ok {
+			continue
+		}
+		seenUsers[sub.UserId] = struct{}{}
+		userIds = append(userIds, sub.UserId)
+	}
+	return &SubscriptionResetResult{
+		PlanId:           plan.Id,
+		MatchedCount:     len(subs),
+		ResetCount:       len(subs),
+		UserCount:        len(userIds),
+		AdvanceResetTime: advanceResetTime,
+		PlanTitle:        plan.Title,
+		AffectedUserIds:  userIds,
+	}
+}
+
+func adminResetUserSubscriptionsByPlanTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, now int64, advanceResetTime bool) (*SubscriptionResetResult, error) {
+	if tx == nil || plan == nil {
+		return nil, errors.New("invalid reset args")
+	}
+	var subs []UserSubscription
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("user_id = ? AND plan_id = ? AND status = ? AND end_time > ?", userId, plan.Id, "active", now).
+		Order("end_time asc, id asc").
+		Find(&subs).Error; err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
+		return nil, errors.New("该用户没有有效的此套餐订阅")
+	}
+	for i := range subs {
+		if err := resetUserSubscriptionTx(tx, &subs[i], plan, now, advanceResetTime); err != nil {
+			return nil, err
+		}
+	}
+	return buildSubscriptionResetResult(plan, subs, advanceResetTime), nil
+}
+
+func adminResetPlanSubscriptionsTx(tx *gorm.DB, plan *SubscriptionPlan, now int64, advanceResetTime bool) (*SubscriptionResetResult, error) {
+	if tx == nil || plan == nil {
+		return nil, errors.New("invalid reset args")
+	}
+	var subs []UserSubscription
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("plan_id = ? AND status = ? AND end_time > ?", plan.Id, "active", now).
+		Order("user_id asc, end_time asc, id asc").
+		Find(&subs).Error; err != nil {
+		return nil, err
+	}
+	for i := range subs {
+		if err := resetUserSubscriptionTx(tx, &subs[i], plan, now, advanceResetTime); err != nil {
+			return nil, err
+		}
+	}
+	return buildSubscriptionResetResult(plan, subs, advanceResetTime), nil
+}
+
+func AdminResetUserSubscriptionsByPlan(userId int, planId int, advanceResetTime bool) (*SubscriptionResetResult, error) {
+	if userId <= 0 || planId <= 0 {
+		return nil, errors.New("invalid userId or planId")
+	}
+	var result *SubscriptionResetResult
+	now := GetDBTimestamp()
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		plan, err := getSubscriptionPlanByIdTx(tx, planId)
+		if err != nil {
+			return err
+		}
+		result, err = adminResetUserSubscriptionsByPlanTx(tx, userId, plan, now, advanceResetTime)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func AdminResetPlanSubscriptions(planId int, advanceResetTime bool) (*SubscriptionResetResult, error) {
+	if planId <= 0 {
+		return nil, errors.New("invalid planId")
+	}
+	var result *SubscriptionResetResult
+	now := GetDBTimestamp()
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		plan, err := getSubscriptionPlanByIdTx(tx, planId)
+		if err != nil {
+			return err
+		}
+		result, err = adminResetPlanSubscriptionsTx(tx, plan, now, advanceResetTime)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 type SubscriptionPreConsumeResult struct {
@@ -1220,9 +1345,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		}
 
 		var subs []UserSubscription
-		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改为带余量守卫的条件原子 UPDATE
-		// 抢占扣减（RowsAffected==0 视为余量已被并发占用，尝试下一个订阅）。
-		if err := tx.
+		if err := lockForUpdate(tx).
 			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
 			Order("end_time asc, id asc").
 			Find(&subs).Error; err != nil {
@@ -1306,9 +1429,8 @@ func RefundSubscriptionPreConsume(requestId string) error {
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var record SubscriptionPreConsumeRecord
-		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改条件原子 UPDATE 抢占
-		// consumed→refunded 状态迁移，赢得迁移的事务才回补额度（防并发双重退款）。
-		if err := tx.Where("request_id = ?", requestId).First(&record).Error; err != nil {
+		if err := lockForUpdate(tx).
+			Where("request_id = ?", requestId).First(&record).Error; err != nil {
 			return err
 		}
 		if record.Status == "refunded" {
@@ -1354,22 +1476,12 @@ func ResetDueSubscriptions(limit int) (int, error) {
 			continue
 		}
 		err = DB.Transaction(func(tx *gorm.DB) error {
-			// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；先用条件原子 UPDATE 抢占本轮
-			// 重置（把 next_reset_time 清 0 作为占位），RowsAffected==0 视为已被并发重置。
-			claim := tx.Model(&UserSubscription{}).
+			var locked UserSubscription
+			if err := lockForUpdate(tx).
 				Where("id = ? AND next_reset_time > 0 AND next_reset_time <= ?", subCopy.Id, now).
-				Update("next_reset_time", 0)
-			if claim.Error != nil {
-				return claim.Error
-			}
-			if claim.RowsAffected == 0 {
+				First(&locked).Error; err != nil {
 				return nil
 			}
-			var locked UserSubscription
-			if err := tx.Where("id = ?", subCopy.Id).First(&locked).Error; err != nil {
-				return err
-			}
-			locked.NextResetTime = subCopy.NextResetTime
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &locked, plan, now); err != nil {
 				return err
 			}
@@ -1433,7 +1545,9 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 	return DB.Transaction(func(tx *gorm.DB) error {
 		// jzlh-fix FOR UPDATE 在 GORM v2 下静默失效；改为带守卫的条件原子增量 UPDATE。
 		var sub UserSubscription
-		if err := tx.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+		if err := lockForUpdate(tx).
+			Where("id = ?", userSubscriptionId).
+			First(&sub).Error; err != nil {
 			return err
 		}
 		if delta > 0 {

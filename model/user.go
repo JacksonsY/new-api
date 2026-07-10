@@ -470,32 +470,39 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(int(common.QuotaPerUnit)))
 	}
 
-	// >>> jzlh-fix 原实现的 `gorm:query_option FOR UPDATE` 是 GORM v1 语法,在 v2 下
-	// 静默失效,实际是"无锁读整行→Save 整行",会把读后落地的并发原子更新(分佣入账、
-	// 额度变动)用旧值覆盖。改为条件原子 UPDATE(余额守卫),与分佣转额度同一模式。
-	res := DB.Model(&User{}).
-		Where("id = ? AND aff_quota >= ? AND quota <= ?", user.Id, quota, maxQuotaBalance-quota).
-		Updates(map[string]interface{}{
-			"aff_quota": gorm.Expr("aff_quota - ?", quota),
-			"quota":     gorm.Expr("quota + ?", quota),
-		})
-	if res.Error != nil {
-		return res.Error
+	// 开始数据库事务
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
 	}
-	if res.RowsAffected == 0 {
-		// 区分失败原因：邀请额度不足 vs 目标额度将超上限护栏
-		var u User
-		if err := DB.Select("aff_quota", "quota").Where("id = ?", user.Id).First(&u).Error; err != nil {
-			return err
-		}
-		if u.AffQuota < quota {
-			return errors.New("邀请额度不足！")
-		}
-		return errors.New("转移后额度将超过上限，已拒绝！")
+	defer tx.Rollback() // 确保在函数退出时事务能回滚
+
+	// 加锁查询用户以确保数据一致性
+	err := lockForUpdate(tx).First(&user, user.Id).Error
+	if err != nil {
+		return err
 	}
-	// 同步内存对象与 Redis 额度缓存(与 IncreaseUserQuota / 分佣转换的处理一致)
+
+	// 再次检查用户的AffQuota是否足够
+	if user.AffQuota < quota {
+		return errors.New("邀请额度不足！")
+	}
+
+	// 更新用户额度
 	user.AffQuota -= quota
 	user.Quota += quota
+
+	// 保存用户状态
+	if err := tx.Save(user).Error; err != nil {
+		return err
+	}
+
+	// 提交事务
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	// 提交成功后同步 Redis 额度缓存：计费预检走缓存额度（GetUserQuota Redis 优先），
+	// 不同步则转移后的余额在缓存过期前不可见，会被误判额度不足。与 Redeem 一致。
 	userId := user.Id
 	gopool.Go(func() {
 		if cerr := cacheIncrUserQuota(userId, int64(quota)); cerr != nil {
@@ -503,7 +510,6 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		}
 	})
 	return nil
-	// <<< jzlh-fix
 }
 
 func (user *User) prepareForInsert(tx *gorm.DB) error {

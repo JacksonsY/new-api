@@ -150,9 +150,7 @@ func Redeem(key string, userId int) (quota int, err error) {
 	}
 	common.RandomSleep()
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		// jzlh-fix `gorm:query_option FOR UPDATE` 是 GORM v1 语法，v2 下静默失效（且 SQLite
-		// 不支持行锁）。改为条件原子 UPDATE 抢占状态迁移，RowsAffected==0 视为已被并发兑换。
-		err := tx.Where(keyCol+" = ?", key).First(redemption).Error
+		err := lockForUpdate(tx).Where(keyCol+" = ?", key).First(redemption).Error
 		if err != nil {
 			return errors.New("无效的兑换码")
 		}
@@ -162,23 +160,22 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
 			return errors.New("该兑换码已过期")
 		}
-		now := common.GetTimestamp()
-		res := tx.Model(&Redemption{}).
+		// Compare-and-swap on status: only the transaction that flips
+		// enabled -> used may credit quota, so a concurrent redeem of the
+		// same code loses here even without a row lock (e.g. on SQLite).
+		result := tx.Model(&Redemption{}).
 			Where("id = ? AND status = ?", redemption.Id, common.RedemptionCodeStatusEnabled).
 			Updates(map[string]interface{}{
+				"redeemed_time": common.GetTimestamp(),
 				"status":        common.RedemptionCodeStatusUsed,
-				"redeemed_time": now,
 				"used_user_id":  userId,
 			})
-		if res.Error != nil {
-			return res.Error
+		if result.Error != nil {
+			return result.Error
 		}
-		if res.RowsAffected == 0 {
+		if result.RowsAffected == 0 {
 			return errors.New("该兑换码已被使用")
 		}
-		redemption.RedeemedTime = now
-		redemption.Status = common.RedemptionCodeStatusUsed
-		redemption.UsedUserId = userId
 		return tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
 	})
 	if err != nil {
