@@ -159,6 +159,17 @@ const rootElement = document.getElementById('root')!
     /* empty */
   }
 })()
+// 淡出 index.html 内联的开屏加载页（连同其样式），在 React 首帧绘制后调用。
+function dismissSplash() {
+  const splash = document.getElementById('splash')
+  if (!splash) return
+  splash.classList.add('splash-leave')
+  window.setTimeout(() => {
+    splash.remove()
+    document.getElementById('splash-style')?.remove()
+  }, 400)
+}
+
 if (!rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement)
   // Wait for the active language bundle (loaded on demand, see i18n/config) so
@@ -177,5 +188,7 @@ if (!rootElement.innerHTML) {
         </QueryClientProvider>
       </StrictMode>
     )
+    // 双 rAF：等浏览器真正绘制出 React 首帧内容后再撤开屏，避免闪空白。
+    requestAnimationFrame(() => requestAnimationFrame(dismissSplash))
   })
 }
