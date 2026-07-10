@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   Coins,
   Gauge,
+  Layers,
   Percent,
   Radio,
   Timer,
@@ -142,6 +143,16 @@ export function OpsMonitor() {
           : String(overview.totalTpm),
       tone: 'default' as MetricTone,
       hint: t('output tokens / min'),
+    },
+    {
+      icon: Layers,
+      label: t('Cache hit rate'),
+      value:
+        overview.cacheHitRate == null
+          ? '—'
+          : `${(overview.cacheHitRate * 100).toFixed(0)}%`,
+      tone: 'default' as MetricTone,
+      hint: t('cache read / total input'),
     },
     {
       icon: Timer,

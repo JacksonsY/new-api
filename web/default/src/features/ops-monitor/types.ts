@@ -42,6 +42,10 @@ export interface ChannelHealthRow {
   cooldown_ms: number
   rpm: number
   tpm: number
+  input_tpm: number
+  cache_tpm: number
+  input_tokens_total: number
+  cache_read_tokens_total: number
   err_429: number
   err_5xx: number
   err_other: number
@@ -69,6 +73,8 @@ export interface ChannelHealthOverview {
   avgTpsTokPerSec: number | null
   avgLatencyMs: number | null
   avgErrorRate: number | null
+  // Fleet prompt-cache hit rate in [0,1]: 60s window, cumulative fallback, null when no input observed.
+  cacheHitRate: number | null
   // 0-100 blended fleet score, or null when no channel has produced samples yet.
   healthScore: number | null
 }

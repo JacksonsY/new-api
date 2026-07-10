@@ -351,16 +351,36 @@ func channelHealthTraffic(info *relaycommon.RelayInfo, attemptStart time.Time) c
 	if info != nil && info.IsStream && info.HasSendResponse() && info.FirstResponseTime.After(attemptStart) {
 		generationMs = now.Sub(info.FirstResponseTime).Milliseconds()
 	}
-	var outputTokens int64
+	var outputTokens, inputTokens, cacheReadTokens int64
 	if info != nil && info.Usage != nil {
 		outputTokens = int64(info.Usage.CompletionTokens)
+		inputTokens, cacheReadTokens = usageInputCacheTokens(info.Usage)
 	}
 	return channelhealth.Traffic{
-		Success:      true,
-		LatencyMs:    latencyMs,
-		OutputTokens: outputTokens,
-		GenerationMs: generationMs,
+		Success:         true,
+		LatencyMs:       latencyMs,
+		OutputTokens:    outputTokens,
+		GenerationMs:    generationMs,
+		InputTokens:     inputTokens,
+		CacheReadTokens: cacheReadTokens,
 	}
+}
+
+// usageInputCacheTokens 把跨语义的 usage 归一成「总输入(含缓存)/缓存读取」，
+// 供渠道缓存命中率监控使用。OpenAI 语义下 PromptTokens 已含缓存读取/创建；
+// anthropic 语义下 PromptTokens 是净值，需要补回缓存部分。对未标语义但
+// 明显是净值口径的数据（总输入小于缓存量）做同样补齐兜底。
+func usageInputCacheTokens(usage *dto.Usage) (inputTokens int64, cacheReadTokens int64) {
+	if usage == nil {
+		return 0, 0
+	}
+	cacheRead := int64(usage.PromptTokensDetails.CachedTokens)
+	cacheCreation := int64(usage.PromptTokensDetails.CachedCreationTokens)
+	input := int64(usage.PromptTokens)
+	if usage.UsageSemantic == "anthropic" || input < cacheRead+cacheCreation {
+		input += cacheRead + cacheCreation
+	}
+	return input, cacheRead
 }
 
 // isChannelFaultForHealth reports whether a failed attempt should count against

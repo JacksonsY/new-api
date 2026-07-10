@@ -96,6 +96,14 @@ type channelStat struct {
 	err5xx    int64
 	errOther  int64
 
+	// Prompt-cache observability: total input tokens (cache included) vs
+	// cache-read tokens, as both a rolling 60s window (live hit rate) and
+	// cumulative since boot (fallback view for low-traffic channels).
+	inputTokWindow  rollingWindow
+	cacheTokWindow  rollingWindow
+	inputTokens     int64
+	cacheReadTokens int64
+
 	consecutiveFailures int
 	state               circuitState
 	openUntil           time.Time
@@ -302,6 +310,12 @@ type Traffic struct {
 	OutputTokens int64
 	GenerationMs int64
 	ErrCode      int
+	// InputTokens is the attempt's TOTAL input (prompt-cache reads/creation
+	// included, normalized across usage semantics by the caller);
+	// CacheReadTokens is the cache-read share of it. Both feed the per-channel
+	// prompt-cache hit-rate view only.
+	InputTokens     int64
+	CacheReadTokens int64
 }
 
 // ReportTraffic folds one attempt's observability signals into a channel's
@@ -350,6 +364,14 @@ func ReportTraffic(channelID int, tr Traffic) {
 					s.tpsEWMA = sample
 					s.hasTps = true
 				}
+			}
+		}
+		if tr.InputTokens > 0 {
+			s.inputTokWindow.add(nowSec, tr.InputTokens)
+			s.inputTokens += tr.InputTokens
+			if tr.CacheReadTokens > 0 {
+				s.cacheTokWindow.add(nowSec, tr.CacheReadTokens)
+				s.cacheReadTokens += tr.CacheReadTokens
 			}
 		}
 	} else if tr.ChannelFault {
@@ -401,6 +423,11 @@ type snapshot struct {
 	err429      int64
 	err5xx      int64
 	errOther    int64
+
+	inputTpm        int64 // total input tokens in the last 60s (cache included)
+	cacheTpm        int64 // cache-read tokens in the last 60s
+	inputTokens     int64 // cumulative total input tokens since boot
+	cacheReadTokens int64 // cumulative cache-read tokens since boot
 }
 
 // read returns the current stats, lazily transitioning open->half-open once the
@@ -439,6 +466,11 @@ func (s *channelStat) read() snapshot {
 		err429:      s.err429,
 		err5xx:      s.err5xx,
 		errOther:    s.errOther,
+
+		inputTpm:        s.inputTokWindow.sum(nowSec),
+		cacheTpm:        s.cacheTokWindow.sum(nowSec),
+		inputTokens:     s.inputTokens,
+		cacheReadTokens: s.cacheReadTokens,
 	}
 	s.mu.Unlock()
 
@@ -565,6 +597,15 @@ type StatView struct {
 	Err5xx      int64   `json:"err_5xx"`       // cumulative upstream 5xx faults
 	ErrOther    int64   `json:"err_other"`     // cumulative other channel faults (incl. network)
 	Weight      float64 `json:"weight"`        // current health-derived routing multiplier, [0,1]
+
+	// Prompt-cache hit-rate inputs: last-60s window for the live rate, plus
+	// cumulative-since-boot fallback for low-traffic channels. Input counts the
+	// TOTAL input tokens (cache reads/creation included), so hit rate is
+	// cache_tpm/input_tpm (or the *_total pair).
+	InputTpm             int64 `json:"input_tpm"`
+	CacheTpm             int64 `json:"cache_tpm"`
+	InputTokensTotal     int64 `json:"input_tokens_total"`
+	CacheReadTokensTotal int64 `json:"cache_read_tokens_total"`
 }
 
 func viewFromSnapshot(channelID int, snap snapshot) StatView {
@@ -596,6 +637,11 @@ func viewFromSnapshot(channelID int, snap snapshot) StatView {
 		Err5xx:      snap.err5xx,
 		ErrOther:    snap.errOther,
 		Weight:      weight,
+
+		InputTpm:             snap.inputTpm,
+		CacheTpm:             snap.cacheTpm,
+		InputTokensTotal:     snap.inputTokens,
+		CacheReadTokensTotal: snap.cacheReadTokens,
 	}
 }
 

@@ -61,6 +61,10 @@ export function computeOverview(
   let latencyCount = 0
   let errorSum = 0
   let errorCount = 0
+  let inputTpmSum = 0
+  let cacheTpmSum = 0
+  let inputTotalSum = 0
+  let cacheTotalSum = 0
   let scoreSum = 0
   let observedCount = 0
 
@@ -75,6 +79,10 @@ export function computeOverview(
     if (row.status !== 0 && row.status !== 1) disabled += 1
 
     inflightTotal += Math.max(0, row.inflight)
+    inputTpmSum += Math.max(0, row.input_tpm)
+    cacheTpmSum += Math.max(0, row.cache_tpm)
+    inputTotalSum += Math.max(0, row.input_tokens_total)
+    cacheTotalSum += Math.max(0, row.cache_read_tokens_total)
     rpmTotal += Math.max(0, row.rpm)
     tpmTotal += Math.max(0, row.tpm)
 
@@ -98,6 +106,13 @@ export function computeOverview(
     scoreSum += channelScore(row)
   }
 
+  let cacheHitRate: number | null = null
+  if (inputTpmSum > 0) {
+    cacheHitRate = cacheTpmSum / inputTpmSum
+  } else if (inputTotalSum > 0) {
+    cacheHitRate = cacheTotalSum / inputTotalSum
+  }
+
   return {
     total: rows.length,
     healthy,
@@ -111,6 +126,7 @@ export function computeOverview(
     avgTpsTokPerSec: tpsCount > 0 ? tpsSum / tpsCount : null,
     avgLatencyMs: latencyCount > 0 ? latencySum / latencyCount : null,
     avgErrorRate: errorCount > 0 ? errorSum / errorCount : null,
+    cacheHitRate,
     healthScore:
       rows.length > 0 && observedCount > 0
         ? Math.round((scoreSum / rows.length) * 100)

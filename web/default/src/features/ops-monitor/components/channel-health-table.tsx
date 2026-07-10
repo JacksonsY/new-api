@@ -41,6 +41,7 @@ type SortKey =
   | 'latency'
   | 'error'
   | 'rpm'
+  | 'cache'
   | 'inflight'
   | 'test'
 type StateFilter = 'all' | ChannelHealthState
@@ -61,6 +62,15 @@ function stateLabelKey(state: ChannelHealthState): string {
   if (state === 'open') return 'Circuit open'
   if (state === 'degraded') return 'Half-open'
   return 'Healthy'
+}
+
+// 行级缓存命中率：优先近 60s 窗口，渠道空闲时回落到自启动累计；均无输入时返回 null。
+function cacheHitRateOf(row: ChannelHealthRow): number | null {
+  if (row.input_tpm > 0) return row.cache_tpm / row.input_tpm
+  if (row.input_tokens_total > 0) {
+    return row.cache_read_tokens_total / row.input_tokens_total
+  }
+  return null
 }
 
 function ttftTone(ttftMs: number): string {
@@ -190,6 +200,9 @@ export function ChannelHealthTable(props: ChannelHealthTableProps) {
         case 'rpm':
           cmp = a.rpm - b.rpm
           break
+        case 'cache':
+          cmp = (cacheHitRateOf(a) ?? -1) - (cacheHitRateOf(b) ?? -1)
+          break
         case 'inflight':
           cmp = a.inflight - b.inflight
           break
@@ -317,6 +330,14 @@ export function ChannelHealthTable(props: ChannelHealthTableProps) {
                   onSort={toggleSort}
                 />
                 <SortHeader
+                  label={t('Cache hit')}
+                  columnKey='cache'
+                  align='right'
+                  activeKey={sortKey}
+                  asc={sortAsc}
+                  onSort={toggleSort}
+                />
+                <SortHeader
                   label={t('In-flight')}
                   columnKey='inflight'
                   align='right'
@@ -437,6 +458,15 @@ export function ChannelHealthTable(props: ChannelHealthTableProps) {
                       title={`TPM: ${row.tpm}`}
                     >
                       {row.rpm}
+                    </td>
+                    <td
+                      className='text-foreground pl-3 text-right font-mono tabular-nums'
+                      title={`60s: ${row.cache_tpm}/${row.input_tpm} · total: ${row.cache_read_tokens_total}/${row.input_tokens_total}`}
+                    >
+                      {(() => {
+                        const rate = cacheHitRateOf(row)
+                        return rate == null ? '—' : `${(rate * 100).toFixed(0)}%`
+                      })()}
                     </td>
                     <td className='text-foreground pl-3 text-right font-mono tabular-nums'>
                       {row.inflight}
