@@ -250,6 +250,56 @@ export function hasAnyCacheTokens(
   )
 }
 
+/**
+ * Normalized token breakdown for display: `inputTokens` is always the net
+ * input (cache read/write excluded), regardless of the usage semantics the
+ * upstream reported.
+ *
+ * Backend stores `prompt_tokens` verbatim in the usage log, so its meaning
+ * depends on the semantics (mirrors service/text_quota.go):
+ * - anthropic semantics (`other.claude` / `other.usage_semantic === 'anthropic'`,
+ *   plus legacy Claude-derived logs carrying 5m/1h cache splits without a
+ *   semantic tag): prompt_tokens already excludes cache tokens.
+ * - openai semantics (everything else): prompt_tokens includes cache read and
+ *   cache creation tokens, so they must be subtracted for display.
+ */
+export interface UsageTokenParts {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+}
+
+export function getUsageTokenParts(
+  log: UsageLog,
+  other: LogOtherData | null | undefined
+): UsageTokenParts {
+  const promptTokens = log.prompt_tokens || 0
+  const outputTokens = log.completion_tokens || 0
+  const cacheReadTokens = other?.cache_tokens || 0
+  const write5m = other?.cache_creation_tokens_5m || 0
+  const write1h = other?.cache_creation_tokens_1h || 0
+  const hasSplitCacheWrite = write5m > 0 || write1h > 0
+  const cacheWriteTokens =
+    other?.cache_write_tokens ||
+    (hasSplitCacheWrite ? write5m + write1h : other?.cache_creation_tokens || 0)
+
+  const inputAlreadyNet =
+    other?.usage_semantic === 'anthropic' ||
+    other?.claude === true ||
+    (hasSplitCacheWrite && !other?.usage_semantic)
+
+  let inputTokens = promptTokens
+  const totalFromBackend = other?.input_tokens_total || 0
+  if (totalFromBackend > 0) {
+    inputTokens = Math.max(totalFromBackend - cacheReadTokens - cacheWriteTokens, 0)
+  } else if (!inputAlreadyNet) {
+    inputTokens = Math.max(promptTokens - cacheReadTokens - cacheWriteTokens, 0)
+  }
+
+  return { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }
+}
+
 export function getTieredBillingSummary(
   other: LogOtherData | null
 ): TieredBillingSummary | null {
