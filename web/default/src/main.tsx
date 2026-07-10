@@ -107,11 +107,12 @@ const router = createRouter({
   context: { queryClient },
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
-  // 路由跳转/懒加载 chunk 的等待界面复用品牌开屏视觉：只要跳转有真实等待
-  // （>50ms：拉取 chunk、跑 loader）就显示，且一旦出现至少停留 400ms 保证
-  // 品牌动效可感知。纯同步的即时跳转（chunk 已缓存）不进 pending，保持干脆。
+  // 路由跳转/懒加载 chunk 的等待界面复用品牌开屏视觉。阈值 300ms：热切换
+  // （chunk 已缓存、数据很快）保持 TanStack 默认的“保留旧页面 + 顶部进度条”
+  // 顺滑直达，绝不闪 loader；只有真实等待（首次拉取 chunk、慢数据）超过
+  // 300ms 才切换到品牌 loader，且一旦出现至少停留 400ms 避免一闪而过。
   defaultPendingComponent: RoutePendingLoader,
-  defaultPendingMs: 50,
+  defaultPendingMs: 300,
   defaultPendingMinMs: 400,
 })
 

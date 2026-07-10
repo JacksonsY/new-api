@@ -52,8 +52,9 @@ export function BrandLoader({ className, message }: BrandLoaderProps) {
   )
 }
 
-// 路由跳转/懒加载 chunk 的全屏等待界面，供 createRouter 的
-// defaultPendingComponent 使用。
+// 路由跳转/懒加载 chunk 的等待界面，供 createRouter 的
+// defaultPendingComponent 使用。渲染在发生挂起的那层 Outlet：控制台内
+// 切换时只占内容区（侧边栏保持不动），70vh 兼顾整页与嵌套两种场景的居中感。
 export function RoutePendingLoader() {
-  return <BrandLoader className='min-h-svh' />
+  return <BrandLoader className='min-h-[70vh]' />
 }
