@@ -232,8 +232,19 @@ func buildClaudeUsageFromOpenAIUsage(oaiUsage *dto.Usage) *dto.ClaudeUsage {
 		oaiUsage.ClaudeCacheCreation5mTokens,
 		oaiUsage.ClaudeCacheCreation1hTokens,
 	)
+	// OpenAI 语义的 prompt_tokens 包含缓存读取/创建子集，而 Anthropic 语义的
+	// input_tokens 与 cache_read/cache_creation 并列。转换时必须扣除，否则
+	// /v1/messages 客户端（以及下游按 anthropic 口径计费的一方）会重复计算缓存。
+	inputTokens := oaiUsage.PromptTokens
+	if oaiUsage.UsageSemantic != "anthropic" {
+		inputTokens -= oaiUsage.PromptTokensDetails.CachedTokens
+		inputTokens -= oaiUsage.PromptTokensDetails.CachedCreationTokens
+		if inputTokens < 0 {
+			inputTokens = 0
+		}
+	}
 	usage := &dto.ClaudeUsage{
-		InputTokens:              oaiUsage.PromptTokens,
+		InputTokens:              inputTokens,
 		OutputTokens:             oaiUsage.CompletionTokens,
 		CacheCreationInputTokens: oaiUsage.PromptTokensDetails.CachedCreationTokens,
 		CacheReadInputTokens:     oaiUsage.PromptTokensDetails.CachedTokens,
@@ -832,9 +843,11 @@ func ResponseOpenAI2Gemini(openAIResponse *dto.OpenAITextResponse, info *relayco
 	geminiResponse := &dto.GeminiChatResponse{
 		Candidates: make([]dto.GeminiChatCandidate, 0, len(openAIResponse.Choices)),
 		UsageMetadata: dto.GeminiUsageMetadata{
-			PromptTokenCount:     openAIResponse.PromptTokens,
-			CandidatesTokenCount: openAIResponse.CompletionTokens,
-			TotalTokenCount:      openAIResponse.PromptTokens + openAIResponse.CompletionTokens,
+			PromptTokenCount: openAIResponse.PromptTokens,
+			// Gemini 语义与 OpenAI 一致：promptTokenCount 含缓存，cachedContentTokenCount 是其子集
+			CachedContentTokenCount: openAIResponse.PromptTokensDetails.CachedTokens,
+			CandidatesTokenCount:    openAIResponse.CompletionTokens,
+			TotalTokenCount:         openAIResponse.PromptTokens + openAIResponse.CompletionTokens,
 		},
 	}
 
@@ -931,6 +944,7 @@ func StreamResponseOpenAI2Gemini(openAIResponse *dto.ChatCompletionsStreamRespon
 
 	if openAIResponse.Usage != nil {
 		geminiResponse.UsageMetadata.PromptTokenCount = openAIResponse.Usage.PromptTokens
+		geminiResponse.UsageMetadata.CachedContentTokenCount = openAIResponse.Usage.PromptTokensDetails.CachedTokens
 		geminiResponse.UsageMetadata.CandidatesTokenCount = openAIResponse.Usage.CompletionTokens
 		geminiResponse.UsageMetadata.TotalTokenCount = openAIResponse.Usage.TotalTokens
 	}
