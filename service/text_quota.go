@@ -323,6 +323,15 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	return summary
 }
 
+// CalculateTextQuota computes the final quota for a text usage with the same
+// rules as PostTextConsumeQuota (usage-semantic detection, cache read/creation
+// ratios, group ratio, per-price mode, saturation), without settling billing
+// or writing logs. Billing done outside the relay pipeline (e.g. channel test)
+// must use this instead of re-deriving the formula, so it cannot drift.
+func CalculateTextQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) int {
+	return calculateTextQuotaSummary(ctx, relayInfo, usage).Quota
+}
+
 func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) string {
 	if usage != nil && usage.UsageSemantic != "" {
 		return usage.UsageSemantic

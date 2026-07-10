@@ -32,16 +32,49 @@ func TestSettleTestQuotaUsesTieredBilling(t *testing.T) {
 		},
 	}
 
-	quota, result := settleTestQuota(info, types.PriceData{
-		ModelRatio:      1,
-		CompletionRatio: 2,
-	}, &dto.Usage{
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	quota, result := settleTestQuota(ctx, info, &dto.Usage{
 		PromptTokens: 1000,
 	})
 
 	require.Equal(t, 1500, quota)
 	require.NotNil(t, result)
 	require.Equal(t, "stream", result.MatchedTier)
+}
+
+// 渠道测试计费必须与主计费口径一致：缓存读取按 cache_ratio 折价，而不是
+// 整个 prompt 按原价。用真实事故数据回归：prompt 4683(含缓存读 4352)、
+// 补全 14、模型倍率 2.5、补全倍率 6、缓存倍率 0.1 →
+// ((4683-4352) + 4352*0.1 + 14*6) * 2.5 = 2125.5 → 四舍五入 2126，
+// 旧实现会算出 (4683 + 14*6) * 2.5 = 11918。
+func TestSettleTestQuotaAppliesCacheRatio(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	info := &relaycommon.RelayInfo{
+		RelayFormat:             types.RelayFormatOpenAI,
+		FinalRequestRelayFormat: types.RelayFormatOpenAI,
+		OriginModelName:         "gpt-5.5",
+		PriceData: types.PriceData{
+			ModelRatio:      2.5,
+			CompletionRatio: 6,
+			CacheRatio:      0.1,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+	}
+
+	quota, result := settleTestQuota(ctx, info, &dto.Usage{
+		PromptTokens:     4683,
+		CompletionTokens: 14,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens: 4352,
+		},
+	})
+
+	require.Nil(t, result)
+	require.Equal(t, 2126, quota)
 }
 
 func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
