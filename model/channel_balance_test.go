@@ -48,13 +48,17 @@ func TestGetChannelsRecentUsage(t *testing.T) {
 	mkLog := func(channelId int, offsetDays int, quota int, logType int) *Log {
 		return &Log{
 			UserId: 1, Type: logType, ChannelId: channelId, Quota: quota,
-			CreatedAt: dayStart - int64(offsetDays)*86400 + 100,
+			ChannelRatio: 1,
+			CreatedAt:    dayStart - int64(offsetDays)*86400 + 100,
 		}
 	}
 	// chA：今天 100、昨天 200、5 天前 300（中间空洞）、95 天前 999（窗口外）
 	require.NoError(t, DB.Create(mkLog(chA, 0, 100, LogTypeConsume)).Error)
 	require.NoError(t, DB.Create(mkLog(chA, 1, 200, LogTypeConsume)).Error)
 	require.NoError(t, DB.Create(mkLog(chA, 5, 300, LogTypeConsume)).Error)
+	// 逐笔倍率必须在聚合时保留：今天 0.5 倍、昨天 2 倍、5 天前 1 倍。
+	require.NoError(t, DB.Model(&Log{}).Where("channel_id = ? AND created_at = ?", chA, dayStart+100).Update("channel_ratio", 0.5).Error)
+	require.NoError(t, DB.Model(&Log{}).Where("channel_id = ? AND created_at = ?", chA, dayStart-86400+100).Update("channel_ratio", 2.0).Error)
 	require.NoError(t, DB.Create(mkLog(chA, 95, 999, LogTypeConsume)).Error)
 	// 非消费类型不计
 	require.NoError(t, DB.Create(mkLog(chA, 0, 5000, LogTypeTopup)).Error)
@@ -66,7 +70,7 @@ func TestGetChannelsRecentUsage(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Contains(t, usage, chA)
-	assert.EqualValues(t, 600, usage[chA].Quota, "三个活跃日的消费求和，窗口外与非消费类型不计")
+	assert.EqualValues(t, 750, usage[chA].Quota, "逐笔按历史倍率折算，窗口外与非消费类型不计")
 	assert.Equal(t, 3, usage[chA].ActiveDays)
 	require.Contains(t, usage, chB)
 	assert.EqualValues(t, 50, usage[chB].Quota)
@@ -75,7 +79,7 @@ func TestGetChannelsRecentUsage(t *testing.T) {
 	// maxActiveDays=2：chA 只取最近两个活跃日（今天+昨天）
 	usage, err = GetChannelsRecentUsage([]int{chA}, since, 2)
 	require.NoError(t, err)
-	assert.EqualValues(t, 300, usage[chA].Quota)
+	assert.EqualValues(t, 450, usage[chA].Quota)
 	assert.Equal(t, 2, usage[chA].ActiveDays)
 }
 
@@ -85,15 +89,89 @@ func TestGetChannelsQuotaSince(t *testing.T) {
 	now := common.GetTimestamp()
 	ch := 92001
 	require.NoError(t, DB.Create(&Log{
-		UserId: 1, Type: LogTypeConsume, ChannelId: ch, Quota: 70, CreatedAt: now - 3600,
+		UserId: 1, Type: LogTypeConsume, ChannelId: ch, Quota: 70, ChannelRatio: 2, CreatedAt: now - 3600,
 	}).Error)
 	require.NoError(t, DB.Create(&Log{
-		UserId: 1, Type: LogTypeConsume, ChannelId: ch, Quota: 999, CreatedAt: now - 90000, // >24h
+		UserId: 1, Type: LogTypeConsume, ChannelId: ch, Quota: 20, ChannelRatio: 0.5, CreatedAt: now - 1800,
+	}).Error)
+	require.NoError(t, DB.Create(&Log{
+		UserId: 1, Type: LogTypeConsume, ChannelId: ch, Quota: 999, ChannelRatio: 1, CreatedAt: now - 90000, // >24h
 	}).Error)
 
 	result, err := GetChannelsQuotaSince([]int{ch, 92002}, now-86400)
 	require.NoError(t, err)
-	assert.EqualValues(t, 70, result[ch])
+	assert.EqualValues(t, 150, result[ch])
 	_, ok := result[92002]
 	assert.False(t, ok, "窗口内无消费的渠道不应出现在结果里")
+}
+
+func TestGetChannelsUsageSaturatesEachHistoricalEntry(t *testing.T) {
+	require.NoError(t, LOG_DB.AutoMigrate(&Log{}))
+	now := common.GetTimestamp()
+	dayStart := now - now%86400
+	const overflowChannel = 92011
+	const underflowChannel = 92012
+
+	require.NoError(t, DB.Create(&Log{
+		UserId: 1, Type: LogTypeConsume, ChannelId: overflowChannel,
+		Quota: common.MaxQuota, ChannelRatio: MaxChannelRatio, CreatedAt: dayStart + 100,
+	}).Error)
+	require.NoError(t, DB.Create(&Log{
+		UserId: 1, Type: LogTypeConsume, ChannelId: underflowChannel,
+		Quota: common.MinQuota, ChannelRatio: MaxChannelRatio, CreatedAt: dayStart + 100,
+	}).Error)
+
+	recent, err := GetChannelsRecentUsage(
+		[]int{overflowChannel, underflowChannel}, dayStart, ChannelRecentUsageActiveDays,
+	)
+	require.NoError(t, err)
+	assert.EqualValues(t, common.MaxQuota, recent[overflowChannel].Quota)
+	assert.EqualValues(t, common.MinQuota, recent[underflowChannel].Quota)
+
+	since, err := GetChannelsQuotaSince([]int{overflowChannel, underflowChannel}, dayStart)
+	require.NoError(t, err)
+	assert.EqualValues(t, common.MaxQuota, since[overflowChannel])
+	assert.EqualValues(t, common.MinQuota, since[underflowChannel])
+}
+
+func TestGetChannelsUsageRoundsHalfAwayFromZero(t *testing.T) {
+	require.NoError(t, LOG_DB.AutoMigrate(&Log{}))
+	now := common.GetTimestamp()
+	const positiveChannel = 92021
+	const negativeChannel = 92022
+
+	require.NoError(t, DB.Create(&Log{
+		UserId: 1, Type: LogTypeConsume, ChannelId: positiveChannel,
+		Quota: 1, ChannelRatio: 0.5, CreatedAt: now,
+	}).Error)
+	require.NoError(t, DB.Create(&Log{
+		UserId: 1, Type: LogTypeConsume, ChannelId: negativeChannel,
+		Quota: -1, ChannelRatio: 0.5, CreatedAt: now,
+	}).Error)
+
+	usage, err := GetChannelsQuotaSince([]int{positiveChannel, negativeChannel}, now-1)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, usage[positiveChannel])
+	assert.EqualValues(t, -1, usage[negativeChannel])
+}
+
+func TestGetChannelsUsageDistinguishesLegacyAndExplicitZeroRatio(t *testing.T) {
+	require.NoError(t, LOG_DB.AutoMigrate(&Log{}))
+	now := common.GetTimestamp()
+	const legacyChannel = 92031
+	const explicitZeroChannel = 92032
+
+	require.NoError(t, DB.Create(&Log{
+		UserId: 1, Type: LogTypeConsume, ChannelId: legacyChannel,
+		Quota: 100, ChannelRatio: 0, ChannelRatioSet: false, CreatedAt: now,
+	}).Error)
+	require.NoError(t, DB.Create(&Log{
+		UserId: 1, Type: LogTypeConsume, ChannelId: explicitZeroChannel,
+		Quota: 100, ChannelRatio: 0, ChannelRatioSet: true, CreatedAt: now,
+	}).Error)
+
+	usage, err := GetChannelsQuotaSince([]int{legacyChannel, explicitZeroChannel}, now-1)
+	require.NoError(t, err)
+	assert.EqualValues(t, 100, usage[legacyChannel], "pre-snapshot rows must retain their original 1x cost")
+	assert.EqualValues(t, 0, usage[explicitZeroChannel], "new explicit zero-cost snapshots must remain zero")
 }

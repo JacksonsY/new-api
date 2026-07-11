@@ -29,6 +29,10 @@ export type RoleValue = (typeof ROLE)[keyof typeof ROLE]
 
 const DEFAULT_ROLE = ROLE.GUEST
 
+export function hasRootAccess(role?: number): boolean {
+  return role === ROLE.SUPER_ADMIN
+}
+
 const ROLE_LABEL_KEYS: Record<RoleValue, string> = {
   [ROLE.SUPER_ADMIN]: 'Super Admin',
   [ROLE.ADMIN]: 'Admin',

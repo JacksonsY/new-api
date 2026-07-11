@@ -41,6 +41,7 @@ import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
 import { ThemeProvider } from './context/theme-provider'
 import { i18nReady } from './i18n/config'
+import { startApplicationAfterI18n } from './i18n/start-application'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
 
@@ -124,7 +125,10 @@ declare module '@tanstack/react-router' {
 }
 
 // Render the app
-const rootElement = document.getElementById('root')!
+const rootElement = document.querySelector<HTMLElement>('#root')
+if (!rootElement) {
+  throw new Error('Root element not found')
+}
 // Set document.title and favicon from cached status, then refresh from network
 ;(function initSystemBranding() {
   try {
@@ -172,14 +176,14 @@ const SPLASH_MIN_VISIBLE_MS = 500
 
 // 淡出 index.html 内联的开屏加载页（连同其样式）。幂等：重复调用无副作用。
 function dismissSplash() {
-  const splash = document.getElementById('splash')
+  const splash = document.querySelector<HTMLElement>('#splash')
   if (!splash || splash.classList.contains('splash-leave')) return
   const delay = Math.max(0, SPLASH_MIN_VISIBLE_MS - performance.now())
   window.setTimeout(() => {
     splash.classList.add('splash-leave')
     window.setTimeout(() => {
       splash.remove()
-      document.getElementById('splash-style')?.remove()
+      document.querySelector('#splash-style')?.remove()
     }, 400)
   }, delay)
 }
@@ -187,8 +191,9 @@ function dismissSplash() {
 if (!rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement)
   // Wait for the active language bundle (loaded on demand, see i18n/config) so
-  // the first render is fully translated instead of flashing English keys.
-  void i18nReady.then(() => {
+  // the first render is fully translated. If its chunk fails, start anyway;
+  // the loader evicts failed requests so later language changes can retry.
+  void startApplicationAfterI18n(i18nReady, () => {
     root.render(
       <StrictMode>
         <QueryClientProvider client={queryClient}>

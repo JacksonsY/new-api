@@ -5,10 +5,9 @@ package service
 // 消耗取双口径——①最近 7 个活跃日的日均、②近 24h 滑窗，urgency 取两者剩余天数的
 // 较小值，低于阈值的渠道按紧急度排序取 Top3 生成多行卡片，走 NotifyRootUser
 // （email/webhook 全通道，零适配）。
-// 与 fork 的两点差异：调度挂本仓库 system task 框架（多主 DB 租约去重 + 运行历史，
-// 替代它的 env+robfig/cron）；消耗按渠道成本倍率(channel_ratio)折算成上游成本口径，
-// 与成本统计二开对齐——注意 used_quota 增量本身已是折算后的值，日志聚合是原始值，
-// 因此仅对日志聚合结果补乘当前倍率。
+// 与 fork 的差异：调度挂本仓库 system task 框架（多主 DB 租约去重 + 运行历史，
+// 替代它的 env+robfig/cron）；日志聚合按每笔消费落库时的 channel_ratio 折算，
+// 与 used_quota 的历史入账口径一致。
 
 import (
 	"fmt"
@@ -132,11 +131,8 @@ func CheckChannelBalanceDaysOnce(threshold int) (int, error) {
 		if liveBalance <= 0 {
 			continue
 		}
-		// 日志聚合是用户侧原始额度，补乘当前成本倍率换算成上游成本口径，
-		// 与 liveBalance 里 used_quota 增量（入账时已折算）保持同一口径。
-		ratio := channel.GetChannelRatio()
-		avgDailyUsd := float64(usage.Quota) * ratio / float64(max(usage.ActiveDays, 1)) / common.QuotaPerUnit
-		last24hUsd := float64(quota24hMap[channel.Id]) * ratio / common.QuotaPerUnit
+		avgDailyUsd := float64(usage.Quota) / float64(max(usage.ActiveDays, 1)) / common.QuotaPerUnit
+		last24hUsd := float64(quota24hMap[channel.Id]) / common.QuotaPerUnit
 		c := channelDaysRemaining{
 			id: channel.Id, name: channel.Name, balance: liveBalance,
 			avgDaily: avgDailyUsd, avgDays: usage.ActiveDays,

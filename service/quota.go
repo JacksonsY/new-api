@@ -409,9 +409,13 @@ func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
 }
 
 func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (err error) {
+	if relayInfo == nil {
+		return errors.New("relay info is missing")
+	}
 
 	// 1) Consume from wallet quota OR subscription item
-	if relayInfo != nil && relayInfo.BillingSource == BillingSourceSubscription {
+	usingSubscription := relayInfo.BillingSource == BillingSourceSubscription
+	if usingSubscription {
 		if relayInfo.SubscriptionId == 0 {
 			return errors.New("subscription id is missing")
 		}
@@ -425,7 +429,7 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 	} else {
 		// Wallet
 		if quota > 0 {
-			err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
+			err = model.DecreaseUserQuotaIfEnough(relayInfo.UserId, quota)
 		} else {
 			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
 		}
@@ -436,11 +440,29 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 
 	if !relayInfo.IsPlayground {
 		if quota > 0 {
-			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
+			err = model.DecreaseTokenQuotaIfEnough(
+				relayInfo.TokenId, relayInfo.TokenKey, quota, relayInfo.TokenUnlimited,
+			)
 		} else {
 			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -quota)
 		}
 		if err != nil {
+			var rollbackErr error
+			if usingSubscription {
+				rollbackErr = model.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, -int64(quota))
+				if rollbackErr == nil {
+					relayInfo.SubscriptionPostDelta -= int64(quota)
+				}
+			} else if quota > 0 {
+				// A failed token debit must restore the wallet durably. Queueing this
+				// compensation would lose it if the process exits before the batch flush.
+				rollbackErr = model.IncreaseUserQuota(relayInfo.UserId, quota, true)
+			} else if quota < 0 {
+				rollbackErr = model.DecreaseUserQuotaIfEnough(relayInfo.UserId, -quota)
+			}
+			if rollbackErr != nil {
+				return &quotaRollbackError{operationErr: err, rollbackErr: rollbackErr}
+			}
 			return err
 		}
 	}
@@ -452,6 +474,19 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 	}
 
 	return nil
+}
+
+type quotaRollbackError struct {
+	operationErr error
+	rollbackErr  error
+}
+
+func (e *quotaRollbackError) Error() string {
+	return fmt.Sprintf("update token quota: %v; rollback billing source: %v", e.operationErr, e.rollbackErr)
+}
+
+func (e *quotaRollbackError) Unwrap() []error {
+	return []error{e.operationErr, e.rollbackErr}
 }
 
 func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int) {

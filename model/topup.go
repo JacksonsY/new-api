@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -23,6 +24,7 @@ type TopUp struct {
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status"`
+	ReconcileTime   *int64  `json:"-"`
 }
 
 const (
@@ -80,15 +82,87 @@ func GetTopUpByTradeNo(tradeNo string) *TopUp {
 	return topUp
 }
 
-// GetRecentPendingTopUps 取指定支付渠道、创建时间落在 [now-maxAge, now-minAge] 的 pending 单，
-// 供主动对账扫单（蓝图D）。
+const epayReconcileClaimLease = 30 * time.Second
+
+// GetRecentPendingTopUps previews the next reconciliation page without
+// claiming it. Dry-run callers therefore cannot change the following real pass.
 func GetRecentPendingTopUps(paymentProvider string, minAgeSeconds int64, maxAgeSeconds int64, limit int) ([]*TopUp, error) {
-	now := common.GetTimestamp()
-	var topUps []*TopUp
-	err := DB.Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
-		paymentProvider, common.TopUpStatusPending, now-maxAgeSeconds, now-minAgeSeconds).
-		Order("id asc").Limit(limit).Find(&topUps).Error
-	return topUps, err
+	return selectRecentPendingTopUps(DB, paymentProvider, minAgeSeconds, maxAgeSeconds, limit, time.Now(), false, nil)
+}
+
+// ClaimRecentPendingTopUps leases due rows with a compare-and-swap update. A
+// crashed worker loses the lease after epayReconcileClaimLease instead of
+// suppressing the order for the rest of its automatic reconciliation window.
+func ClaimRecentPendingTopUps(paymentProvider string, minAgeSeconds int64, maxAgeSeconds int64, limit int, excludeIDs ...int) ([]*TopUp, error) {
+	return selectRecentPendingTopUps(DB, paymentProvider, minAgeSeconds, maxAgeSeconds, limit, time.Now(), true, excludeIDs)
+}
+
+func pendingTopUpReconcileQuery(db *gorm.DB, paymentProvider string, minAgeSeconds int64, maxAgeSeconds int64, now time.Time) *gorm.DB {
+	nowSeconds := now.Unix()
+	return db.Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
+		paymentProvider, common.TopUpStatusPending, nowSeconds-maxAgeSeconds, nowSeconds-minAgeSeconds).
+		Where("(reconcile_time IS NULL OR reconcile_time <= ?)", now.UnixNano()).
+		Order("COALESCE(reconcile_time, 0) asc, id asc")
+}
+
+func selectRecentPendingTopUps(db *gorm.DB, paymentProvider string, minAgeSeconds int64, maxAgeSeconds int64, limit int, now time.Time, claim bool, excludeIDs []int) ([]*TopUp, error) {
+	if limit <= 0 {
+		return []*TopUp{}, nil
+	}
+	if !claim {
+		var topUps []*TopUp
+		err := pendingTopUpReconcileQuery(db, paymentProvider, minAgeSeconds, maxAgeSeconds, now).
+			Limit(limit).Find(&topUps).Error
+		return topUps, err
+	}
+
+	leaseUntil := now.Add(epayReconcileClaimLease).UnixNano()
+	claimed := make([]*TopUp, 0, limit)
+	excluded := make(map[int]struct{}, len(excludeIDs))
+	for _, id := range excludeIDs {
+		excluded[id] = struct{}{}
+	}
+	for attempts := 0; len(claimed) < limit && attempts < limit*2+4; attempts++ {
+		var candidates []*TopUp
+		if err := pendingTopUpReconcileQuery(db, paymentProvider, minAgeSeconds, maxAgeSeconds, now).
+			Limit(limit - len(claimed) + len(excluded)).Find(&candidates).Error; err != nil {
+			return nil, err
+		}
+		eligible := candidates[:0]
+		for _, candidate := range candidates {
+			if _, skip := excluded[candidate.Id]; !skip {
+				eligible = append(eligible, candidate)
+			}
+		}
+		if len(eligible) == 0 {
+			break
+		}
+		for _, candidate := range eligible {
+			if len(claimed) >= limit {
+				break
+			}
+			cas := db.Model(&TopUp{}).
+				Where("id = ? AND payment_provider = ? AND status = ?", candidate.Id, paymentProvider, common.TopUpStatusPending)
+			if candidate.ReconcileTime == nil {
+				cas = cas.Where("reconcile_time IS NULL")
+			} else {
+				cas = cas.Where("reconcile_time = ?", *candidate.ReconcileTime)
+			}
+			res := cas.Update("reconcile_time", leaseUntil)
+			if res.Error != nil {
+				return nil, res.Error
+			}
+			if res.RowsAffected == 1 {
+				claimedAt := leaseUntil
+				candidate.ReconcileTime = &claimedAt
+				claimed = append(claimed, candidate)
+				if len(claimed) >= limit {
+					break
+				}
+			}
+		}
+	}
+	return claimed, nil
 }
 
 func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, targetStatus string) error {

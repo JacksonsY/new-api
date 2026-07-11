@@ -1,8 +1,10 @@
 package model
 
 import (
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -19,6 +21,8 @@ type Option struct {
 	Key   string `json:"key" gorm:"primaryKey"`
 	Value string `json:"value"`
 }
+
+var optionUpdateMu sync.Mutex
 
 func AllOption() ([]*Option, error) {
 	var options []*Option
@@ -202,9 +206,13 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
+	optionUpdateMu.Lock()
+	defer optionUpdateMu.Unlock()
 	options, _ := AllOption()
+	common.OptionMapRWMutex.Lock()
+	defer common.OptionMapRWMutex.Unlock()
 	for _, option := range options {
-		err := updateOptionMap(option.Key, option.Value)
+		err := updateOptionMapLocked(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
 		}
@@ -220,32 +228,70 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
-	// Save to database first
-	option := Option{
-		Key: key,
+	optionUpdateMu.Lock()
+	defer optionUpdateMu.Unlock()
+	common.OptionMapRWMutex.Lock()
+	defer common.OptionMapRWMutex.Unlock()
+	previous := common.OptionMap[key]
+	published := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		option := Option{Key: key}
+		if err := tx.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+			return err
+		}
+		option.Value = value
+		if err := tx.Save(&option).Error; err != nil {
+			return err
+		}
+		if err := updateOptionMapLocked(key, value); err != nil {
+			if rollbackErr := updateOptionMapLocked(key, previous); rollbackErr != nil {
+				common.SysError("failed to roll back runtime option " + key + ": " + rollbackErr.Error())
+			}
+			return err
+		}
+		published = true
+		return nil
+	})
+	if err != nil && published {
+		if rollbackErr := updateOptionMapLocked(key, previous); rollbackErr != nil {
+			common.SysError("failed to roll back runtime option " + key + ": " + rollbackErr.Error())
+		}
 	}
-	// https://gorm.io/docs/update.html#Save-All-Fields
-	DB.FirstOrCreate(&option, Option{Key: key})
-	option.Value = value
-	// Save is a combination function.
-	// If save value does not contain primary key, it will execute Create,
-	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
-	// Update OptionMap
-	return updateOptionMap(key, value)
+	return err
 }
 
-// UpdateOptionsBulk persists multiple key/value pairs in a single database
-// transaction, then dispatches them through updateOptionMap in one pass. If
-// any DB write fails the whole transaction rolls back and no in-memory state
-// is touched — safe for callers that must commit a set of related options
-// atomically (e.g. payment gateway binding).
+// UpdateOptionsBulk persists and publishes a related option set atomically.
+// Any write, runtime publication, or commit failure restores the prior runtime
+// values and leaves the database transaction uncommitted.
 func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
+	optionUpdateMu.Lock()
+	defer optionUpdateMu.Unlock()
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i] == "EpayApiVersion" {
+			return false
+		}
+		if keys[j] == "EpayApiVersion" {
+			return true
+		}
+		return keys[i] < keys[j]
+	})
+	common.OptionMapRWMutex.Lock()
+	defer common.OptionMapRWMutex.Unlock()
+	previous := make(map[string]string, len(keys))
+	for _, key := range keys {
+		previous[key] = common.OptionMap[key]
+	}
+	published := false
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		for k, v := range values {
+		for _, k := range keys {
+			v := values[k]
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
@@ -255,22 +301,36 @@ func UpdateOptionsBulk(values map[string]string) error {
 				return err
 			}
 		}
+		for _, k := range keys {
+			if err := updateOptionMapLocked(k, values[k]); err != nil {
+				for _, rollbackKey := range keys {
+					if rollbackErr := updateOptionMapLocked(rollbackKey, previous[rollbackKey]); rollbackErr != nil {
+						common.SysError("failed to roll back runtime option " + rollbackKey + ": " + rollbackErr.Error())
+					}
+				}
+				return err
+			}
+		}
+		published = true
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	for k, v := range values {
-		if err := updateOptionMap(k, v); err != nil {
-			return err
+	if err != nil && published {
+		for _, rollbackKey := range keys {
+			if rollbackErr := updateOptionMapLocked(rollbackKey, previous[rollbackKey]); rollbackErr != nil {
+				common.SysError("failed to roll back runtime option " + rollbackKey + ": " + rollbackErr.Error())
+			}
 		}
 	}
-	return nil
+	return err
 }
 
 func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
+	return updateOptionMapLocked(key, value)
+}
+
+func updateOptionMapLocked(key string, value string) (err error) {
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理

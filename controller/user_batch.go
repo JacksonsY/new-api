@@ -86,23 +86,7 @@ func BatchAdjustUserQuota(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	switch req.Mode {
-	case model.BatchQuotaModeAdd, model.BatchQuotaModeSubtract:
-		if req.Amount <= 0 {
-			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-			return
-		}
-	case model.BatchQuotaModeOverride:
-		if req.Amount < 0 {
-			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-			return
-		}
-	case model.BatchQuotaModeMultiply:
-		if req.Factor <= 0 || req.Factor > 100 {
-			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-			return
-		}
-	default:
+	if err := model.ValidateBatchQuotaAdjustment(req.Mode, req.Amount, req.Factor); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}

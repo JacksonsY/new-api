@@ -28,7 +28,7 @@ var (
 )
 
 // globalProxyEntry 缓存按当前全局代理设置构建的客户端。
-// client 为 nil 表示配置无效（已记录日志），此时走直连。
+// client 为 nil 仅表示配置无效且管理员明确允许直连降级。
 type globalProxyEntry struct {
 	key    string
 	client *http.Client
@@ -38,6 +38,9 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 	urlStr := req.URL.String()
 	if err := validateURLWithCurrentFetchSetting(urlStr, true); err != nil {
 		return fmt.Errorf("redirect to %s blocked: %v", urlStr, err)
+	}
+	if len(via) > 0 && !isIdempotentHTTPMethod(req.Method) {
+		return http.ErrUseLastResponse
 	}
 	if len(via) >= 10 {
 		return fmt.Errorf("stopped after 10 redirects")
@@ -50,10 +53,22 @@ func checkProtectedFetchRedirect(req *http.Request, via []*http.Request) error {
 	if err := ValidateSSRFProtectedFetchURL(urlStr); err != nil {
 		return fmt.Errorf("redirect to %s blocked: %v", urlStr, err)
 	}
+	if len(via) > 0 && !isIdempotentHTTPMethod(req.Method) {
+		return http.ErrUseLastResponse
+	}
 	if len(via) >= 10 {
 		return fmt.Errorf("stopped after 10 redirects")
 	}
 	return nil
+}
+
+func isIdempotentHTTPMethod(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPut, http.MethodDelete, http.MethodOptions, http.MethodTrace:
+		return true
+	default:
+		return false
+	}
 }
 
 func validateURLWithCurrentFetchSetting(urlStr string, applyDomainIPFilter bool) error {
@@ -141,8 +156,16 @@ func buildGlobalProxyClient(proxyURL string, directFallback bool) *http.Client {
 		transport, err = newProxyTransport(parsedURL)
 	}
 	if err != nil {
-		common.SysError(fmt.Sprintf("invalid global proxy url, falling back to direct connection: %v", err))
-		return nil
+		maskedErr := errors.New(common.MaskSensitiveInfo(err.Error()))
+		if directFallback {
+			common.SysError(fmt.Sprintf("invalid global proxy url, falling back to direct connection: %v", maskedErr))
+			return nil
+		}
+		common.SysError(fmt.Sprintf("invalid global proxy url, outbound requests will fail closed: %v", maskedErr))
+		return &http.Client{
+			Transport:     &staticErrorTransport{err: fmt.Errorf("invalid global proxy configuration: %w", maskedErr)},
+			CheckRedirect: checkRedirect,
+		}
 	}
 	var rt http.RoundTripper = transport
 	if directFallback && httpClient != nil {
@@ -155,8 +178,17 @@ func buildGlobalProxyClient(proxyURL string, directFallback bool) *http.Client {
 	return client
 }
 
+type staticErrorTransport struct {
+	err error
+}
+
+func (t *staticErrorTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, t.err
+}
+
 // directFallbackTransport 先经全局代理发送请求；代理层失败时改用直连重试。
-// 仅当请求体可重放（无请求体或 GetBody 非 nil）且错误不是调用方取消/超时时才回退。
+// 仅当方法幂等、请求体可重放（无请求体或 GetBody 非 nil），且错误不是调用方
+// 取消/超时时才回退。
 type directFallbackTransport struct {
 	proxy  http.RoundTripper
 	direct http.RoundTripper
@@ -171,6 +203,9 @@ func (t *directFallbackTransport) RoundTrip(req *http.Request) (*http.Response, 
 	// RoundTripper，超时错误可能是不包装 context 错误的 "net/http: request canceled"。
 	if req.Context().Err() != nil ||
 		errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, err
+	}
+	if !isIdempotentHTTPMethod(req.Method) {
 		return nil, err
 	}
 	if req.Body != nil && req.Body != http.NoBody && req.GetBody == nil {

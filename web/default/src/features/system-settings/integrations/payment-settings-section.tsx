@@ -24,6 +24,7 @@ import {
   Eye,
   Loader2,
   ShieldAlert,
+  Trash2,
   XCircle,
 } from 'lucide-react'
 import * as React from 'react'
@@ -50,6 +51,13 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+  InputGroupTextarea,
+} from '@/components/ui/input-group'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
@@ -58,6 +66,7 @@ import { cn } from '@/lib/utils'
 import {
   confirmPaymentCompliance,
   detectEpayCapabilities,
+  updatePaymentOptions,
   type EpayCapabilityReport,
 } from '../api'
 import {
@@ -73,6 +82,7 @@ import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
+import { resolveEpayProtocolVersion } from './payment-settings-logic'
 import {
   formatJsonForEditor,
   getJsonError,
@@ -255,23 +265,11 @@ export function PaymentSettingsSection({
   const [epayDetecting, setEpayDetecting] = React.useState(false)
   const [epayDetectReport, setEpayDetectReport] =
     React.useState<EpayCapabilityReport | null>(null)
-
-  const handleDetectEpay = async () => {
-    setEpayDetecting(true)
-    setEpayDetectReport(null)
-    try {
-      const res = await detectEpayCapabilities()
-      if (res.success && res.data) {
-        setEpayDetectReport(res.data)
-      } else {
-        toast.error(res.message || t('Detection failed'))
-      }
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('Detection failed'))
-    } finally {
-      setEpayDetecting(false)
-    }
-  }
+  const [clearEpayKey, setClearEpayKey] = React.useState(false)
+  const [clearEpayPlatformPublicKey, setClearEpayPlatformPublicKey] =
+    React.useState(false)
+  const [clearEpayMerchantPrivateKey, setClearEpayMerchantPrivateKey] =
+    React.useState(false)
 
   const [payMethodsVisualMode, setPayMethodsVisualMode] = React.useState(true)
   const [amountOptionsVisualMode, setAmountOptionsVisualMode] =
@@ -395,6 +393,7 @@ export function PaymentSettingsSection({
   })
 
   const { isSubmitting } = form.formState
+  const configuredEpayProtocolVersion = form.watch('EpayApiVersion')
 
   const setPaymentValue = React.useCallback(
     (
@@ -412,6 +411,30 @@ export function PaymentSettingsSection({
     },
     [form]
   )
+
+  const handleDetectEpay = async () => {
+    setEpayDetecting(true)
+    setEpayDetectReport(null)
+    try {
+      const res = await detectEpayCapabilities()
+      if (res.success && res.data) {
+        setEpayDetectReport(res.data)
+        if (
+          res.data.reachable &&
+          res.data.credentials_valid &&
+          (res.data.version === 'v1' || res.data.version === 'v2')
+        ) {
+          setPaymentValue('EpayApiVersion', res.data.version)
+        }
+      } else {
+        toast.error(res.message || t('Detection failed'))
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : t('Detection failed'))
+    } finally {
+      setEpayDetecting(false)
+    }
+  }
 
   const setWaffoValue = React.useCallback(
     <K extends keyof WaffoFormFieldValues>(
@@ -449,6 +472,9 @@ export function PaymentSettingsSection({
       AmountDiscount: formatJsonForEditor(parsedDefaults.AmountDiscount),
       CreemProducts: formatJsonForEditor(parsedDefaults.CreemProducts),
     })
+    setClearEpayKey(false)
+    setClearEpayPlatformPublicKey(false)
+    setClearEpayMerchantPrivateKey(false)
   }, [defaultsSignature, form])
 
   const onSubmit = async (values: PaymentFormValues) => {
@@ -559,6 +585,8 @@ export function PaymentSettingsSection({
 
     if (sanitized.EpayKey && sanitized.EpayKey !== initial.EpayKey) {
       updates.push({ key: 'EpayKey', value: sanitized.EpayKey })
+    } else if (clearEpayKey) {
+      updates.push({ key: 'EpayKey', value: '' })
     }
 
     if (sanitized.EpayApiVersion !== initial.EpayApiVersion) {
@@ -573,6 +601,8 @@ export function PaymentSettingsSection({
         key: 'EpayPlatformPublicKey',
         value: sanitized.EpayPlatformPublicKey,
       })
+    } else if (clearEpayPlatformPublicKey) {
+      updates.push({ key: 'EpayPlatformPublicKey', value: '' })
     }
 
     if (
@@ -583,6 +613,8 @@ export function PaymentSettingsSection({
         key: 'EpayMerchantPrivateKey',
         value: sanitized.EpayMerchantPrivateKey,
       })
+    } else if (clearEpayMerchantPrivateKey) {
+      updates.push({ key: 'EpayMerchantPrivateKey', value: '' })
     }
 
     if (sanitized.Price !== initial.Price) {
@@ -778,9 +810,18 @@ export function PaymentSettingsSection({
       return
     }
 
-    for (const update of updates) {
-      await updateOption.mutateAsync(update)
+    if (updates.length > 0) {
+      const result = await updatePaymentOptions({ options: updates })
+      if (!result.success) {
+        toast.error(result.message || t('Failed to update setting'))
+        return
+      }
+      await queryClient.invalidateQueries({ queryKey: ['system-options'] })
+      toast.success(t('Setting updated successfully'))
     }
+    setClearEpayKey(false)
+    setClearEpayPlatformPublicKey(false)
+    setClearEpayMerchantPrivateKey(false)
 
     if (!hasWaffoPancakeChanges) {
       return
@@ -1287,17 +1328,37 @@ export function PaymentSettingsSection({
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>{t('Epay secret key')}</FormLabel>
-                            <FormControl>
-                              <Input
-                                type='password'
-                                placeholder={t('Enter new key to update')}
-                                autoComplete='new-password'
-                                {...field}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                              />
-                            </FormControl>
+                            <InputGroup>
+                              <FormControl>
+                                <InputGroupInput
+                                  type='password'
+                                  placeholder={t('Enter new key to update')}
+                                  autoComplete='new-password'
+                                  {...field}
+                                  onChange={(event) => {
+                                    setClearEpayKey(false)
+                                    field.onChange(event.target.value)
+                                  }}
+                                />
+                              </FormControl>
+                              <InputGroupAddon align='inline-end'>
+                                <InputGroupButton
+                                  variant={
+                                    clearEpayKey ? 'destructive' : 'ghost'
+                                  }
+                                  size='icon-xs'
+                                  aria-label={t('Clear')}
+                                  aria-pressed={clearEpayKey}
+                                  title={t('Clear')}
+                                  onClick={() => {
+                                    field.onChange('')
+                                    setClearEpayKey(true)
+                                  }}
+                                >
+                                  <Trash2 />
+                                </InputGroupButton>
+                              </InputGroupAddon>
+                            </InputGroup>
                             <FormDescription>
                               {t('Leave blank unless rotating the secret')}
                             </FormDescription>
@@ -1310,7 +1371,7 @@ export function PaymentSettingsSection({
                     <div className='space-y-6 rounded-md border border-dashed p-4'>
                       <FormDescription>
                         {t(
-                          'RSA (platform public key + merchant private key) and MD5 (merchant key) can both be set. RSA is used first; the system falls back to MD5 automatically when RSA is absent or fails to parse.'
+                          'The detected protocol version controls payment requests. v1 uses the MD5 merchant key; v2 uses the RSA key pair.'
                         )}
                       </FormDescription>
                       <FormField
@@ -1321,17 +1382,39 @@ export function PaymentSettingsSection({
                             <FormLabel>
                               {t('Epay platform public key')}
                             </FormLabel>
-                            <FormControl>
-                              <Textarea
-                                rows={4}
-                                placeholder={t('Enter new key to update')}
-                                autoComplete='off'
-                                {...field}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                              />
-                            </FormControl>
+                            <InputGroup>
+                              <FormControl>
+                                <InputGroupTextarea
+                                  rows={4}
+                                  placeholder={t('Enter new key to update')}
+                                  autoComplete='off'
+                                  {...field}
+                                  onChange={(event) => {
+                                    setClearEpayPlatformPublicKey(false)
+                                    field.onChange(event.target.value)
+                                  }}
+                                />
+                              </FormControl>
+                              <InputGroupAddon align='inline-end'>
+                                <InputGroupButton
+                                  variant={
+                                    clearEpayPlatformPublicKey
+                                      ? 'destructive'
+                                      : 'ghost'
+                                  }
+                                  size='icon-xs'
+                                  aria-label={t('Clear')}
+                                  aria-pressed={clearEpayPlatformPublicKey}
+                                  title={t('Clear')}
+                                  onClick={() => {
+                                    field.onChange('')
+                                    setClearEpayPlatformPublicKey(true)
+                                  }}
+                                >
+                                  <Trash2 />
+                                </InputGroupButton>
+                              </InputGroupAddon>
+                            </InputGroup>
                             <FormDescription>
                               {t(
                                 'Base64 DER or PEM. Used to verify callbacks and query responses.'
@@ -1350,17 +1433,39 @@ export function PaymentSettingsSection({
                             <FormLabel>
                               {t('Epay merchant private key')}
                             </FormLabel>
-                            <FormControl>
-                              <Textarea
-                                rows={4}
-                                placeholder={t('Enter new key to update')}
-                                autoComplete='off'
-                                {...field}
-                                onChange={(event) =>
-                                  field.onChange(event.target.value)
-                                }
-                              />
-                            </FormControl>
+                            <InputGroup>
+                              <FormControl>
+                                <InputGroupTextarea
+                                  rows={4}
+                                  placeholder={t('Enter new key to update')}
+                                  autoComplete='off'
+                                  {...field}
+                                  onChange={(event) => {
+                                    setClearEpayMerchantPrivateKey(false)
+                                    field.onChange(event.target.value)
+                                  }}
+                                />
+                              </FormControl>
+                              <InputGroupAddon align='inline-end'>
+                                <InputGroupButton
+                                  variant={
+                                    clearEpayMerchantPrivateKey
+                                      ? 'destructive'
+                                      : 'ghost'
+                                  }
+                                  size='icon-xs'
+                                  aria-label={t('Clear')}
+                                  aria-pressed={clearEpayMerchantPrivateKey}
+                                  title={t('Clear')}
+                                  onClick={() => {
+                                    field.onChange('')
+                                    setClearEpayMerchantPrivateKey(true)
+                                  }}
+                                >
+                                  <Trash2 />
+                                </InputGroupButton>
+                              </InputGroupAddon>
+                            </InputGroup>
                             <FormDescription>
                               {t(
                                 'Base64 DER or PEM (PKCS8). Leave blank unless rotating.'
@@ -1380,7 +1485,13 @@ export function PaymentSettingsSection({
                         {t('Merchant capability check')}
                       </span>
                       <span className='bg-primary/10 text-primary rounded px-1.5 py-0.5 text-xs font-medium'>
-                        RSA→MD5
+                        {resolveEpayProtocolVersion(
+                          epayDetectReport?.reachable &&
+                            epayDetectReport.credentials_valid
+                            ? epayDetectReport.version
+                            : undefined,
+                          configuredEpayProtocolVersion
+                        )}
                       </span>
                     </div>
                     <p className='text-muted-foreground text-xs'>

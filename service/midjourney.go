@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -13,8 +15,12 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
+	channelhealth "github.com/QuantumNous/new-api/pkg/channel_health"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,6 +31,62 @@ func CovertMjpActionToModelName(mjAction string) string {
 		modelName = "swap_face"
 	}
 	return modelName
+}
+
+// CommitMidjourneyTaskBilling records bookkeeping only after the funding source
+// and token quota have both been updated. A fully compensated failure clears
+// the task quota; if compensation itself fails, the quota remains as the only
+// safe refund record for a possibly charged task.
+func CommitMidjourneyTaskBilling(
+	c *gin.Context,
+	relayInfo *relaycommon.RelayInfo,
+	task *model.Midjourney,
+	priceData types.PriceData,
+	modelName string,
+	logContent string,
+	commissionSourceKey string,
+) error {
+	if task == nil {
+		return fmt.Errorf("midjourney task is nil")
+	}
+	if err := PostConsumeQuota(relayInfo, priceData.Quota, 0, true); err != nil {
+		var rollbackErr *quotaRollbackError
+		finalQuota := 0
+		if errors.As(err, &rollbackErr) {
+			finalQuota = priceData.Quota
+		}
+		if publishErr := task.FinishBilling(finalQuota); publishErr != nil {
+			common.SysError(fmt.Sprintf(
+				"failed to publish midjourney billing task_id=%d mj_id=%q: %v",
+				task.Id, task.MjId, publishErr,
+			))
+			return errors.Join(err, fmt.Errorf("publish failed midjourney billing: %w", publishErr))
+		}
+		return err
+	}
+
+	model.RecordConsumeLog(c, relayInfo.UserId, model.RecordConsumeLogParams{
+		ChannelId:                   task.ChannelId,
+		ModelName:                   modelName,
+		TokenName:                   c.GetString("token_name"),
+		Quota:                       priceData.Quota,
+		Content:                     logContent,
+		TokenId:                     relayInfo.TokenId,
+		Group:                       relayInfo.UsingGroup,
+		Other:                       GenerateMjOtherInfo(relayInfo, priceData),
+		CommissionSourceKey:         commissionSourceKey,
+		CommissionSourceKeyRequired: true,
+	})
+	model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, priceData.Quota)
+	model.UpdateChannelUsedQuota(task.ChannelId, priceData.Quota)
+	if err := task.FinishBilling(priceData.Quota); err != nil {
+		common.SysError(fmt.Sprintf(
+			"failed to publish midjourney billing task_id=%d mj_id=%q: %v",
+			task.Id, task.MjId, err,
+		))
+		return fmt.Errorf("publish midjourney billing: %w", err)
+	}
+	return nil
 }
 
 func GetMjRequestModel(relayMode int, midjRequest *dto.MidjourneyRequest) (string, *dto.MidjourneyResponse, bool) {
@@ -164,6 +226,14 @@ func ConvertSimpleChangeParams(content string) *dto.MidjourneyRequest {
 
 func DoMidjourneyHttpRequest(c *gin.Context, timeout time.Duration, fullRequestURL string) (*dto.MidjourneyResponseWithStatusCode, []byte, error) {
 	var nullBytes []byte
+	channelID := c.GetInt("channel_id")
+	if channelID > 0 {
+		if !model.TryAcquireChannelInflight(channelID) {
+			err := fmt.Errorf("channel #%d reached max concurrency", channelID)
+			return MidjourneyErrorWithStatusCodeWrapper(constant.MjConcurrencyError, "channel_concurrency_exceeded", http.StatusTooManyRequests), nullBytes, err
+		}
+		defer channelhealth.ReleaseInflight(channelID)
+	}
 	//var requestBody io.Reader
 	//requestBody = c.Request.Body
 	// read request body to json, delete accountFilter and notifyHook

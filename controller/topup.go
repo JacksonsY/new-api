@@ -26,7 +26,7 @@ func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
 
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
+	payMethods := operation_setting.GetPayMethodsSnapshot()
 	if !complianceConfirmed {
 		payMethods = []map[string]string{}
 	}

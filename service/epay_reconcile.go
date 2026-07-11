@@ -55,6 +55,10 @@ func EpayCallbackMoneyMatches(callbackMoney string, orderMoney float64) bool {
 	if err != nil {
 		return true
 	}
+	if math.IsNaN(platformMoney) || math.IsInf(platformMoney, 0) ||
+		math.IsNaN(orderMoney) || math.IsInf(orderMoney, 0) {
+		return false
+	}
 	diff := platformMoney - orderMoney
 	return diff <= epayReconcileMoneyTolerance && diff >= -epayReconcileMoneyTolerance
 }
@@ -120,8 +124,9 @@ func runEpayReconcileOnce() {
 // ReconcileEpayOrders 对窗口内的 pending 易支付单（充值+订阅）逐单查平台状态并补结算。
 // dryRun=true 只报告不动账。自动任务与管理端手动对账共用此入口。
 func ReconcileEpayOrders(minAgeSeconds int64, maxAgeSeconds int64, limit int, dryRun bool) (*EpayReconcileSummary, error) {
-	client := GetEpayClient()
-	if client == nil {
+	settings := operation_setting.GetEpaySettingSnapshot()
+	client, err := buildEpayClientFromSnapshot(settings)
+	if err != nil {
 		return nil, fmt.Errorf("易支付未配置")
 	}
 	if minAgeSeconds < 0 || maxAgeSeconds <= minAgeSeconds {
@@ -132,28 +137,76 @@ func ReconcileEpayOrders(minAgeSeconds int64, maxAgeSeconds int64, limit int, dr
 	}
 	summary := &EpayReconcileSummary{DryRun: dryRun, Items: make([]EpayReconcileItem, 0)}
 
-	topUps, err := model.GetRecentPendingTopUps(model.PaymentProviderEpay, minAgeSeconds, maxAgeSeconds, limit)
-	if err != nil {
-		return nil, err
-	}
-	for i, topUp := range topUps {
-		if i > 0 {
-			time.Sleep(epayReconcileQueryThrottle)
+	topUpCount := 0
+	if dryRun {
+		topUps, err := model.GetRecentPendingTopUps(model.PaymentProviderEpay, minAgeSeconds, maxAgeSeconds, limit)
+		if err != nil {
+			return nil, err
 		}
-		item := reconcileOneEpayOrder(client, epayOrderKindTopUp, topUp.TradeNo, topUp.UserId, topUp.Money, dryRun)
-		summary.Items = append(summary.Items, item)
+		for i, topUp := range topUps {
+			if i > 0 {
+				time.Sleep(epayReconcileQueryThrottle)
+			}
+			item := reconcileOneEpayOrder(client, settings.MerchantID, epayOrderKindTopUp, topUp.TradeNo, topUp.UserId, topUp.Money, true)
+			summary.Items = append(summary.Items, item)
+		}
+		topUpCount = len(topUps)
+	} else {
+		claimedTopUpIDs := make([]int, 0, limit)
+		for topUpCount < limit {
+			if topUpCount > 0 {
+				time.Sleep(epayReconcileQueryThrottle)
+			}
+			claimed, err := model.ClaimRecentPendingTopUps(
+				model.PaymentProviderEpay, minAgeSeconds, maxAgeSeconds, 1, claimedTopUpIDs...,
+			)
+			if err != nil {
+				return nil, err
+			}
+			if len(claimed) == 0 {
+				break
+			}
+			topUp := claimed[0]
+			claimedTopUpIDs = append(claimedTopUpIDs, topUp.Id)
+			item := reconcileOneEpayOrder(client, settings.MerchantID, epayOrderKindTopUp, topUp.TradeNo, topUp.UserId, topUp.Money, false)
+			summary.Items = append(summary.Items, item)
+			topUpCount++
+		}
 	}
 
-	subOrders, err := model.GetRecentPendingSubscriptionOrders(model.PaymentProviderEpay, minAgeSeconds, maxAgeSeconds, limit)
-	if err != nil {
-		return nil, err
-	}
-	for i, order := range subOrders {
-		if len(topUps) > 0 || i > 0 {
-			time.Sleep(epayReconcileQueryThrottle)
+	remaining := limit - topUpCount
+	if dryRun && remaining > 0 {
+		subOrders, err := model.GetRecentPendingSubscriptionOrders(model.PaymentProviderEpay, minAgeSeconds, maxAgeSeconds, remaining)
+		if err != nil {
+			return nil, err
 		}
-		item := reconcileOneEpayOrder(client, epayOrderKindSubscription, order.TradeNo, order.UserId, order.Money, dryRun)
-		summary.Items = append(summary.Items, item)
+		for i, order := range subOrders {
+			if topUpCount > 0 || i > 0 {
+				time.Sleep(epayReconcileQueryThrottle)
+			}
+			item := reconcileOneEpayOrder(client, settings.MerchantID, epayOrderKindSubscription, order.TradeNo, order.UserId, order.Money, true)
+			summary.Items = append(summary.Items, item)
+		}
+	} else if remaining > 0 {
+		claimedOrderIDs := make([]int, 0, remaining)
+		for subscriptionCount := 0; subscriptionCount < remaining; subscriptionCount++ {
+			if topUpCount > 0 || subscriptionCount > 0 {
+				time.Sleep(epayReconcileQueryThrottle)
+			}
+			claimed, err := model.ClaimRecentPendingSubscriptionOrders(
+				model.PaymentProviderEpay, minAgeSeconds, maxAgeSeconds, 1, claimedOrderIDs...,
+			)
+			if err != nil {
+				return nil, err
+			}
+			if len(claimed) == 0 {
+				break
+			}
+			order := claimed[0]
+			claimedOrderIDs = append(claimedOrderIDs, order.Id)
+			item := reconcileOneEpayOrder(client, settings.MerchantID, epayOrderKindSubscription, order.TradeNo, order.UserId, order.Money, false)
+			summary.Items = append(summary.Items, item)
+		}
 	}
 
 	summary.Scanned = len(summary.Items)
@@ -168,7 +221,7 @@ func ReconcileEpayOrders(minAgeSeconds int64, maxAgeSeconds int64, limit int, dr
 // reconcileOneEpayOrder 查单 + 五重校验 + 补结算。
 // 五重校验（全过才补账，防伪造/串单骗补）：平台查到订单、商户单号一致、
 // 商户号一致、金额容差内一致、状态=已支付。
-func reconcileOneEpayOrder(client epay.Client, kind string, tradeNo string, userId int, expectMoney float64, dryRun bool) EpayReconcileItem {
+func reconcileOneEpayOrder(client epay.Client, merchantID string, kind string, tradeNo string, userId int, expectMoney float64, dryRun bool) EpayReconcileItem {
 	item := EpayReconcileItem{OrderKind: kind, TradeNo: tradeNo, UserId: userId, Money: expectMoney, Action: EpayReconcileActionSkipped}
 	ctx := context.Background()
 
@@ -185,12 +238,12 @@ func reconcileOneEpayOrder(client epay.Client, kind string, tradeNo string, user
 		item.Reason = "平台侧未支付"
 		return item
 	}
-	if info.OutTradeNo != "" && info.OutTradeNo != tradeNo {
+	if info.OutTradeNo != tradeNo {
 		item.Reason = "商户单号不一致"
 		logger.LogError(ctx, fmt.Sprintf("epay reconcile out_trade_no mismatch: local=%s, platform=%s", tradeNo, info.OutTradeNo))
 		return item
 	}
-	if info.PID != "" && info.PID != operation_setting.EpayId {
+	if info.PID != merchantID {
 		item.Reason = "商户号不一致"
 		logger.LogError(ctx, fmt.Sprintf("epay reconcile pid mismatch: trade_no=%s, platform_pid=%s", tradeNo, info.PID))
 		return item
@@ -198,6 +251,11 @@ func reconcileOneEpayOrder(client epay.Client, kind string, tradeNo string, user
 	platformMoney, err := strconv.ParseFloat(info.Money, 64)
 	if err != nil {
 		item.Reason = "平台金额不可解析: " + info.Money
+		return item
+	}
+	if math.IsNaN(platformMoney) || math.IsInf(platformMoney, 0) ||
+		math.IsNaN(expectMoney) || math.IsInf(expectMoney, 0) {
+		item.Reason = "平台或本地金额不是有限数值"
 		return item
 	}
 	if math.Abs(platformMoney-expectMoney) > epayReconcileMoneyTolerance {

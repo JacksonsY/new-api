@@ -18,6 +18,8 @@ import (
 
 const UserNameMaxLength = 20
 
+var ErrInsufficientUserQuota = errors.New("insufficient user quota")
+
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
@@ -1087,17 +1089,19 @@ func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	gopool.Go(func() {
-		err := cacheIncrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to increase user quota: " + err.Error())
-		}
-	})
+	if quota == 0 {
+		return nil
+	}
 	if !db && common.BatchUpdateEnabled {
+		updateUserQuotaCacheAsync(id, int64(quota))
 		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
 		return nil
 	}
-	return increaseUserQuota(id, quota)
+	if err := increaseUserQuota(id, quota); err != nil {
+		return err
+	}
+	updateUserQuotaCacheAsync(id, int64(quota))
+	return nil
 }
 
 func increaseUserQuota(id int, quota int) (err error) {
@@ -1112,17 +1116,54 @@ func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	gopool.Go(func() {
-		err := cacheDecrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to decrease user quota: " + err.Error())
-		}
-	})
+	if quota == 0 {
+		return nil
+	}
 	if !db && common.BatchUpdateEnabled {
+		updateUserQuotaCacheAsync(id, -int64(quota))
 		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
 		return nil
 	}
-	return decreaseUserQuota(id, quota)
+	if err := decreaseUserQuota(id, quota); err != nil {
+		return err
+	}
+	updateUserQuotaCacheAsync(id, -int64(quota))
+	return nil
+}
+
+// DecreaseUserQuotaIfEnough atomically rejects a debit that would overdraw the
+// persisted wallet. Billing paths use the direct database update even when
+// batching is enabled because an asynchronous balance check cannot reserve
+// funds safely under concurrent requests.
+func DecreaseUserQuotaIfEnough(id int, quota int) error {
+	if quota < 0 {
+		return errors.New("quota 不能为负数！")
+	}
+	if quota == 0 {
+		return nil
+	}
+	result := DB.Model(&User{}).
+		Where("id = ? AND quota >= ?", id, quota).
+		Update("quota", gorm.Expr("quota - ?", quota))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("%w: user=%d required=%d", ErrInsufficientUserQuota, id, quota)
+	}
+	updateUserQuotaCacheAsync(id, -int64(quota))
+	return nil
+}
+
+func updateUserQuotaCacheAsync(id int, delta int64) {
+	if !common.RedisEnabled || delta == 0 {
+		return
+	}
+	gopool.Go(func() {
+		if err := cacheIncrUserQuota(id, delta); err != nil {
+			common.SysLog("failed to update user quota cache: " + err.Error())
+		}
+	})
 }
 
 func decreaseUserQuota(id int, quota int) (err error) {

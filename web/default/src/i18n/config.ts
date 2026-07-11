@@ -20,7 +20,14 @@ import i18n from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
 
-import { convertDetectedLanguage, normalizeInterfaceLanguage } from './languages'
+import {
+  createLanguageBundleLoader,
+  type LocaleModule,
+} from './language-bundle-loader'
+import {
+  convertDetectedLanguage,
+  normalizeInterfaceLanguage,
+} from './languages'
 
 // Each locale bundle is ~350–530 KB of JSON. Static-importing all seven put
 // every language into the initial chunk (~2.5 MB raw, the bulk of the entry
@@ -29,8 +36,6 @@ import { convertDetectedLanguage, normalizeInterfaceLanguage } from './languages
 // only the active language, plus English as the fallback, before first render.
 // Keys must match the interface language codes (`zhCN` / `zhTW`, see
 // languages.ts) that normalizeInterfaceLanguage / convertDetectedLanguage emit.
-type LocaleModule = { default?: { translation: Record<string, string> } }
-
 const localeLoaders: Record<string, () => Promise<LocaleModule>> = {
   en: () => import('./locales/en.json'),
   zhCN: () => import('./locales/zh.json'),
@@ -41,21 +46,12 @@ const localeLoaders: Record<string, () => Promise<LocaleModule>> = {
   zhTW: () => import('./locales/zh-TW.json'),
 }
 
-const inFlight = new Map<string, Promise<void>>()
-
-function loadLanguage(lng: string): Promise<void> {
-  const code = localeLoaders[lng] ? lng : 'en'
-  const existing = inFlight.get(code)
-  if (existing) return existing
-
-  const task = localeLoaders[code]().then((mod) => {
-    const bundle =
-      mod.default ?? (mod as { translation: Record<string, string> })
-    i18n.addResourceBundle(code, 'translation', bundle.translation, true, true)
-  })
-  inFlight.set(code, task)
-  return task
-}
+const loadLanguage = createLanguageBundleLoader(
+  localeLoaders,
+  (language, translation) => {
+    i18n.addResourceBundle(language, 'translation', translation, true, true)
+  }
+)
 
 i18n
   .use(LanguageDetector)
@@ -96,7 +92,7 @@ export const i18nReady: Promise<void> = Promise.all([
 
 // Load a language bundle the first time the user switches to it.
 i18n.on('languageChanged', (lng) => {
-  void loadLanguage(normalizeInterfaceLanguage(lng))
+  void loadLanguage(normalizeInterfaceLanguage(lng)).catch(() => undefined)
 })
 
 export default i18n

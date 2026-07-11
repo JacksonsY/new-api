@@ -61,6 +61,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getCurrencyDisplay } from '@/lib/currency'
 import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   agentListCommissions,
@@ -82,6 +83,20 @@ import { WithdrawalStatusBadge } from './withdrawal-status-badge'
 
 const WD_PAGE_SIZE = 10
 const CM_PAGE_SIZE = 8
+const SUMMARY_SKELETON_KEYS = ['balance', 'maturing', 'earnings', 'rate']
+const COMMISSION_SKELETON_KEYS = [
+  'commission-1',
+  'commission-2',
+  'commission-3',
+  'commission-4',
+  'commission-5',
+]
+const WITHDRAWAL_SKELETON_KEYS = [
+  'withdrawal-1',
+  'withdrawal-2',
+  'withdrawal-3',
+  'withdrawal-4',
+]
 
 // 收款人字段格式校验(非真实身份核验，仅拦截明显填错/乱填；须与 model/withdrawal.go 的后端校验保持一致)。
 const PAYEE_NAME_CHARSET_RE = /[\p{Script=Han}A-Za-z]/u
@@ -108,6 +123,11 @@ function luhnValid(digits: string): boolean {
 // 「代理钱包」— 分润汇总 / 提现申请 / 转额度 / 申请记录。
 export function AgentWallet() {
   const { t } = useTranslation()
+  const graceOnly = useAuthStore(
+    (state) =>
+      Boolean(state.auth.user?.agent_grace_access) &&
+      !state.auth.user?.agent_type
+  )
   const [summary, setSummary] = useState<CommissionsResult | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(true)
 
@@ -187,18 +207,18 @@ export function AgentWallet() {
   const currencyHint =
     currencyMeta.kind === 'tokens' ? '' : ` (${currencyMeta.symbol})`
   const ratePct = summary
-    ? ((summary.usage_profit_rate || 0) * 100).toFixed(1) + '%'
+    ? `${((summary.usage_profit_rate || 0) * 100).toFixed(1)}%`
     : '-'
   const totalPages = Math.max(1, Math.ceil(wdTotal / WD_PAGE_SIZE))
   const cmTotalPages = Math.max(1, Math.ceil(cmTotal / CM_PAGE_SIZE))
   const withdrawMinQuota = summary?.withdraw_min_quota || 0
   const withdrawFeeRate = summary?.withdraw_fee_rate || 0
-  const payeeAccountPlaceholder =
-    wdMethod === 'alipay'
-      ? t('Phone number or email')
-      : wdMethod === 'wxpay'
-        ? t('WeChat ID or phone number')
-        : t('Bank card number')
+  let payeeAccountPlaceholder = t('Bank card number')
+  if (wdMethod === 'alipay') {
+    payeeAccountPlaceholder = t('Phone number or email')
+  } else if (wdMethod === 'wxpay') {
+    payeeAccountPlaceholder = t('WeChat ID or phone number')
+  }
 
   // 与后端 model/withdrawal.go 一致：金额为正数、最多两位小数(quota 为整数存储)。
   const AMOUNT_RE = /^\d+(\.\d{1,2})?$/
@@ -209,7 +229,7 @@ export function AgentWallet() {
       toast.error(t('Amount must be a positive number with up to 2 decimals'))
       return null
     }
-    const q = parseQuotaFromDollars(parseFloat(trimmed))
+    const q = parseQuotaFromDollars(Number.parseFloat(trimmed))
     if (!q || q <= 0) {
       toast.error(t('Please enter a valid amount'))
       return null
@@ -365,8 +385,8 @@ export function AgentWallet() {
           <div className='overflow-hidden rounded-lg border'>
             {summaryLoading ? (
               <div className='divide-border/60 grid grid-cols-2 divide-x divide-y sm:grid-cols-4 sm:divide-y-0'>
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className='px-2.5 py-3 sm:px-5 sm:py-4'>
+                {SUMMARY_SKELETON_KEYS.map((key) => (
+                  <div key={key} className='px-2.5 py-3 sm:px-5 sm:py-4'>
                     <Skeleton className='h-3.5 w-16' />
                     <Skeleton className='mt-2 h-6 w-20' />
                   </div>
@@ -412,10 +432,12 @@ export function AgentWallet() {
                       <Landmark className='size-3.5' />
                       {t('Request Withdrawal')}
                     </TabsTrigger>
-                    <TabsTrigger value='convert'>
-                      <ArrowLeftRight className='size-3.5' />
-                      {t('Convert to API quota')}
-                    </TabsTrigger>
+                    {!graceOnly && (
+                      <TabsTrigger value='convert'>
+                        <ArrowLeftRight className='size-3.5' />
+                        {t('Convert to API quota')}
+                      </TabsTrigger>
+                    )}
                   </TabsList>
 
                   <TabsContent value='withdraw'>
@@ -524,46 +546,48 @@ export function AgentWallet() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value='convert'>
-                    <p className='text-muted-foreground mb-3 text-sm'>
-                      {t(
-                        'Convert commission into your own API quota instantly, no review needed.'
-                      )}
-                    </p>
-                    <div className='grid gap-3'>
-                      <div className='grid gap-1.5 sm:max-w-sm'>
-                        <Label htmlFor='aw-convert'>
-                          {t('Amount')}
-                          {currencyHint}
-                        </Label>
-                        <Input
-                          id='aw-convert'
-                          value={convertAmount}
-                          onChange={(e) => setConvertAmount(e.target.value)}
-                          inputMode='decimal'
-                          disabled={!canAct}
-                        />
-                        <p className='text-muted-foreground text-xs'>
-                          {t('Available')}: {formatQuota(balance)}
-                        </p>
-                      </div>
-                      <p className='text-muted-foreground/70 bg-muted/40 rounded-md px-3 py-2 text-xs leading-relaxed'>
+                  {!graceOnly && (
+                    <TabsContent value='convert'>
+                      <p className='text-muted-foreground mb-3 text-sm'>
                         {t(
-                          'Converted quota is credited to your account immediately and can be used for API calls right away.'
+                          'Convert commission into your own API quota instantly, no review needed.'
                         )}
                       </p>
-                      <div className='pt-1'>
-                        <Button
-                          variant='outline'
-                          className='w-full sm:w-auto'
-                          onClick={onConvert}
-                          disabled={busy || !canAct}
-                        >
-                          {t('Convert')}
-                        </Button>
+                      <div className='grid gap-3'>
+                        <div className='grid gap-1.5 sm:max-w-sm'>
+                          <Label htmlFor='aw-convert'>
+                            {t('Amount')}
+                            {currencyHint}
+                          </Label>
+                          <Input
+                            id='aw-convert'
+                            value={convertAmount}
+                            onChange={(e) => setConvertAmount(e.target.value)}
+                            inputMode='decimal'
+                            disabled={!canAct}
+                          />
+                          <p className='text-muted-foreground text-xs'>
+                            {t('Available')}: {formatQuota(balance)}
+                          </p>
+                        </div>
+                        <p className='text-muted-foreground/70 bg-muted/40 rounded-md px-3 py-2 text-xs leading-relaxed'>
+                          {t(
+                            'Converted quota is credited to your account immediately and can be used for API calls right away.'
+                          )}
+                        </p>
+                        <div className='pt-1'>
+                          <Button
+                            variant='outline'
+                            className='w-full sm:w-auto'
+                            onClick={onConvert}
+                            disabled={busy || !canAct}
+                          >
+                            {t('Convert')}
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  </TabsContent>
+                    </TabsContent>
+                  )}
                 </Tabs>
               </CardContent>
             </Card>
@@ -576,17 +600,19 @@ export function AgentWallet() {
                 </CardTitle>
               </CardHeader>
               <CardContent className='flex flex-1 flex-col'>
-                {cmLoading ? (
+                {cmLoading && (
                   <div className='space-y-2'>
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className='h-9 w-full' />
+                    {COMMISSION_SKELETON_KEYS.map((key) => (
+                      <Skeleton key={key} className='h-9 w-full' />
                     ))}
                   </div>
-                ) : commissions.length === 0 ? (
+                )}
+                {!cmLoading && commissions.length === 0 && (
                   <div className='text-muted-foreground flex flex-1 items-center justify-center py-10 text-sm'>
                     {t('No commissions yet')}
                   </div>
-                ) : (
+                )}
+                {!cmLoading && commissions.length > 0 && (
                   <>
                     <ul className='divide-border/60 divide-y'>
                       {commissions.map((c) => (
@@ -660,17 +686,19 @@ export function AgentWallet() {
               <CardTitle className='text-base'>{t('My Withdrawals')}</CardTitle>
             </CardHeader>
             <CardContent>
-              {historyLoading ? (
+              {historyLoading && (
                 <div className='space-y-2'>
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} className='h-10 w-full' />
+                  {WITHDRAWAL_SKELETON_KEYS.map((key) => (
+                    <Skeleton key={key} className='h-10 w-full' />
                   ))}
                 </div>
-              ) : withdrawals.length === 0 ? (
+              )}
+              {!historyLoading && withdrawals.length === 0 && (
                 <div className='text-muted-foreground py-10 text-center text-sm'>
                   {t('No withdrawals yet')}
                 </div>
-              ) : (
+              )}
+              {!historyLoading && withdrawals.length > 0 && (
                 <>
                   <StaticDataTable
                     data={withdrawals}

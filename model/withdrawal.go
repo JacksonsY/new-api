@@ -5,7 +5,6 @@ package model
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"regexp"
 	"strings"
@@ -57,6 +56,10 @@ var (
 // 列放宽后保留为通用防溢出检查，任何转入使余额超过该值时拒绝。
 const maxQuotaBalance = math.MaxInt32
 
+func commissionRefundFits(currentBalance int, amount int) bool {
+	return amount > 0 && amount <= maxQuotaBalance && currentBalance <= maxQuotaBalance-amount
+}
+
 // Withdrawal 代理提现申请单。
 type Withdrawal struct {
 	Id           int    `json:"id" gorm:"primaryKey"`
@@ -80,6 +83,34 @@ type Withdrawal struct {
 	// Username / ReviewerName 申请人与经办管理员用户名，仅超管列表展示用（批量回填，不落库）。
 	Username     string `json:"username,omitempty" gorm:"-"`
 	ReviewerName string `json:"reviewer_name,omitempty" gorm:"-"`
+}
+
+// HasAgentGraceAccess reports whether a revoked agent still has commission
+// assets that require access to the wallet-only grace routes. commissionQuota
+// must come from the current user row; callers already loading the user can
+// avoid an extra query without weakening the user-id ownership boundary.
+func HasAgentGraceAccess(userId int, commissionQuota int) (bool, error) {
+	if userId <= 0 {
+		return false, nil
+	}
+	if commissionQuota > 0 {
+		return true, nil
+	}
+	var count int64
+	if err := DB.Model(&Commission{}).
+		Where("agent_id = ? AND status = ? AND quota > ?", userId, CommissionStatusPending, 0).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	if count > 0 {
+		return true, nil
+	}
+	if err := DB.Model(&Withdrawal{}).
+		Where("user_id = ? AND status IN ?", userId, []int{WithdrawalPending, WithdrawalProcessing}).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // WithdrawalMethodValid 校验打款方式。
@@ -150,14 +181,22 @@ func luhnValid(digits string) bool {
 
 // ConvertCommissionToQuota 把代理的分润余额转成自己可用的 API 额度（原子、防超取）。
 func ConvertCommissionToQuota(userId int, amount int) error {
-	if amount <= 0 {
+	if amount <= 0 || amount > maxQuotaBalance {
 		return ErrInvalidConvertAmount
 	}
-	// jzlh-agent 风控冻结：分润资产出口拦截
-	if IsCommissionAssetsFrozen(userId) {
-		return ErrCommissionAssetsFrozen
-	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).Select("id", "commission_quota", "quota").
+			Where("id = ?", userId).First(&user).Error; err != nil {
+			return err
+		}
+		frozen, err := isCommissionAssetsFrozenTx(tx, userId)
+		if err != nil {
+			return err
+		}
+		if frozen {
+			return ErrCommissionAssetsFrozen
+		}
 		// 余额守卫 + 目标 quota 上限护栏（防转入后溢出）
 		res := tx.Model(&User{}).
 			Where("id = ? AND commission_quota >= ? AND quota <= ?", userId, amount, maxQuotaBalance-amount).
@@ -195,12 +234,8 @@ func ConvertCommissionToQuota(userId int, amount int) error {
 
 // CreateWithdrawal 代理申请提现：原子预扣分润余额并创建待审核单。
 func CreateWithdrawal(userId int, amount int, method string, payeeName string, payeeAccount string, remark string) (*Withdrawal, error) {
-	if amount <= 0 {
+	if amount <= 0 || amount > maxQuotaBalance {
 		return nil, ErrInvalidWithdrawalAmount
-	}
-	// jzlh-agent 风控冻结：分润资产出口拦截
-	if IsCommissionAssetsFrozen(userId) {
-		return nil, ErrCommissionAssetsFrozen
 	}
 	if amount < common.AgentWithdrawMinQuota {
 		return nil, ErrWithdrawalBelowMinimum
@@ -219,23 +254,34 @@ func CreateWithdrawal(userId int, amount int, method string, payeeName string, p
 	if err := validatePayeeAccount(method, payeeAccount); err != nil {
 		return nil, err
 	}
-	// 未决单数量闸门(防刷单轰炸审核列表)，待审核与打款中都算未决。
-	// 预检非原子，并发下可能略超上限，但每单仍原子预扣真金白银，无资损风险；
-	// 上限为软性管理约束，可接受。
-	if common.AgentWithdrawMaxPending > 0 {
-		var pending int64
-		if err := DB.Model(&Withdrawal{}).
-			Where("user_id = ? AND status IN ?", userId,
-				[]int{WithdrawalPending, WithdrawalProcessing}).
-			Count(&pending).Error; err != nil {
-			return nil, err
-		}
-		if pending >= int64(common.AgentWithdrawMaxPending) {
-			return nil, ErrTooManyPendingWithdrawals
-		}
-	}
 	var w *Withdrawal
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).Select("id", "commission_quota").
+			Where("id = ?", userId).First(&user).Error; err != nil {
+			return err
+		}
+		frozen, err := isCommissionAssetsFrozenTx(tx, userId)
+		if err != nil {
+			return err
+		}
+		if frozen {
+			return ErrCommissionAssetsFrozen
+		}
+		// The user-row lock also makes the pending-count limit exact across
+		// concurrent requests for the same account.
+		if common.AgentWithdrawMaxPending > 0 {
+			var pending int64
+			if err := tx.Model(&Withdrawal{}).
+				Where("user_id = ? AND status IN ?", userId,
+					[]int{WithdrawalPending, WithdrawalProcessing}).
+				Count(&pending).Error; err != nil {
+				return err
+			}
+			if pending >= int64(common.AgentWithdrawMaxPending) {
+				return ErrTooManyPendingWithdrawals
+			}
+		}
 		res := tx.Model(&User{}).
 			Where("id = ? AND commission_quota >= ?", userId, amount).
 			Update("commission_quota", gorm.Expr("commission_quota - ?", amount))
@@ -268,88 +314,116 @@ func CreateWithdrawal(userId int, amount int, method string, payeeName string, p
 // ReviewWithdrawal 超管处理提现单，action ∈ claim / release / approve / reject。
 // 人工打款两阶段：claim 认领（pending→打款中，锁定经办人）→ 线下转账 →
 // approve 标记已打款（仅认领人可操作，且必须填打款流水号/备注）。
-// release 释放认领（打款中→pending，任何管理员可操作，兜住经办人离席）；
+// release 释放认领（打款中→pending，仅当前认领人可操作）；
 // reject 可从 pending 或打款中直接拒绝并退回余额。
 // 所有状态迁移都用条件 UPDATE 做并发闸门，避免"先读后判再写"竞态。
 func ReviewWithdrawal(id int, action string, adminId int, adminRemark string) error {
 	// 审批人不得处理自己的提现单（管理员兼代理的历史数据/越权兜底）。
-	{
-		var w Withdrawal
-		if err := DB.First(&w, id).Error; err != nil {
-			return err
-		}
-		if w.UserId == adminId {
-			return ErrCannotReviewOwnWithdrawal
-		}
+	var target Withdrawal
+	if err := DB.Select("id", "user_id").First(&target, id).Error; err != nil {
+		return err
+	}
+	if target.UserId == adminId {
+		return ErrCannotReviewOwnWithdrawal
+	}
+	if action == "approve" && strings.TrimSpace(adminRemark) == "" {
+		return ErrPayoutReferenceRequired
 	}
 	switch action {
-	case "claim":
-		res := DB.Model(&Withdrawal{}).
-			Where("id = ? AND status = ?", id, WithdrawalPending).
-			Updates(map[string]interface{}{
-				"status":      WithdrawalProcessing,
-				"reviewer_id": adminId,
-			})
-		if res.Error != nil {
-			return res.Error
+	case "claim", "release", "approve", "reject":
+	default:
+		return ErrInvalidReviewAction
+	}
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		// Every withdrawal transition follows the same user -> withdrawal row
+		// order as risk freeze. This prevents a refund/review transaction from
+		// holding the withdrawal while waiting on the user locked by freeze.
+		var user User
+		if err := lockForUpdate(tx).Select("id", "commission_quota").
+			Where("id = ?", target.UserId).First(&user).Error; err != nil {
+			return err
 		}
-		if res.RowsAffected == 0 {
-			return ErrWithdrawalAlreadyProcessed
+		var w Withdrawal
+		if err := lockForUpdate(tx).
+			Where("id = ? AND user_id = ?", id, target.UserId).
+			First(&w).Error; err != nil {
+			return err
 		}
-		return nil
-	case "release":
-		res := DB.Model(&Withdrawal{}).
-			Where("id = ? AND status = ?", id, WithdrawalProcessing).
-			Updates(map[string]interface{}{
-				"status":      WithdrawalPending,
-				"reviewer_id": 0,
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return ErrWithdrawalAlreadyProcessed
-		}
-		return nil
-	case "approve":
-		// 打款流水号/凭证必填：人工转账的唯一对账依据，出争议时系统内要能自证。
-		if strings.TrimSpace(adminRemark) == "" {
-			return ErrPayoutReferenceRequired
-		}
-		res := DB.Model(&Withdrawal{}).
-			Where("id = ? AND status = ? AND reviewer_id = ?", id, WithdrawalProcessing, adminId).
-			Updates(map[string]interface{}{
-				"status":       WithdrawalApproved,
-				"admin_remark": adminRemark,
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			// 区分失败原因，给操作者准确提示。
-			var w Withdrawal
-			if err := DB.First(&w, id).Error; err != nil {
-				return err
+
+		switch action {
+		case "claim":
+			if w.Status != WithdrawalPending {
+				return ErrWithdrawalAlreadyProcessed
 			}
+			res := tx.Model(&Withdrawal{}).
+				Where("id = ? AND status = ?", id, WithdrawalPending).
+				Updates(map[string]interface{}{
+					"status":      WithdrawalProcessing,
+					"reviewer_id": adminId,
+				})
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return ErrWithdrawalAlreadyProcessed
+			}
+			return nil
+
+		case "release":
+			if w.Status == WithdrawalProcessing && w.ReviewerId != adminId {
+				return ErrWithdrawalClaimedByOther
+			}
+			if w.Status != WithdrawalProcessing {
+				return ErrWithdrawalAlreadyProcessed
+			}
+			res := tx.Model(&Withdrawal{}).
+				Where("id = ? AND status = ? AND reviewer_id = ?", id, WithdrawalProcessing, adminId).
+				Updates(map[string]interface{}{
+					"status":      WithdrawalPending,
+					"reviewer_id": 0,
+				})
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return ErrWithdrawalAlreadyProcessed
+			}
+			return nil
+
+		case "approve":
 			switch {
 			case w.Status == WithdrawalPending:
 				return ErrWithdrawalNotClaimed
 			case w.Status == WithdrawalProcessing && w.ReviewerId != adminId:
 				return ErrWithdrawalClaimedByOther
-			default:
+			case w.Status != WithdrawalProcessing:
 				return ErrWithdrawalAlreadyProcessed
 			}
-		}
-		return nil
-	case "reject":
-		return DB.Transaction(func(tx *gorm.DB) error {
-			var w Withdrawal
-			if err := tx.First(&w, id).Error; err != nil {
-				return err
+			res := tx.Model(&Withdrawal{}).
+				Where("id = ? AND status = ? AND reviewer_id = ?", id, WithdrawalProcessing, adminId).
+				Updates(map[string]interface{}{
+					"status":       WithdrawalApproved,
+					"admin_remark": adminRemark,
+				})
+			if res.Error != nil {
+				return res.Error
 			}
-			// 打款中的单只有认领人本人能拒绝(与 approve 一致):防止 A 已线下转账、
-			// B 却拒绝退款,造成"既打款又退回余额"的双重支付——这正是认领机制要堵的窗口。
-			// 他人要拒绝需先 release 释放认领再操作。pending 单(未认领)任何管理员可拒。
+			if res.RowsAffected == 0 {
+				return ErrWithdrawalAlreadyProcessed
+			}
+			return nil
+
+		case "reject":
+			if w.Status == WithdrawalProcessing && w.ReviewerId != adminId {
+				return ErrWithdrawalClaimedByOther
+			}
+			if w.Status != WithdrawalPending && w.Status != WithdrawalProcessing {
+				return ErrWithdrawalAlreadyProcessed
+			}
+			if !commissionRefundFits(user.CommissionQuota, w.Amount) {
+				return ErrQuotaOverflow
+			}
 			res := tx.Model(&Withdrawal{}).
 				Where("id = ? AND (status = ? OR (status = ? AND reviewer_id = ?))",
 					id, WithdrawalPending, WithdrawalProcessing, adminId).
@@ -362,36 +436,52 @@ func ReviewWithdrawal(id int, action string, adminId int, adminRemark string) er
 				return res.Error
 			}
 			if res.RowsAffected == 0 {
-				if w.Status == WithdrawalProcessing && w.ReviewerId != adminId {
-					return ErrWithdrawalClaimedByOther
-				}
 				return ErrWithdrawalAlreadyProcessed
 			}
-			// 拒绝：退回预扣的分润余额（仅当上面赢得状态迁移时执行，天然只退一次）
-			refund := tx.Model(&User{}).Where("id = ?", w.UserId).
+			refund := tx.Model(&User{}).
+				Where("id = ? AND commission_quota <= ?", w.UserId, maxQuotaBalance-w.Amount).
 				Update("commission_quota", gorm.Expr("commission_quota + ?", w.Amount))
 			if refund.Error != nil {
 				return refund.Error
 			}
 			if refund.RowsAffected == 0 {
-				// 用户在 pending 期间被删除：无处可退，记录审计日志避免余额静默蒸发无迹可查。
-				common.SysLog(fmt.Sprintf(
-					"withdrawal %d rejected but refund skipped: user %d no longer exists (amount=%d)",
-					w.Id, w.UserId, w.Amount))
+				return ErrQuotaOverflow
 			}
 			return nil
-		})
-	}
-	return ErrInvalidReviewAction
+		}
+		return ErrInvalidReviewAction
+	})
 }
 
 // CancelWithdrawal 代理撤销自己的待审核提现单并取回预扣余额。
 // 仅 pending 可撤：已被管理员认领(打款中)说明线下转账可能已发生，不允许单方面撤回。
 func CancelWithdrawal(userId int, id int) error {
+	var target Withdrawal
+	if err := DB.Select("id", "user_id").First(&target, id).Error; err != nil {
+		return err
+	}
+	if target.UserId != userId {
+		return ErrWithdrawalAlreadyProcessed
+	}
 	return DB.Transaction(func(tx *gorm.DB) error {
-		var w Withdrawal
-		if err := tx.First(&w, id).Error; err != nil {
+		// Keep the same user -> withdrawal lock order as risk freeze and admin
+		// rejection. The conditional status update remains the ownership gate.
+		var user User
+		if err := lockForUpdate(tx).Select("id", "commission_quota").
+			Where("id = ?", userId).First(&user).Error; err != nil {
 			return err
+		}
+		var w Withdrawal
+		if err := lockForUpdate(tx).
+			Where("id = ? AND user_id = ?", id, userId).
+			First(&w).Error; err != nil {
+			return err
+		}
+		if w.UserId != userId || w.Status != WithdrawalPending {
+			return ErrWithdrawalAlreadyProcessed
+		}
+		if !commissionRefundFits(user.CommissionQuota, w.Amount) {
+			return ErrQuotaOverflow
 		}
 		res := tx.Model(&Withdrawal{}).
 			Where("id = ? AND user_id = ? AND status = ?", id, userId, WithdrawalPending).
@@ -402,8 +492,16 @@ func CancelWithdrawal(userId int, id int) error {
 		if res.RowsAffected == 0 {
 			return ErrWithdrawalAlreadyProcessed
 		}
-		return tx.Model(&User{}).Where("id = ?", userId).
-			Update("commission_quota", gorm.Expr("commission_quota + ?", w.Amount)).Error
+		refund := tx.Model(&User{}).
+			Where("id = ? AND commission_quota <= ?", userId, maxQuotaBalance-w.Amount).
+			Update("commission_quota", gorm.Expr("commission_quota + ?", w.Amount))
+		if refund.Error != nil {
+			return refund.Error
+		}
+		if refund.RowsAffected == 0 {
+			return ErrQuotaOverflow
+		}
+		return nil
 	})
 }
 

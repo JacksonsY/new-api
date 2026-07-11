@@ -47,6 +47,7 @@ export interface AuthUser {
   usage_profit_rate?: number
   commission_quota?: number
   commission_history_quota?: number
+  agent_grace_access?: boolean
   github_id?: string
   oidc_id?: string
   wechat_id?: string

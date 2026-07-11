@@ -480,6 +480,14 @@ func GetSelf(c *gin.Context) {
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
+	agentGraceAccess := false
+	if user.AgentType == "" {
+		agentGraceAccess, err = model.HasAgentGraceAccess(user.Id, user.CommissionQuota)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
@@ -513,6 +521,7 @@ func GetSelf(c *gin.Context) {
 		"usage_profit_rate":        user.UsageProfitRate,
 		"commission_quota":         user.CommissionQuota,
 		"commission_history_quota": user.CommissionHistoryQuota,
+		"agent_grace_access":       agentGraceAccess,
 		// <<< jzlh-agent
 	}
 

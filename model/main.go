@@ -432,6 +432,7 @@ func migrateClickHouseLogDB() error {
 // (e.g. channel_ratio, added 2026-07-03, broke logging on ClickHouse deploys).
 var clickHouseLogAddColumns = []string{
 	"channel_ratio Float64 DEFAULT 0",
+	"channel_ratio_set UInt8 DEFAULT 0",
 }
 
 func ensureClickHouseLogColumns() error {
@@ -484,6 +485,7 @@ CREATE TABLE IF NOT EXISTS logs (
 	is_stream UInt8 DEFAULT 0,
 	channel_id Int32 DEFAULT 0,
 	channel_ratio Float64 DEFAULT 0,
+	channel_ratio_set UInt8 DEFAULT 0,
 	token_id Int32 DEFAULT 0,
 	`+"`group`"+` String DEFAULT '',
 	ip String DEFAULT '',

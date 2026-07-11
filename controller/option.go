@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -116,6 +117,157 @@ func GetOptions(c *gin.Context) {
 type OptionUpdateRequest struct {
 	Key   string `json:"key"`
 	Value any    `json:"value"`
+}
+
+type OptionBulkUpdateRequest struct {
+	Options []OptionUpdateRequest `json:"options"`
+}
+
+var paymentOptionKeys = map[string]struct{}{
+	"PayAddress": {}, "CustomCallbackAddress": {}, "EpayId": {}, "EpayKey": {},
+	"EpayApiVersion": {}, "EpayPlatformPublicKey": {}, "EpayMerchantPrivateKey": {},
+	"Price": {}, "MinTopUp": {}, "PayMethods": {},
+	"payment_setting.amount_options": {}, "payment_setting.amount_discount": {},
+	"StripeApiSecret": {}, "StripeWebhookSecret": {}, "StripePriceId": {},
+	"StripeUnitPrice": {}, "StripeMinTopUp": {}, "StripePromotionCodesEnabled": {},
+	"CreemApiKey": {}, "CreemWebhookSecret": {}, "CreemTestMode": {}, "CreemProducts": {},
+	"WaffoEnabled": {}, "WaffoApiKey": {}, "WaffoPrivateKey": {}, "WaffoPublicCert": {},
+	"WaffoSandboxPublicCert": {}, "WaffoSandboxApiKey": {}, "WaffoSandboxPrivateKey": {},
+	"WaffoSandbox": {}, "WaffoMerchantId": {}, "WaffoNotifyUrl": {}, "WaffoReturnUrl": {},
+	"WaffoCurrency": {}, "WaffoUnitPrice": {}, "WaffoMinTopUp": {}, "WaffoPayMethods": {},
+}
+
+func UpdatePaymentOptions(c *gin.Context) {
+	var request OptionBulkUpdateRequest
+	if err := common.DecodeJson(c.Request.Body, &request); err != nil || len(request.Options) == 0 || len(request.Options) > 64 {
+		common.ApiErrorMsg(c, "无效的参数")
+		return
+	}
+	values := make(map[string]string, len(request.Options))
+	for _, option := range request.Options {
+		if _, allowed := paymentOptionKeys[option.Key]; !allowed {
+			common.ApiErrorMsg(c, "包含不允许批量修改的配置项")
+			return
+		}
+		if _, duplicate := values[option.Key]; duplicate {
+			common.ApiErrorMsg(c, "包含重复的配置项")
+			return
+		}
+		values[option.Key] = common.Interface2String(option.Value)
+	}
+	if err := validatePaymentOptionValues(values); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	if err := model.UpdateOptionsBulk(values); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	for key := range values {
+		recordManageAudit(c, "option.update", map[string]interface{}{"key": key})
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func validatePaymentOptionValues(values map[string]string) error {
+	if version, ok := values["EpayApiVersion"]; ok && version != "v1" && version != "v2" {
+		return fmt.Errorf("易支付协议版本无效")
+	}
+	for _, numericKey := range []string{"Price", "StripeUnitPrice", "WaffoUnitPrice"} {
+		if value, ok := values[numericKey]; ok {
+			number, parseErr := strconv.ParseFloat(value, 64)
+			if parseErr != nil || math.IsNaN(number) || math.IsInf(number, 0) || number < 0 {
+				return fmt.Errorf("支付配置数值无效")
+			}
+		}
+	}
+	for _, integerKey := range []string{"MinTopUp", "StripeMinTopUp", "WaffoMinTopUp"} {
+		if value, ok := values[integerKey]; ok {
+			number, parseErr := strconv.Atoi(value)
+			if parseErr != nil || number < 0 {
+				return fmt.Errorf("支付配置数值无效")
+			}
+		}
+	}
+	for _, booleanKey := range []string{"StripePromotionCodesEnabled", "CreemTestMode", "WaffoEnabled", "WaffoSandbox"} {
+		if value, ok := values[booleanKey]; ok && value != "true" && value != "false" {
+			return fmt.Errorf("支付配置布尔值无效")
+		}
+	}
+	if value, ok := values["PayMethods"]; ok {
+		var methods []map[string]string
+		if err := common.UnmarshalJsonStr(value, &methods); err != nil {
+			return fmt.Errorf("支付方式配置无效")
+		}
+		for _, method := range methods {
+			if strings.TrimSpace(method["name"]) == "" || strings.TrimSpace(method["type"]) == "" {
+				return fmt.Errorf("支付方式配置无效")
+			}
+			if minTopUp := strings.TrimSpace(method["min_topup"]); minTopUp != "" {
+				amount, err := strconv.Atoi(minTopUp)
+				if err != nil || amount < 0 {
+					return fmt.Errorf("支付方式配置无效")
+				}
+			}
+		}
+	}
+	if value, ok := values["payment_setting.amount_options"]; ok {
+		var amounts []int
+		if err := common.UnmarshalJsonStr(value, &amounts); err != nil {
+			return fmt.Errorf("充值金额选项无效")
+		}
+		for _, amount := range amounts {
+			if amount <= 0 {
+				return fmt.Errorf("充值金额选项无效")
+			}
+		}
+	}
+	if value, ok := values["payment_setting.amount_discount"]; ok {
+		var discounts map[int]float64
+		if err := common.UnmarshalJsonStr(value, &discounts); err != nil {
+			return fmt.Errorf("充值折扣配置无效")
+		}
+		for amount, discount := range discounts {
+			if amount <= 0 || math.IsNaN(discount) || math.IsInf(discount, 0) || discount <= 0 || discount > 1 {
+				return fmt.Errorf("充值折扣配置无效")
+			}
+		}
+	}
+	if value, ok := values["CreemProducts"]; ok {
+		var products []CreemProduct
+		if err := common.UnmarshalJsonStr(value, &products); err != nil {
+			return fmt.Errorf("Creem 产品配置无效")
+		}
+		seenProductIDs := make(map[string]struct{}, len(products))
+		for _, product := range products {
+			productID := strings.TrimSpace(product.ProductId)
+			if productID == "" || strings.TrimSpace(product.Name) == "" || strings.TrimSpace(product.Currency) == "" ||
+				math.IsNaN(product.Price) || math.IsInf(product.Price, 0) || product.Price <= 0 || product.Quota <= 0 {
+				return fmt.Errorf("Creem 产品配置无效")
+			}
+			if _, duplicate := seenProductIDs[productID]; duplicate {
+				return fmt.Errorf("Creem 产品配置无效")
+			}
+			seenProductIDs[productID] = struct{}{}
+		}
+	}
+	if value, ok := values["WaffoPayMethods"]; ok {
+		var methods []struct {
+			Name          string `json:"name"`
+			Icon          string `json:"icon"`
+			PayMethodType string `json:"payMethodType"`
+			PayMethodName string `json:"payMethodName"`
+		}
+		if err := common.UnmarshalJsonStr(value, &methods); err != nil {
+			return fmt.Errorf("Waffo 支付方式配置无效")
+		}
+		for _, method := range methods {
+			if strings.TrimSpace(method.Name) == "" {
+				return fmt.Errorf("Waffo 支付方式配置无效")
+			}
+		}
+	}
+	return nil
 }
 
 func UpdateOption(c *gin.Context) {

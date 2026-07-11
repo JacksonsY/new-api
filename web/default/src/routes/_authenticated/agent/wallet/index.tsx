@@ -24,7 +24,10 @@ import { useAuthStore } from '@/stores/auth-store'
 export const Route = createFileRoute('/_authenticated/agent/wallet/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
-    if (!auth.user || !auth.user.agent_type) {
+    if (
+      !auth.user ||
+      (!auth.user.agent_type && !auth.user.agent_grace_access)
+    ) {
       throw redirect({ to: '/403' })
     }
   },

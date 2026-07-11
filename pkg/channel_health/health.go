@@ -130,10 +130,30 @@ func Enabled() bool {
 // max-concurrency limit reads this counter and must work even when adaptive
 // routing is turned off.
 func AcquireInflight(channelID int) {
+	TryAcquireInflight(channelID, 0)
+}
+
+// TryAcquireInflight atomically claims one in-flight slot. A non-positive limit
+// means unlimited. The compare-and-swap closes the gap between routing's
+// availability check and the actual upstream attempt.
+func TryAcquireInflight(channelID int, limit int) bool {
 	if channelID <= 0 {
-		return
+		return false
 	}
-	getStat(channelID).inflight.Add(1)
+	s := getStat(channelID)
+	if limit <= 0 {
+		s.inflight.Add(1)
+		return true
+	}
+	for {
+		current := s.inflight.Load()
+		if current >= int64(limit) {
+			return false
+		}
+		if s.inflight.CompareAndSwap(current, current+1) {
+			return true
+		}
+	}
 }
 
 // CurrentInflight returns this instance's in-flight request count for a channel.
@@ -165,13 +185,15 @@ func ForceOpenUntil(channelID int, until time.Time) {
 	s := getStat(channelID)
 	s.mu.Lock()
 	extended := until.After(s.openUntil)
+	mutationGeneration := int64(0)
 	if extended {
 		s.state = circuitOpen
 		s.openUntil = until
+		mutationGeneration = nextSharedMutationGeneration()
 	}
 	s.mu.Unlock()
 	if extended {
-		publishOpen(channelID, until)
+		publishOpen(channelID, until, mutationGeneration)
 	}
 }
 
@@ -251,11 +273,13 @@ func ReportResult(channelID int, success bool, channelFault bool, ttftMs int64) 
 
 	var tripped, recovered bool
 	var openUntil time.Time
+	var mutationGeneration int64
 	if setting.CircuitEnabled {
 		if success {
 			s.consecutiveFailures = 0
 			if s.state != circuitClosed {
 				recovered = true // half-open/open -> closed on this instance
+				mutationGeneration = nextSharedMutationGeneration()
 			}
 			s.state = circuitClosed
 		} else {
@@ -266,6 +290,7 @@ func ReportResult(channelID int, success bool, channelFault bool, ttftMs int64) 
 				// a probe failed -> straight back to open
 				s.trip(setting)
 				tripped, openUntil = true, s.openUntil
+				mutationGeneration = nextSharedMutationGeneration()
 			case circuitClosed:
 				threshold := setting.OpenThreshold
 				if threshold <= 0 {
@@ -274,6 +299,7 @@ func ReportResult(channelID int, success bool, channelFault bool, ttftMs int64) 
 				if s.consecutiveFailures >= threshold {
 					s.trip(setting)
 					tripped, openUntil = true, s.openUntil
+					mutationGeneration = nextSharedMutationGeneration()
 				}
 			}
 		}
@@ -284,16 +310,16 @@ func ReportResult(channelID int, success bool, channelFault bool, ttftMs int64) 
 	// without Redis). A trip must reach other replicas so they stop selecting a
 	// dead channel; a recovery clears the shared trip.
 	if tripped {
-		publishOpen(channelID, openUntil)
+		publishOpen(channelID, openUntil, mutationGeneration)
 	} else if recovered {
-		publishClosed(channelID)
+		publishClosed(channelID, mutationGeneration)
 	} else if success && setting.CircuitEnabled {
 		// This replica's local circuit was already closed, but a success while
 		// the channel is only half-open cluster-wide (tripped by another replica)
 		// still confirms recovery — clear the shared trip so it regains full
 		// weight everywhere, regardless of which replica gets the healthy traffic.
-		if _, half := sharedCircuitState(channelID, time.Now().UnixNano()); half {
-			publishClosed(channelID)
+		if _, half := sharedCircuitState(channelID, time.Now().UnixMilli()); half {
+			publishClosed(channelID, nextSharedMutationGeneration())
 		}
 	}
 }
@@ -476,7 +502,7 @@ func (s *channelStat) read() snapshot {
 
 	// Union with the cluster-wide circuit view: a channel open on any instance
 	// is treated as open everywhere. Empty shared map => no change.
-	if open, half := sharedCircuitState(s.channelID, time.Now().UnixNano()); open {
+	if open, half := sharedCircuitState(s.channelID, time.Now().UnixMilli()); open {
 		snap.state = circuitOpen
 	} else if half && snap.state == circuitClosed {
 		snap.state = circuitHalfOpen
@@ -536,7 +562,7 @@ func ShouldEscapeAffinity(channelID int) bool {
 		// No local observation, but still honor a cluster-wide open circuit so a
 		// replica that never served this channel still escapes a dead anchor.
 		if setting.CircuitEnabled {
-			open, _ := sharedCircuitState(channelID, time.Now().UnixNano())
+			open, _ := sharedCircuitState(channelID, time.Now().UnixMilli())
 			return open
 		}
 		return false

@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"strings"
 
 	"github.com/QuantumNous/new-api/constant"
@@ -23,9 +24,12 @@ var responseModelKeys = []string{"model", "message.model", "response.model", "mo
 // MaskResponseModelNameString 对单个 SSE data 行 / JSON 字符串做模型名改写。
 func MaskResponseModelNameString(c *gin.Context, data string) string {
 	origin := clientFacingModelName(c)
-	if origin == "" || len(data) == 0 || data[0] != '{' {
+	trimmed := strings.TrimLeft(data, " \t\r\n")
+	if origin == "" || len(trimmed) == 0 || trimmed[0] != '{' {
 		return data
 	}
+	prefix := data[:len(data)-len(trimmed)]
+	data = trimmed
 	for _, key := range responseModelKeys {
 		value := gjson.Get(data, key)
 		if !value.Exists() || value.Type != gjson.String || value.String() == origin {
@@ -35,15 +39,19 @@ func MaskResponseModelNameString(c *gin.Context, data string) string {
 			data = patched
 		}
 	}
-	return data
+	return prefix + data
 }
 
 // MaskResponseModelName 对完整响应体做模型名改写（非流式路径）。
 func MaskResponseModelName(c *gin.Context, data []byte) []byte {
 	origin := clientFacingModelName(c)
-	if origin == "" || len(data) == 0 || data[0] != '{' {
+	trimmed := bytes.TrimLeft(data, " \t\r\n")
+	if origin == "" || len(trimmed) == 0 || trimmed[0] != '{' {
 		return data
 	}
+	prefixLen := len(data) - len(trimmed)
+	prefix := data[:prefixLen]
+	data = trimmed
 	for _, key := range responseModelKeys {
 		value := gjson.GetBytes(data, key)
 		if !value.Exists() || value.Type != gjson.String || value.String() == origin {
@@ -53,7 +61,7 @@ func MaskResponseModelName(c *gin.Context, data []byte) []byte {
 			data = patched
 		}
 	}
-	return data
+	return append(append(make([]byte, 0, len(prefix)+len(data)), prefix...), data...)
 }
 
 func clientFacingModelName(c *gin.Context) string {

@@ -223,6 +223,7 @@ type SubscriptionOrder struct {
 	Status          string `json:"status"`
 	CreateTime      int64  `json:"create_time"`
 	CompleteTime    int64  `json:"complete_time"`
+	ReconcileTime   *int64 `json:"-"`
 
 	ProviderPayload string `json:"provider_payload" gorm:"type:text"`
 }
@@ -249,15 +250,82 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 	return &order
 }
 
-// GetRecentPendingSubscriptionOrders 取指定支付渠道、创建时间落在 [now-maxAge, now-minAge] 的
-// pending 订阅单，供主动对账扫单（蓝图D）。
+// GetRecentPendingSubscriptionOrders previews the next page without claiming
+// it. ClaimRecentPendingSubscriptionOrders is the mutating counterpart.
 func GetRecentPendingSubscriptionOrders(paymentProvider string, minAgeSeconds int64, maxAgeSeconds int64, limit int) ([]*SubscriptionOrder, error) {
-	now := common.GetTimestamp()
-	var orders []*SubscriptionOrder
-	err := DB.Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
-		paymentProvider, common.TopUpStatusPending, now-maxAgeSeconds, now-minAgeSeconds).
-		Order("id asc").Limit(limit).Find(&orders).Error
-	return orders, err
+	return selectRecentPendingSubscriptionOrders(DB, paymentProvider, minAgeSeconds, maxAgeSeconds, limit, time.Now(), false, nil)
+}
+
+func ClaimRecentPendingSubscriptionOrders(paymentProvider string, minAgeSeconds int64, maxAgeSeconds int64, limit int, excludeIDs ...int) ([]*SubscriptionOrder, error) {
+	return selectRecentPendingSubscriptionOrders(DB, paymentProvider, minAgeSeconds, maxAgeSeconds, limit, time.Now(), true, excludeIDs)
+}
+
+func pendingSubscriptionReconcileQuery(db *gorm.DB, paymentProvider string, minAgeSeconds int64, maxAgeSeconds int64, now time.Time) *gorm.DB {
+	nowSeconds := now.Unix()
+	return db.Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
+		paymentProvider, common.TopUpStatusPending, nowSeconds-maxAgeSeconds, nowSeconds-minAgeSeconds).
+		Where("(reconcile_time IS NULL OR reconcile_time <= ?)", now.UnixNano()).
+		Order("COALESCE(reconcile_time, 0) asc, id asc")
+}
+
+func selectRecentPendingSubscriptionOrders(db *gorm.DB, paymentProvider string, minAgeSeconds int64, maxAgeSeconds int64, limit int, now time.Time, claim bool, excludeIDs []int) ([]*SubscriptionOrder, error) {
+	if limit <= 0 {
+		return []*SubscriptionOrder{}, nil
+	}
+	if !claim {
+		var orders []*SubscriptionOrder
+		err := pendingSubscriptionReconcileQuery(db, paymentProvider, minAgeSeconds, maxAgeSeconds, now).
+			Limit(limit).Find(&orders).Error
+		return orders, err
+	}
+
+	leaseUntil := now.Add(epayReconcileClaimLease).UnixNano()
+	claimed := make([]*SubscriptionOrder, 0, limit)
+	excluded := make(map[int]struct{}, len(excludeIDs))
+	for _, id := range excludeIDs {
+		excluded[id] = struct{}{}
+	}
+	for attempts := 0; len(claimed) < limit && attempts < limit*2+4; attempts++ {
+		var candidates []*SubscriptionOrder
+		if err := pendingSubscriptionReconcileQuery(db, paymentProvider, minAgeSeconds, maxAgeSeconds, now).
+			Limit(limit - len(claimed) + len(excluded)).Find(&candidates).Error; err != nil {
+			return nil, err
+		}
+		eligible := candidates[:0]
+		for _, candidate := range candidates {
+			if _, skip := excluded[candidate.Id]; !skip {
+				eligible = append(eligible, candidate)
+			}
+		}
+		if len(eligible) == 0 {
+			break
+		}
+		for _, candidate := range eligible {
+			if len(claimed) >= limit {
+				break
+			}
+			cas := db.Model(&SubscriptionOrder{}).
+				Where("id = ? AND payment_provider = ? AND status = ?", candidate.Id, paymentProvider, common.TopUpStatusPending)
+			if candidate.ReconcileTime == nil {
+				cas = cas.Where("reconcile_time IS NULL")
+			} else {
+				cas = cas.Where("reconcile_time = ?", *candidate.ReconcileTime)
+			}
+			res := cas.Update("reconcile_time", leaseUntil)
+			if res.Error != nil {
+				return nil, res.Error
+			}
+			if res.RowsAffected == 1 {
+				claimedAt := leaseUntil
+				candidate.ReconcileTime = &claimedAt
+				claimed = append(claimed, candidate)
+				if len(claimed) >= limit {
+					break
+				}
+			}
+		}
+	}
+	return claimed, nil
 }
 
 // User subscription instance

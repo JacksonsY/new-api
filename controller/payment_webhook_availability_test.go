@@ -147,23 +147,39 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	originalPayAddress := operation_setting.PayAddress
 	originalEpayID := operation_setting.EpayId
 	originalEpayKey := operation_setting.EpayKey
-	originalPayMethods := operation_setting.PayMethods
+	originalEpayVersion := operation_setting.EpayApiVersion
+	originalEpayPublicKey := operation_setting.EpayPlatformPublicKey
+	originalEpayPrivateKey := operation_setting.EpayMerchantPrivateKey
+	originalPayMethods := operation_setting.PayMethods2JsonString()
 	t.Cleanup(func() {
 		operation_setting.PayAddress = originalPayAddress
 		operation_setting.EpayId = originalEpayID
 		operation_setting.EpayKey = originalEpayKey
-		operation_setting.PayMethods = originalPayMethods
+		operation_setting.EpayApiVersion = originalEpayVersion
+		operation_setting.EpayPlatformPublicKey = originalEpayPublicKey
+		operation_setting.EpayMerchantPrivateKey = originalEpayPrivateKey
+		require.NoError(t, operation_setting.UpdatePayMethodsByJsonString(originalPayMethods))
 	})
 
 	operation_setting.PayAddress = "https://pay.example.com"
 	operation_setting.EpayId = "epay_id"
+	operation_setting.EpayApiVersion = "v1"
 	operation_setting.EpayKey = ""
-	operation_setting.PayMethods = []map[string]string{{"type": "alipay"}}
+	require.NoError(t, operation_setting.UpdatePayMethodsByJsonString(`[{"type":"alipay"}]`))
 	require.False(t, isEpayWebhookEnabled())
 
 	operation_setting.EpayKey = "epay_key"
 	require.True(t, isEpayWebhookEnabled())
 
-	operation_setting.PayMethods = nil
+	operation_setting.EpayApiVersion = "v2"
+	operation_setting.EpayKey = ""
+	operation_setting.EpayPlatformPublicKey = "epay_public_key"
+	operation_setting.EpayMerchantPrivateKey = "epay_private_key"
+	require.True(t, isEpayWebhookEnabled(), "v2 must not require the legacy MD5 key")
+	operation_setting.EpayMerchantPrivateKey = ""
+	require.False(t, isEpayWebhookEnabled())
+	operation_setting.EpayMerchantPrivateKey = "epay_private_key"
+
+	require.NoError(t, operation_setting.UpdatePayMethodsByJsonString(`[]`))
 	require.False(t, isEpayWebhookEnabled())
 }

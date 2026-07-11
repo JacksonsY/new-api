@@ -85,3 +85,12 @@ func TestMaskResponseModelNameLeavesDataUntouched(t *testing.T) {
 	nonString := `{"model":123}`
 	assert.Equal(t, nonString, MaskResponseModelNameString(origin, nonString), "非字符串 model 不动")
 }
+
+func TestMaskResponseModelNameHandlesLeadingJSONWhitespace(t *testing.T) {
+	c := newModelMaskContext(t, "gpt-4o")
+	input := " \n\t{\"model\":\"internal-upstream-model\",\"choices\":[]}"
+	want := " \n\t{\"model\":\"gpt-4o\",\"choices\":[]}"
+
+	assert.Equal(t, want, MaskResponseModelNameString(c, input))
+	assert.Equal(t, want, string(MaskResponseModelName(c, []byte(input))))
+}

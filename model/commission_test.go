@@ -1,8 +1,10 @@
 package model
 
 import (
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -204,7 +206,7 @@ func TestRecordAgentCommission_SourceIdempotent(t *testing.T) {
 
 	RecordAgentCommission(down.Id, 1000, "consume:req-idem-1")
 	RecordAgentCommission(down.Id, 1000, "consume:req-idem-1") // 重放，必须无效
-	RecordAgentCommission(down.Id, 1000, "consume:req-idem-2") // 新来源，正常入账
+	RecordAgentCommission(down.Id, 1000, "task:t1:2:1000")     // 新任务来源，正常入账
 
 	var r User
 	require.NoError(t, DB.First(&r, agent.Id).Error)
@@ -260,6 +262,36 @@ func TestAgentCommissionMaturity(t *testing.T) {
 	MatureAgentCommissions(agent.Id)
 	require.NoError(t, DB.First(&r, agent.Id).Error)
 	assert.Equal(t, 100, r.CommissionQuota)
+}
+
+func TestAgentCommissionMaturityRechecksRiskInsideTransaction(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Commission{}, &CommissionRiskUser{}))
+	originalMinutes := common.AgentCommissionMatureMinutes
+	common.AgentCommissionMatureMinutes = 1
+	t.Cleanup(func() { common.AgentCommissionMatureMinutes = originalMinutes })
+
+	agent := &User{
+		Username: "agent_maturity_risk", AffCode: "agent_maturity_risk",
+		Status: common.UserStatusEnabled, AgentType: "normal", UsageProfitRate: 0.1,
+	}
+	require.NoError(t, DB.Create(agent).Error)
+	pending := &Commission{
+		AgentId: agent.Id, FromUserId: agent.Id + 10000, Quota: 100,
+		Status: CommissionStatusPending, CreatedAt: time.Now().Add(-2 * time.Minute).Unix(),
+	}
+	require.NoError(t, DB.Create(pending).Error)
+	require.NoError(t, DB.Create(&CommissionRiskUser{
+		UserId: agent.Id, Status: CommissionRiskStatusActive, FreezeAssets: true,
+	}).Error)
+
+	MatureAgentCommissions(agent.Id)
+
+	var stored Commission
+	require.NoError(t, DB.First(&stored, pending.Id).Error)
+	assert.Equal(t, CommissionStatusPending, stored.Status)
+	var storedAgent User
+	require.NoError(t, DB.First(&storedAgent, agent.Id).Error)
+	assert.Zero(t, storedAgent.CommissionQuota)
 }
 
 // TestRecordAgentCommission_DisabledAgent 被封禁的代理不再产生新分润（冻结即断佣）。
@@ -364,6 +396,334 @@ func TestReversalUsesOriginalRateSnapshot(t *testing.T) {
 	RecordAgentCommissionReversal(down.Id, 1000, "task:snap1:3:1000")
 	require.NoError(t, DB.First(&r, agent.Id).Error)
 	assert.Equal(t, 0, r.CommissionQuota)
+}
+
+// 退款必须回冲原消费流水记录的代理，而不是退款发生时 invitee 当前绑定的代理。
+// 否则解绑会漏扣，改绑会把旧代理的退款债务错误转嫁给新代理。
+func TestReversalUsesOriginalAgentAfterInviterChange(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	require.NoError(t, DB.AutoMigrate(&Commission{}))
+
+	original := &User{
+		Username: "agent_rev_original", AffCode: "jzlhrevo1", Status: common.UserStatusEnabled,
+		AgentType: "normal", UsageProfitRate: 0.2,
+	}
+	newAgent := &User{
+		Username: "agent_rev_new", AffCode: "jzlhrevn1", Status: common.UserStatusEnabled,
+		AgentType: "normal", UsageProfitRate: 0.5,
+	}
+	require.NoError(t, DB.Create(original).Error)
+	require.NoError(t, DB.Create(newAgent).Error)
+	down := &User{
+		Username: "down_rev_rebind", AffCode: "jzlhrevd1", Status: common.UserStatusEnabled,
+		InviterId: original.Id,
+	}
+	require.NoError(t, DB.Create(down).Error)
+
+	RecordAgentCommission(down.Id, 1000, "task:rebind1:2:1000")
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", down.Id).Update("inviter_id", newAgent.Id).Error)
+	RecordAgentCommissionReversal(down.Id, 1000, "task:rebind1:3:1000")
+
+	var reloadedOriginal, reloadedNew User
+	require.NoError(t, DB.First(&reloadedOriginal, original.Id).Error)
+	require.NoError(t, DB.First(&reloadedNew, newAgent.Id).Error)
+	assert.Equal(t, 0, reloadedOriginal.CommissionQuota, "original agent receives the reversal")
+	assert.Equal(t, 0, reloadedNew.CommissionQuota, "new inviter must not be charged")
+
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", down.Id).Update("inviter_id", original.Id).Error)
+	RecordAgentCommission(down.Id, 500, "task:unbind1:2:500")
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", down.Id).Update("inviter_id", 0).Error)
+	RecordAgentCommissionReversal(down.Id, 500, "task:unbind1:3:500")
+	require.NoError(t, DB.First(&reloadedOriginal, original.Id).Error)
+	assert.Equal(t, 0, reloadedOriginal.CommissionQuota, "unbind must not suppress reversal")
+}
+
+func TestReversalSourceLookupTreatsTaskIDLiterally(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	require.NoError(t, DB.AutoMigrate(&Commission{}))
+
+	suffix := common.GetUUID()[:8]
+	original := &User{
+		Username: "agent_literal_original_" + suffix, AffCode: "lit_o_" + suffix,
+		Status: common.UserStatusEnabled, AgentType: "normal", UsageProfitRate: 0.2,
+	}
+	newAgent := &User{
+		Username: "agent_literal_new_" + suffix, AffCode: "lit_n_" + suffix,
+		Status: common.UserStatusEnabled, AgentType: "normal", UsageProfitRate: 0.5,
+	}
+	require.NoError(t, DB.Create(original).Error)
+	require.NoError(t, DB.Create(newAgent).Error)
+	downstream := &User{
+		Username: "agent_literal_down_" + suffix, AffCode: "lit_d_" + suffix,
+		Status: common.UserStatusEnabled, InviterId: original.Id,
+	}
+	require.NoError(t, DB.Create(downstream).Error)
+
+	// Colons are part of the upstream task ID; '_' and '%' must remain literal
+	// rather than broadening the SQL lookup to another task credited later.
+	RecordAgentCommission(downstream.Id, 1000, "task:provider:job_1%:2:1000")
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", downstream.Id).Update("inviter_id", newAgent.Id).Error)
+	RecordAgentCommission(downstream.Id, 1000, "task:provider:other:2:1000")
+	RecordAgentCommissionReversal(downstream.Id, 1000, "task:provider:job_1%:3:1000")
+
+	var reloadedOriginal, reloadedNew User
+	require.NoError(t, DB.First(&reloadedOriginal, original.Id).Error)
+	require.NoError(t, DB.First(&reloadedNew, newAgent.Id).Error)
+	assert.Equal(t, 0, reloadedOriginal.CommissionQuota)
+	assert.Equal(t, 500, reloadedNew.CommissionQuota, "a different task's agent must not receive the reversal")
+
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", downstream.Id).Update("inviter_id", original.Id).Error)
+	RecordAgentCommission(downstream.Id, 500, "task:plain_job:2:500")
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", downstream.Id).Update("inviter_id", newAgent.Id).Error)
+	RecordAgentCommission(downstream.Id, 500, "task:plainXjob:2:500")
+	RecordAgentCommissionReversal(downstream.Id, 500, "task:plain_job:3:500")
+	require.NoError(t, DB.First(&reloadedOriginal, original.Id).Error)
+	require.NoError(t, DB.First(&reloadedNew, newAgent.Id).Error)
+	assert.Equal(t, 0, reloadedOriginal.CommissionQuota)
+	assert.Equal(t, 750, reloadedNew.CommissionQuota, "underscore must not behave as a LIKE wildcard")
+}
+
+func TestTaskSettlementWithoutInitialCommissionDoesNotUseLaterInviter(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	require.NoError(t, DB.AutoMigrate(&Commission{}))
+
+	suffix := common.GetUUID()[:8]
+	agent := &User{
+		Username: "task_late_agent_" + suffix, AffCode: "tla_" + suffix,
+		Status: common.UserStatusEnabled, AgentType: "normal", UsageProfitRate: 0.5,
+	}
+	downstream := &User{
+		Username: "task_late_down_" + suffix, AffCode: "tld_" + suffix,
+		Status: common.UserStatusEnabled,
+	}
+	require.NoError(t, DB.Create(agent).Error)
+	require.NoError(t, DB.Create(downstream).Error)
+
+	RecordAgentCommission(downstream.Id, 1000, "task:no-initial-owner:initial:1000")
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", downstream.Id).Update("inviter_id", agent.Id).Error)
+	RecordAgentCommission(downstream.Id, 500,
+		"task:no-initial-owner:"+TaskCommissionSettlementEvent(1000, 1500)+":500")
+	RecordAgentCommissionReversal(downstream.Id, 1500, "task:no-initial-owner:6:1500")
+
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, agent.Id).Error)
+	assert.Equal(t, 0, reloaded.CommissionQuota)
+	assert.Equal(t, 0, reloaded.CommissionHistoryQuota)
+
+	var count int64
+	require.NoError(t, DB.Model(&Commission{}).Where("from_user_id = ?", downstream.Id).Count(&count).Error)
+	assert.Zero(t, count, "a task without initial ownership must never charge a later inviter")
+}
+
+func TestTaskCommissionUsesCumulativeRoundingAndExactFinalReversal(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	require.NoError(t, DB.AutoMigrate(&Commission{}))
+	originalMaturity := common.AgentCommissionMatureMinutes
+	common.AgentCommissionMatureMinutes = 0
+	t.Cleanup(func() { common.AgentCommissionMatureMinutes = originalMaturity })
+
+	suffix := common.GetUUID()[:8]
+	agent := &User{
+		Username: "task_round_agent_" + suffix, AffCode: "tra_" + suffix,
+		Status: common.UserStatusEnabled, AgentType: "normal", UsageProfitRate: 0.5,
+	}
+	downstream := &User{
+		Username: "task_round_down_" + suffix, AffCode: "trd_" + suffix,
+		Status: common.UserStatusEnabled,
+	}
+	require.NoError(t, DB.Create(agent).Error)
+	downstream.InviterId = agent.Id
+	require.NoError(t, DB.Create(downstream).Error)
+
+	RecordAgentCommission(downstream.Id, 3, "task:rounding:initial:3")
+	RecordAgentCommission(downstream.Id, 3,
+		"task:rounding:"+TaskCommissionSettlementEvent(3, 6)+":3")
+
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, agent.Id).Error)
+	assert.Equal(t, 3, reloaded.CommissionQuota,
+		"commission must equal trunc(total quota * rate), not the sum of truncated deltas")
+
+	RecordAgentCommissionReversal(downstream.Id, 1,
+		"task:rounding:"+TaskCommissionSettlementEvent(6, 5)+":1")
+	require.NoError(t, DB.First(&reloaded, agent.Id).Error)
+	assert.Equal(t, 2, reloaded.CommissionQuota)
+
+	RecordAgentCommissionReversal(downstream.Id, 5, "task:rounding:final:5")
+	require.NoError(t, DB.First(&reloaded, agent.Id).Error)
+	assert.Equal(t, 0, reloaded.CommissionQuota)
+	assert.Equal(t, 0, reloaded.CommissionHistoryQuota)
+}
+
+func TestCommissionBalanceUpdatesDoNotCrossQuotaBounds(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	require.NoError(t, DB.AutoMigrate(&Commission{}))
+	originalMaturity := common.AgentCommissionMatureMinutes
+	common.AgentCommissionMatureMinutes = 0
+	t.Cleanup(func() { common.AgentCommissionMatureMinutes = originalMaturity })
+
+	suffix := common.GetUUID()[:8]
+	agent := &User{
+		Username: "commission_bound_agent_" + suffix, AffCode: "cba_" + suffix,
+		Status: common.UserStatusEnabled, AgentType: "normal", UsageProfitRate: 1,
+		CommissionQuota: common.MaxQuota, CommissionHistoryQuota: common.MaxQuota,
+	}
+	downstream := &User{
+		Username: "commission_bound_down_" + suffix, AffCode: "cbd_" + suffix,
+		Status: common.UserStatusEnabled,
+	}
+	require.NoError(t, DB.Create(agent).Error)
+	downstream.InviterId = agent.Id
+	require.NoError(t, DB.Create(downstream).Error)
+
+	RecordAgentCommission(downstream.Id, 1, "consume:commission-overflow-"+suffix)
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, agent.Id).Error)
+	assert.Equal(t, common.MaxQuota, reloaded.CommissionQuota)
+	assert.Equal(t, common.MaxQuota, reloaded.CommissionHistoryQuota)
+	var count int64
+	require.NoError(t, DB.Model(&Commission{}).
+		Where("source_key = ?", "consume:commission-overflow-"+suffix).Count(&count).Error)
+	assert.Zero(t, count, "overflowing balance update must roll back its commission row")
+
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", agent.Id).Updates(map[string]interface{}{
+		"commission_quota":         0,
+		"commission_history_quota": 0,
+	}).Error)
+	initialKey := "task:commission-underflow-" + suffix + ":initial:1"
+	RecordAgentCommission(downstream.Id, 1, initialKey)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", agent.Id).Updates(map[string]interface{}{
+		"commission_quota":         common.MinQuota,
+		"commission_history_quota": common.MinQuota,
+	}).Error)
+	RecordAgentCommissionReversal(downstream.Id, 1,
+		"task:commission-underflow-"+suffix+":final:1")
+	require.NoError(t, DB.First(&reloaded, agent.Id).Error)
+	assert.Equal(t, common.MinQuota, reloaded.CommissionQuota)
+	assert.Equal(t, common.MinQuota, reloaded.CommissionHistoryQuota)
+	require.NoError(t, DB.Model(&Commission{}).
+		Where("from_user_id = ?", downstream.Id).Count(&count).Error)
+	assert.Equal(t, int64(1), count, "underflowing reversal must roll back its negative row")
+
+	common.AgentCommissionMatureMinutes = 1
+	pendingKey := "consume:commission-maturity-overflow-" + suffix
+	pending := &Commission{
+		AgentId: agent.Id, FromUserId: downstream.Id, Quota: 1,
+		Status: CommissionStatusPending, CreatedAt: time.Now().Add(-2 * time.Minute).Unix(),
+		SourceKey: &pendingKey, Rate: 1,
+	}
+	require.NoError(t, DB.Create(pending).Error)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", agent.Id).
+		Update("commission_quota", common.MaxQuota).Error)
+	MatureAgentCommissions(agent.Id)
+	require.NoError(t, DB.First(&reloaded, agent.Id).Error)
+	assert.Equal(t, common.MaxQuota, reloaded.CommissionQuota)
+	require.NoError(t, DB.First(pending, pending.Id).Error)
+	assert.Equal(t, CommissionStatusPending, pending.Status,
+		"overflowing maturity must roll back the status transition")
+}
+
+func TestEnsureCommissionSourceKeyIndexIsIdempotent(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Commission{}))
+	require.NoError(t, ensureCommissionSourceKeyIndex(DB))
+	require.NoError(t, ensureCommissionSourceKeyIndex(DB))
+	assert.True(t, DB.Migrator().HasIndex(&Commission{}, "idx_commissions_from_source_key"))
+	assert.False(t, DB.Migrator().HasIndex(&Commission{}, "idx_commissions_source_key"))
+}
+
+func TestCommissionSourceIdempotencyIsScopedToOriginUser(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	require.NoError(t, DB.AutoMigrate(&Commission{}))
+	require.NoError(t, ensureCommissionSourceKeyIndex(DB))
+
+	suffix := common.GetUUID()[:8]
+	agent := &User{
+		Username: "source_scope_agent_" + suffix, AffCode: "ssa_" + suffix,
+		Status: common.UserStatusEnabled, AgentType: "normal", UsageProfitRate: 0.1,
+	}
+	require.NoError(t, DB.Create(agent).Error)
+	downstreamA := &User{
+		Username: "source_scope_down_a_" + suffix, AffCode: "ssda_" + suffix,
+		Status: common.UserStatusEnabled, InviterId: agent.Id,
+	}
+	downstreamB := &User{
+		Username: "source_scope_down_b_" + suffix, AffCode: "ssdb_" + suffix,
+		Status: common.UserStatusEnabled, InviterId: agent.Id,
+	}
+	require.NoError(t, DB.Create(downstreamA).Error)
+	require.NoError(t, DB.Create(downstreamB).Error)
+
+	sourceKey := "consume:shared-upstream-id-" + suffix
+	RecordAgentCommission(downstreamA.Id, 1000, sourceKey)
+	RecordAgentCommission(downstreamB.Id, 1000, sourceKey)
+	RecordAgentCommission(downstreamA.Id, 1000, sourceKey)
+
+	var rows []Commission
+	require.NoError(t, DB.Where("source_key = ?", sourceKey).Order("from_user_id asc").Find(&rows).Error)
+	require.Len(t, rows, 2, "different origin users must not suppress each other's commission")
+	assert.NotEqual(t, rows[0].FromUserId, rows[1].FromUserId)
+}
+
+func TestBuildTaskCommissionSourceKeyBoundsLongProviderIDs(t *testing.T) {
+	longTaskID := strings.Repeat("provider-segment-", 16)
+	initial := BuildTaskCommissionSourceKey(11, longTaskID, "initial", common.MaxQuota)
+	settlement := BuildTaskCommissionSourceKey(
+		11, longTaskID, TaskCommissionSettlementEvent(1, common.MaxQuota), common.MaxQuota-1,
+	)
+	otherChannel := BuildTaskCommissionSourceKey(12, longTaskID, "initial", common.MaxQuota)
+
+	assert.LessOrEqual(t, utf8.RuneCountInString(initial), 96)
+	assert.LessOrEqual(t, utf8.RuneCountInString(settlement), 96)
+	assert.NotEqual(t, initial, otherChannel)
+	assert.NotEqual(t,
+		BuildTaskCommissionSourceKey(11, "shared-short-id", "initial", 1),
+		BuildTaskCommissionSourceKey(12, "shared-short-id", "initial", 1),
+	)
+	initialPrefix, initialEvent, initialQuota, ok := taskCommissionSourceParts(initial)
+	require.True(t, ok)
+	settlementPrefix, _, _, ok := taskCommissionSourceParts(settlement)
+	require.True(t, ok)
+	assert.Equal(t, initialPrefix, settlementPrefix)
+	assert.Equal(t, "initial", initialEvent)
+	assert.Equal(t, common.MaxQuota, initialQuota)
+
+	borderlineTaskID := strings.Repeat("x", 66)
+	borderlineInitial := BuildTaskCommissionSourceKey(11, borderlineTaskID, "initial", 1)
+	borderlineSettlement := BuildTaskCommissionSourceKey(
+		11, borderlineTaskID, TaskCommissionSettlementEvent(1, 2), 1,
+	)
+	borderlineInitialPrefix, _, _, ok := taskCommissionSourceParts(borderlineInitial)
+	require.True(t, ok)
+	borderlineSettlementPrefix, _, _, ok := taskCommissionSourceParts(borderlineSettlement)
+	require.True(t, ok)
+	assert.Equal(t, borderlineInitialPrefix, borderlineSettlementPrefix)
+	assert.Contains(t, borderlineInitialPrefix, "task:h")
+}
+
+func TestTaskReversalWithoutOriginalDoesNotChargeCurrentInviter(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Commission{}))
+	suffix := common.GetUUID()[:8]
+	agent := &User{
+		Username: "missing_orig_a_" + suffix, AffCode: "moa_" + suffix,
+		Status: common.UserStatusEnabled, AgentType: "normal", UsageProfitRate: 0.4,
+		CommissionQuota: 100,
+	}
+	require.NoError(t, DB.Create(agent).Error)
+	downstream := &User{
+		Username: "missing_orig_d_" + suffix, AffCode: "mod_" + suffix,
+		Status: common.UserStatusEnabled, InviterId: agent.Id,
+	}
+	require.NoError(t, DB.Create(downstream).Error)
+
+	RecordAgentCommissionReversal(downstream.Id, 1000, "task:not-recorded:6:1000")
+
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, agent.Id).Error)
+	assert.Equal(t, 100, reloaded.CommissionQuota)
+	var reversals int64
+	require.NoError(t, DB.Model(&Commission{}).
+		Where("from_user_id = ? AND quota < 0", downstream.Id).Count(&reversals).Error)
+	assert.Zero(t, reversals)
 }
 
 // TestReversalFallbackToCurrentRate 验证无任务来源键(非任务退款/旧数据)时，

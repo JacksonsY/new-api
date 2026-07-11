@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -82,6 +81,7 @@ type Log struct {
 	// omitempty：用户侧路径经 formatUserLogs 清零后，该字段整个不出现在响应里
 	// ——成本倍率是经营机密，普通用户连字段名都不该看到。
 	ChannelRatio      float64 `json:"channel_ratio,omitempty"`
+	ChannelRatioSet   bool    `json:"-"`
 	TokenId           int     `json:"token_id" gorm:"default:0;index"`
 	Group             string  `json:"group" gorm:"index"`
 	Ip                string  `json:"ip" gorm:"index;default:''"`
@@ -353,20 +353,39 @@ type RecordConsumeLogParams struct {
 	IsStream         bool                   `json:"is_stream"`
 	Group            string                 `json:"group"`
 	Other            map[string]interface{} `json:"other"`
+	// CommissionSourceKey links asynchronous task refunds to the exact initial
+	// commission owner. Empty keeps the request-id source used by sync relays.
+	CommissionSourceKey         string `json:"-"`
+	CommissionSourceKeyRequired bool   `json:"-"`
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
 	// >>> jzlh-agent 消费分润（异步，不阻塞主链；独立于日志开关）
 	// 幂等键取 request id；必须在 goroutine 外读取，handler 返回后 c 可能被回收。
 	if params.Quota > 0 {
-		if rid := c.GetString(common.RequestIdKey); rid != "" {
-			sourceKey := "consume:" + rid
+		sourceKey := params.CommissionSourceKey
+		if sourceKey == "" && !params.CommissionSourceKeyRequired {
+			if rid := c.GetString(common.RequestIdKey); rid != "" {
+				sourceKey = "consume:" + rid
+			}
+		}
+		if sourceKey != "" {
 			quota := params.Quota
-			gopool.Go(func() { RecordAgentCommission(userId, quota, sourceKey) })
+			if params.CommissionSourceKey != "" {
+				// Persist ownership before billing publishes the task to the poller,
+				// so a fast task failure cannot outrun commission creation.
+				RecordAgentCommission(userId, quota, sourceKey)
+			} else {
+				gopool.Go(func() { RecordAgentCommission(userId, quota, sourceKey) })
+			}
 		} else {
 			// request id 缺失时没有幂等键，无幂等入账可被重放刷佣：跳过分润并留审计日志。
+			missingKey := "request id"
+			if params.CommissionSourceKeyRequired {
+				missingKey = "task source key"
+			}
 			common.SysLog(fmt.Sprintf(
-				"skip agent commission: missing request id (user=%d quota=%d)", userId, params.Quota))
+				"skip agent commission: missing %s (user=%d quota=%d)", missingKey, userId, params.Quota))
 		}
 	}
 	// <<< jzlh-agent
@@ -404,6 +423,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		Quota:            params.Quota,
 		ChannelId:        params.ChannelId,
 		ChannelRatio:     channelRatio,
+		ChannelRatioSet:  true,
 		TokenId:          params.TokenId,
 		UseTime:          params.UseTimeSeconds,
 		IsStream:         params.IsStream,
@@ -424,7 +444,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	}
 	if common.DataExportEnabled {
 		// 渠道维度成本 = 原始额度 × 渠道计费倍率，随用量数据一并预聚合进 quota_data
-		channelQuota := int(math.Round(float64(params.Quota) * channelRatio))
+		channelQuota := common.QuotaRound(float64(params.Quota) * channelRatio)
 		LogQuotaData(QuotaDataLogParams{
 			UserID:       userId,
 			Username:     username,
@@ -442,25 +462,33 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 }
 
 type RecordTaskBillingLogParams struct {
-	UserId    int
-	LogType   int
-	Content   string
-	ChannelId int
-	ModelName string
-	Quota     int
-	TokenId   int
-	Group     string
-	Other     map[string]interface{}
-	NodeName  string // 任务发起节点；为空时回退当前节点
+	UserId             int
+	LogType            int
+	Content            string
+	ChannelId          int
+	ModelName          string
+	Quota              int
+	TokenId            int
+	Group              string
+	Other              map[string]interface{}
+	NodeName           string // 任务发起节点；为空时回退当前节点
+	CommissionEventKey string // 同一任务内可重放且唯一的计费状态迁移标识
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
-	// >>> jzlh-agent 任务消费分润（异步）；退款(任务失败/差额下调)按比例回冲，防"刷失败任务套佣金"。
-	// 幂等键取 task_id；差额结算(Recalculate)会对同一任务合法地多次记账，键上带金额区分。
+	// >>> jzlh-agent 任务消费分润同步结算，保证正差额先于后续全额退款落库；
+	// 退款(任务失败/差额下调)按原始归属回冲，防"刷失败任务套佣金"。
+	// 幂等键取 task_id；差额结算可用状态迁移键区分额度相同的多次合法记账。
 	if params.Quota > 0 {
 		taskKey := ""
 		if tid, ok := params.Other["task_id"].(string); ok && tid != "" {
-			taskKey = fmt.Sprintf("task:%s:%d:%d", tid, params.LogType, params.Quota)
+			eventKey := params.CommissionEventKey
+			if eventKey == "" {
+				eventKey = fmt.Sprintf("%d", params.LogType)
+			}
+			taskKey = BuildTaskCommissionSourceKey(
+				params.ChannelId, tid, eventKey, params.Quota,
+			)
 		}
 		userId, quota := params.UserId, params.Quota
 		if taskKey == "" {
@@ -473,9 +501,9 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		} else {
 			switch params.LogType {
 			case LogTypeConsume:
-				gopool.Go(func() { RecordAgentCommission(userId, quota, taskKey) })
+				RecordAgentCommission(userId, quota, taskKey)
 			case LogTypeRefund:
-				gopool.Go(func() { RecordAgentCommissionReversal(userId, quota, taskKey) })
+				RecordAgentCommissionReversal(userId, quota, taskKey)
 			}
 		}
 	}
@@ -497,19 +525,20 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		channelRatio = channel.GetChannelRatio()
 	}
 	log := &Log{
-		UserId:       params.UserId,
-		Username:     username,
-		CreatedAt:    createdAt,
-		Type:         params.LogType,
-		Content:      params.Content,
-		TokenName:    tokenName,
-		ModelName:    params.ModelName,
-		Quota:        params.Quota,
-		ChannelId:    params.ChannelId,
-		ChannelRatio: channelRatio,
-		TokenId:      params.TokenId,
-		Group:        params.Group,
-		Other:        common.MapToJsonStr(params.Other),
+		UserId:          params.UserId,
+		Username:        username,
+		CreatedAt:       createdAt,
+		Type:            params.LogType,
+		Content:         params.Content,
+		TokenName:       tokenName,
+		ModelName:       params.ModelName,
+		Quota:           params.Quota,
+		ChannelId:       params.ChannelId,
+		ChannelRatio:    channelRatio,
+		ChannelRatioSet: true,
+		TokenId:         params.TokenId,
+		Group:           params.Group,
+		Other:           common.MapToJsonStr(params.Other),
 	}
 	err := createLog(log)
 	if err != nil {
@@ -521,7 +550,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 			nodeName = common.NodeName
 		}
 		// 渠道维度成本 = 原始额度 × 渠道计费倍率
-		channelQuota := int(math.Round(float64(params.Quota) * channelRatio))
+		channelQuota := common.QuotaRound(float64(params.Quota) * channelRatio)
 		LogQuotaData(QuotaDataLogParams{
 			UserID:       params.UserId,
 			Username:     username,
@@ -848,6 +877,25 @@ const (
 	ChannelRecentUsageLookbackDays = 90 // 聚合最多回看的天数，防无界扫描
 )
 
+func channelQuotaSnapshotSQL() string {
+	ratioExpr := fmt.Sprintf(
+		"CASE WHEN channel_ratio_set AND channel_ratio >= 0 AND channel_ratio <= %.0f THEN channel_ratio WHEN channel_ratio > 0 AND channel_ratio <= %.0f THEN channel_ratio ELSE 1 END",
+		MaxChannelRatio,
+		MaxChannelRatio,
+	)
+	productExpr := "quota * (" + ratioExpr + ")"
+	// ROUND on approximate numeric types differs at .5 across supported engines
+	// (notably PostgreSQL may use ties-to-even). FLOOR-based branches implement
+	// the half-away-from-zero rule used by common.QuotaRound everywhere.
+	roundedExpr := "CASE WHEN " + productExpr + " >= 0 THEN FLOOR(" + productExpr + " + 0.5) ELSE -FLOOR(-(" + productExpr + ") + 0.5) END"
+	return fmt.Sprintf(
+		"CASE WHEN %s >= %d THEN %d WHEN %s <= %d THEN %d ELSE %s END",
+		roundedExpr, common.MaxQuota, common.MaxQuota,
+		roundedExpr, common.MinQuota, common.MinQuota,
+		roundedExpr,
+	)
+}
+
 // GetChannelsRecentUsage 返回每个渠道"最近 maxActiveDays 个有消费的 UTC 日"的
 // 消耗额度总和（回看不早于 since）。按活跃日而非自然日取平均，低频渠道不会被
 // 大量零消费日稀释成"永不耗尽"。
@@ -863,8 +911,12 @@ func GetChannelsRecentUsage(channelIds []int, since int64, maxActiveDays int) (m
 	}
 	// 整数取模做日桶（created_at - created_at % 86400）：MySQL/PostgreSQL/SQLite
 	// 行为一致（"/" 在 MySQL 上是小数除法，不可用）。
+	// Each consume log snapshots the ratio used when it was charged. Sum the
+	// per-row rounded values so later configuration changes do not rewrite
+	// historical channel cost. Invalid legacy values fall back to 1.0; zero is a
+	// valid explicit zero-cost ratio.
 	err := LOG_DB.Table("logs").
-		Select("channel_id, created_at - created_at % 86400 as day, sum(quota) as quota").
+		Select("channel_id, created_at - created_at % 86400 as day, sum("+channelQuotaSnapshotSQL()+") as quota").
 		Where("type = ?", LogTypeConsume).
 		Where("created_at >= ?", since).
 		Where("channel_id IN ?", channelIds).
@@ -899,7 +951,7 @@ func GetChannelsQuotaSince(channelIds []int, since int64) (map[int]int64, error)
 		Quota     int64
 	}
 	err := LOG_DB.Table("logs").
-		Select("channel_id, sum(quota) as quota").
+		Select("channel_id, sum("+channelQuotaSnapshotSQL()+") as quota").
 		Where("type = ?", LogTypeConsume).
 		Where("created_at >= ?", since).
 		Where("channel_id IN ?", channelIds).

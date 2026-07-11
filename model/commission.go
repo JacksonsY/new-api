@@ -3,9 +3,13 @@ package model
 // jzlh-agent 代理分销：消费分润流水与代理管理（与上游解耦的独立文件，便于合并 upstream）。
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -28,7 +32,7 @@ type Commission struct {
 	Quota      int   `json:"quota"`                                  // 本次分润额度（quota 整数,负数=回冲）
 	Status     int   `json:"status" gorm:"default:2;index"`          // 见 CommissionStatus*
 	CreatedAt  int64 `json:"created_at" gorm:"autoCreateTime;index"` // 秒级时间戳
-	// 来源幂等键(如 consume:<request_id> / task:<task_id>):同一来源只结算一次。
+	// 来源幂等键(如 consume:<request_id> / task:<task_id>):同一下级的同一来源只结算一次。
 	// 指针:NULL 不参与唯一约束(SQLite/MySQL/PG 行为一致),兼容无来源的旧行。
 	// 注意:唯一索引不能用 gorm uniqueIndex 标签——SQLite 对已有表 ALTER ADD UNIQUE 列
 	// 会直接报错,改在 EnsureCommissionSourceKeyIndex 里迁移后单独建。
@@ -40,18 +44,37 @@ type Commission struct {
 	FromUsername string `json:"from_username,omitempty" gorm:"-"`
 }
 
-// EnsureCommissionSourceKeyIndex 迁移后单独创建 source_key 唯一索引。
+// EnsureCommissionSourceKeyIndex 迁移后单独创建 (from_user_id, source_key) 唯一索引。
 // CREATE UNIQUE INDEX 语法三库一致；HasIndex 判存在避免重复创建报错。
 func EnsureCommissionSourceKeyIndex() {
-	const idx = "idx_commissions_source_key"
-	if DB.Migrator().HasIndex(&Commission{}, idx) {
-		return
-	}
-	if err := DB.Exec("CREATE UNIQUE INDEX " + idx + " ON commissions(source_key)").Error; err != nil {
+	if err := ensureCommissionSourceKeyIndex(DB); err != nil {
 		// 唯一索引是分润幂等的最终防线，建不出来必须阻断启动，
 		// 否则并发重放可无限重复入账。
 		common.FatalLog("failed to create commission source_key unique index: " + err.Error())
 	}
+}
+
+func ensureCommissionSourceKeyIndex(db *gorm.DB) error {
+	const (
+		idx       = "idx_commissions_from_source_key"
+		legacyIdx = "idx_commissions_source_key"
+	)
+	if !db.Migrator().HasIndex(&Commission{}, idx) {
+		err := db.Exec("CREATE UNIQUE INDEX " + idx + " ON commissions(from_user_id, source_key)").Error
+		if err != nil && !db.Migrator().HasIndex(&Commission{}, idx) {
+			return fmt.Errorf("create index %s: %w", idx, err)
+		}
+	}
+	// Older builds made source_key globally unique, which lets one user's task
+	// ID suppress another user's commission. Install the correctly scoped
+	// index first so rolling upgrades never leave an unprotected write window.
+	if db.Migrator().HasIndex(&Commission{}, legacyIdx) {
+		if err := db.Migrator().DropIndex(&Commission{}, legacyIdx); err != nil &&
+			db.Migrator().HasIndex(&Commission{}, legacyIdx) {
+			return fmt.Errorf("drop legacy index %s: %w", legacyIdx, err)
+		}
+	}
+	return nil
 }
 
 // isDuplicateKeyError 判断是否唯一约束冲突（三库错误文案不同，GORM 的
@@ -110,7 +133,7 @@ func resolveCommissionAgent(fromUserId int, quota int) (*User, int) {
 	if agent.AgentType == "" || agent.UsageProfitRate <= 0 {
 		return nil, 0
 	}
-	commission := int(float64(quota) * agent.UsageProfitRate)
+	commission := common.QuotaFromFloat(float64(quota) * agent.UsageProfitRate)
 	if commission <= 0 {
 		return nil, 0
 	}
@@ -123,6 +146,35 @@ func resolveCommissionAgent(fromUserId int, quota int) (*User, int) {
 // AgentCommissionMatureMinutes > 0 时新分润先挂 pending，成熟后才进可提现余额
 // （累计收益 history 立即累加，钱包里可见"待成熟"）。
 func RecordAgentCommission(fromUserId int, consumedQuota int, sourceKey string) {
+	if strings.HasPrefix(sourceKey, "task:") {
+		_, event, _, ok := taskCommissionSourceParts(sourceKey)
+		if !ok {
+			return
+		}
+		if event != "initial" {
+			if original := originalCommissionForReversal(fromUserId, sourceKey); original != nil {
+				rate := commissionSnapshotRate(original)
+				commission := common.QuotaFromFloat(float64(consumedQuota) * rate)
+				if previousQuota, actualQuota, settlement := taskCommissionSettlementQuotas(event); settlement {
+					if actualQuota <= previousQuota {
+						return
+					}
+					commission = common.QuotaFromFloat(float64(actualQuota)*rate) -
+						common.QuotaFromFloat(float64(previousQuota)*rate)
+				}
+				if commission > 0 {
+					creditAgentCommission(original.AgentId, fromUserId, commission, rate, sourceKey)
+				}
+				return
+			}
+		}
+		if strings.HasPrefix(event, "s") {
+			// Settlement deltas inherit the task's initial owner. If no initial
+			// positive commission exists, binding an inviter while the task is in
+			// flight must not create a new ownership relationship.
+			return
+		}
+	}
 	agent, commission := resolveCommissionAgent(fromUserId, consumedQuota)
 	if agent == nil {
 		return
@@ -138,7 +190,9 @@ func creditAgentCommission(agentId int, fromUserId int, amount int, rate float64
 	}
 	var keyPtr *string
 	if sourceKey != "" {
-		if n := int64(0); DB.Model(&Commission{}).Where("source_key = ?", sourceKey).Count(&n).Error == nil && n > 0 {
+		if n := int64(0); DB.Model(&Commission{}).
+			Where("from_user_id = ? AND source_key = ?", fromUserId, sourceKey).
+			Count(&n).Error == nil && n > 0 {
 			return // 已结算过该来源（预检；唯一索引兜底并发）
 		}
 		keyPtr = &sourceKey
@@ -164,7 +218,19 @@ func creditAgentCommission(agentId int, fromUserId int, amount int, rate float64
 		if status == CommissionStatusMatured {
 			updates["commission_quota"] = gorm.Expr("commission_quota + ?", amount)
 		}
-		return tx.Model(&User{}).Where("id = ?", agentId).Updates(updates).Error
+		userUpdate := tx.Model(&User{}).
+			Where("id = ? AND commission_history_quota <= ?", agentId, common.MaxQuota-amount)
+		if status == CommissionStatusMatured {
+			userUpdate = userUpdate.Where("commission_quota <= ?", common.MaxQuota-amount)
+		}
+		res := userUpdate.Updates(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrQuotaOverflow
+		}
+		return nil
 	})
 	if err != nil {
 		if keyPtr != nil && isDuplicateKeyError(err) {
@@ -194,7 +260,24 @@ func MatureAgentCommissions(agentId int) {
 		return
 	}
 	for _, row := range due {
+		if row.Quota <= 0 || row.Quota > common.MaxQuota {
+			common.SysLog("failed to mature agent commission: invalid quota")
+			continue
+		}
 		err := DB.Transaction(func(tx *gorm.DB) error {
+			// Risk controls serialize on the user row. Recheck after taking that
+			// same lock so a concurrent freeze cannot be bypassed mid-maturity.
+			var user User
+			if err := lockForUpdate(tx).Select("id").Where("id = ?", agentId).First(&user).Error; err != nil {
+				return err
+			}
+			frozen, err := isCommissionAssetsFrozenTx(tx, agentId)
+			if err != nil {
+				return err
+			}
+			if frozen {
+				return nil
+			}
 			res := tx.Model(&Commission{}).
 				Where("id = ? AND status = ?", row.Id, CommissionStatusPending).
 				Update("status", CommissionStatusMatured)
@@ -204,8 +287,16 @@ func MatureAgentCommissions(agentId int) {
 			if res.RowsAffected == 0 {
 				return nil // 已被并发结转
 			}
-			return tx.Model(&User{}).Where("id = ?", agentId).
-				Update("commission_quota", gorm.Expr("commission_quota + ?", row.Quota)).Error
+			update := tx.Model(&User{}).
+				Where("id = ? AND commission_quota <= ?", agentId, common.MaxQuota-row.Quota).
+				Update("commission_quota", gorm.Expr("commission_quota + ?", row.Quota))
+			if update.Error != nil {
+				return update.Error
+			}
+			if update.RowsAffected == 0 {
+				return ErrQuotaOverflow
+			}
+			return nil
 		})
 		if err != nil {
 			common.SysLog("failed to mature agent commission: " + err.Error())
@@ -222,23 +313,134 @@ func GetAgentPendingCommission(agentId int) (pending int64) {
 	return
 }
 
-// reversalRate 求回冲应使用的分润比例：优先用同一来源(任务)原始入账流水的费率快照，
-// 找不到（无来源键/加列前的旧行快照为 0）再降级用代理当前费率。
+// taskCommissionSourceParts parses generated suffix fields from the right
+// because upstream task IDs may contain colons. The returned prefix includes
+// the separator after the task ID.
+func taskCommissionSourceParts(sourceKey string) (prefix string, event string, quota int, ok bool) {
+	const taskPrefix = "task:"
+	if !strings.HasPrefix(sourceKey, taskPrefix) {
+		return "", "", 0, false
+	}
+	quotaSeparator := strings.LastIndex(sourceKey, ":")
+	if quotaSeparator <= len(taskPrefix) || quotaSeparator == len(sourceKey)-1 {
+		return "", "", 0, false
+	}
+	logTypeSeparator := strings.LastIndex(sourceKey[:quotaSeparator], ":")
+	if logTypeSeparator <= len(taskPrefix) || logTypeSeparator == quotaSeparator-1 {
+		return "", "", 0, false
+	}
+	quota, err := strconv.Atoi(sourceKey[quotaSeparator+1:])
+	if err != nil || quota <= 0 {
+		return "", "", 0, false
+	}
+	return sourceKey[:logTypeSeparator+1], sourceKey[logTypeSeparator+1 : quotaSeparator], quota, true
+}
+
+// TaskCommissionSettlementEvent uniquely identifies one task quota transition.
+// Quotas are persisted as signed 32-bit values, so packing both uint32 bit
+// patterns is collision-free and keeps the source key inside varchar(96).
+func TaskCommissionSettlementEvent(previousQuota int, actualQuota int) string {
+	transition := uint64(uint32(previousQuota))<<32 | uint64(uint32(actualQuota))
+	return "s" + strconv.FormatUint(transition, 36)
+}
+
+// BuildTaskCommissionSourceKey preserves readable task IDs while they fit the
+// varchar(96) column. Long provider IDs use a stable channel-scoped digest so
+// initial, settlement, and refund events still share one ownership prefix.
+func BuildTaskCommissionSourceKey(channelId int, taskID string, event string, quota int) string {
+	if taskID == "" || event == "" || strings.Contains(event, ":") ||
+		utf8.RuneCountInString(event) > 14 || quota <= 0 || quota > common.MaxQuota {
+		return ""
+	}
+	taskScope := "c" + strconv.Itoa(channelId) + ":" + taskID
+	sourcePrefix := "task:" + taskScope + ":"
+	// Choose the identity representation independently of the current event;
+	// otherwise an initial key can fit while a longer settlement key hashes,
+	// splitting one task across two ownership prefixes.
+	if utf8.RuneCountInString(sourcePrefix)+14+1+10 <= 96 {
+		return fmt.Sprintf("%s%s:%d", sourcePrefix, event, quota)
+	}
+	taskIdentity := sha256.Sum256([]byte(taskScope))
+	return fmt.Sprintf("task:h%x:%s:%d", taskIdentity, event, quota)
+}
+
+func taskCommissionSettlementQuotas(event string) (previousQuota int, actualQuota int, ok bool) {
+	if len(event) < 2 || event[0] != 's' {
+		return 0, 0, false
+	}
+	transition, err := strconv.ParseUint(event[1:], 36, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	previous := uint32(transition >> 32)
+	actual := uint32(transition)
+	if previous > 1<<31-1 || actual > 1<<31-1 {
+		return 0, 0, false
+	}
+	return int(previous), int(actual), true
+}
+
+// originalCommissionForReversal finds the first positive commission generated
+// by the same task. It is the ownership/rate snapshot for every later delta and
+// refund even if the invitee is rebound or the agent's rate changes.
 // sourceKey 形如 task:<task_id>:<log_type>:<quota>，同任务的消费与退款键仅后两段不同，
 // 因此按 task:<task_id>: 前缀反查原始正数流水。
-func reversalRate(agentId int, fromUserId int, sourceKey string, fallback float64) float64 {
-	parts := strings.SplitN(sourceKey, ":", 3)
-	if len(parts) < 3 || parts[0] != "task" || parts[1] == "" {
-		return fallback
+func originalCommissionForReversal(fromUserId int, sourceKey string) *Commission {
+	sourcePrefix, _, _, ok := taskCommissionSourceParts(sourceKey)
+	if !ok {
+		return nil
 	}
 	var orig Commission
-	err := DB.Where("agent_id = ? AND from_user_id = ? AND quota > 0 AND source_key LIKE ?",
-		agentId, fromUserId, "task:"+parts[1]+":%").
-		Order("id desc").First(&orig).Error
-	if err != nil || orig.Rate <= 0 {
-		return fallback
+	result := DB.Where("from_user_id = ? AND quota > 0 AND SUBSTR(source_key, 1, ?) = ?",
+		fromUserId, utf8.RuneCountInString(sourcePrefix), sourcePrefix).
+		Order("id asc").Limit(1).Find(&orig)
+	if result.Error != nil || result.RowsAffected == 0 {
+		return nil
 	}
-	return orig.Rate
+	return &orig
+}
+
+func commissionSnapshotRate(original *Commission) float64 {
+	if original == nil {
+		return 0
+	}
+	if original.Rate > 0 {
+		return original.Rate
+	}
+	if original.SourceKey != nil {
+		if _, _, consumedQuota, ok := taskCommissionSourceParts(*original.SourceKey); ok && original.Quota > 0 {
+			return float64(original.Quota) / float64(consumedQuota)
+		}
+	}
+	if agent, err := GetUserById(original.AgentId, false); err == nil && agent != nil {
+		return agent.UsageProfitRate
+	}
+	return 0
+}
+
+func commissionReversalTarget(fromUserId int, sourceKey string) (int, float64) {
+	if strings.HasPrefix(sourceKey, "task:") {
+		orig := originalCommissionForReversal(fromUserId, sourceKey)
+		if orig == nil {
+			// A task refund without a matching positive commission has nothing to
+			// reverse. Charging the current inviter here can debit an unrelated
+			// agent after rebinding or when the original credit was ineligible.
+			return 0, 0
+		}
+		return orig.AgentId, commissionSnapshotRate(orig)
+	}
+
+	// Legacy/no-source reversals have no persisted ownership snapshot. Preserve
+	// their historical fallback to the invitee's current inviter and rate.
+	fromUser, err := GetUserById(fromUserId, false)
+	if err != nil || fromUser == nil || fromUser.InviterId <= 0 || fromUser.InviterId == fromUserId {
+		return 0, 0
+	}
+	agent, err := GetUserById(fromUser.InviterId, false)
+	if err != nil || agent == nil {
+		return 0, 0
+	}
+	return agent.Id, agent.UsageProfitRate
 }
 
 // RecordAgentCommissionReversal 下级消费发生退款（任务失败退款/差额下调）时，
@@ -251,28 +453,51 @@ func RecordAgentCommissionReversal(fromUserId int, refundedQuota int, sourceKey 
 	if fromUserId <= 0 || refundedQuota <= 0 {
 		return
 	}
-	fromUser, err := GetUserById(fromUserId, false)
-	if err != nil || fromUser == nil || fromUser.InviterId <= 0 || fromUser.InviterId == fromUserId {
+	agentId, rate := commissionReversalTarget(fromUserId, sourceKey)
+	if agentId <= 0 || rate <= 0 {
 		return
 	}
-	agentId := fromUser.InviterId
-	fallback := 0.0
-	if agent, aerr := GetUserById(agentId, false); aerr == nil && agent != nil {
-		fallback = agent.UsageProfitRate
+	commission := common.QuotaFromFloat(float64(refundedQuota) * rate)
+	if strings.HasPrefix(sourceKey, "task:") {
+		sourcePrefix, event, _, ok := taskCommissionSourceParts(sourceKey)
+		if !ok {
+			return
+		}
+		if previousQuota, actualQuota, settlement := taskCommissionSettlementQuotas(event); settlement {
+			if actualQuota >= previousQuota {
+				return
+			}
+			commission = common.QuotaFromFloat(float64(previousQuota)*rate) -
+				common.QuotaFromFloat(float64(actualQuota)*rate)
+		} else if event == "final" {
+			var outstanding int64
+			err := DB.Model(&Commission{}).
+				Where("agent_id = ? AND from_user_id = ? AND SUBSTR(source_key, 1, ?) = ?",
+					agentId, fromUserId, utf8.RuneCountInString(sourcePrefix), sourcePrefix).
+				Select("COALESCE(SUM(quota), 0)").Scan(&outstanding).Error
+			if err != nil {
+				common.SysLog("failed to calculate outstanding task commission: " + err.Error())
+				return
+			}
+			if outstanding <= 0 || outstanding > 1<<31-1 {
+				return
+			}
+			commission = int(outstanding)
+		}
 	}
-	rate := reversalRate(agentId, fromUserId, sourceKey, fallback)
-	commission := int(float64(refundedQuota) * rate)
 	if commission <= 0 {
 		return
 	}
 	var keyPtr *string
 	if sourceKey != "" {
-		if n := int64(0); DB.Model(&Commission{}).Where("source_key = ?", sourceKey).Count(&n).Error == nil && n > 0 {
+		if n := int64(0); DB.Model(&Commission{}).
+			Where("from_user_id = ? AND source_key = ?", fromUserId, sourceKey).
+			Count(&n).Error == nil && n > 0 {
 			return
 		}
 		keyPtr = &sourceKey
 	}
-	err = DB.Transaction(func(tx *gorm.DB) error {
+	err := DB.Transaction(func(tx *gorm.DB) error {
 		// 回冲不设非负下限：这是二开原作者有测试背书的设计契约
 		// （TestRecordAgentCommissionReversal 断言全额退款可把余额冲负，作为欠账抵扣
 		// 后续分润；TestReversalFallbackToCurrentRate / TestCommissionComplianceGate
@@ -287,10 +512,20 @@ func RecordAgentCommissionReversal(fromUserId int, refundedQuota int, sourceKey 
 		}).Error; err != nil {
 			return err
 		}
-		return tx.Model(&User{}).Where("id = ?", agentId).Updates(map[string]interface{}{
-			"commission_quota":         gorm.Expr("commission_quota - ?", commission),
-			"commission_history_quota": gorm.Expr("commission_history_quota - ?", commission),
-		}).Error
+		update := tx.Model(&User{}).
+			Where("id = ? AND commission_quota >= ? AND commission_history_quota >= ?",
+				agentId, common.MinQuota+commission, common.MinQuota+commission).
+			Updates(map[string]interface{}{
+				"commission_quota":         gorm.Expr("commission_quota - ?", commission),
+				"commission_history_quota": gorm.Expr("commission_history_quota - ?", commission),
+			})
+		if update.Error != nil {
+			return update.Error
+		}
+		if update.RowsAffected == 0 {
+			return ErrQuotaOverflow
+		}
+		return nil
 	})
 	if err != nil {
 		if keyPtr != nil && isDuplicateKeyError(err) {

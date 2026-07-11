@@ -1,5 +1,3 @@
 {
-  "Query balance via sub2api upstream": "通过 sub2api 上游查询余额",
-  "Sync balance from the sub2api /v1/usage endpoint using the channel key, instead of the OpenAI billing endpoint": "用渠道密钥调用 sub2api 上游的 /v1/usage 端点同步余额，而非 OpenAI 计费端点",
   "Banner JSON": "Banner JSON"
 }

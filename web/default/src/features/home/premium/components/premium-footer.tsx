@@ -23,6 +23,8 @@ import { SupportContact } from '@/components/support-contact'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 
+import { PREMIUM_FOOTER_PLAYGROUND_ROUTE } from './premium-footer-links'
+
 type FootLink = { label: string; to?: string; href?: string }
 
 export function PremiumFooter() {
@@ -31,7 +33,8 @@ export function PremiumFooter() {
   const { status } = useStatus()
   const year = new Date().getFullYear()
   const brand = systemName || '九紫离火'
-  const docs = (status?.docs_link as string | undefined) || 'https://docs.newapi.pro'
+  const docs =
+    (status?.docs_link as string | undefined) || 'https://docs.newapi.pro'
 
   const columns: { title: string; links: FootLink[] }[] = [
     {
@@ -46,7 +49,7 @@ export function PremiumFooter() {
       title: t('Developers'),
       links: [
         { label: t('Docs'), href: docs },
-        { label: t('Playground'), to: '/console' },
+        { label: t('Playground'), to: PREMIUM_FOOTER_PLAYGROUND_ROUTE },
       ],
     },
     {

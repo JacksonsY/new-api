@@ -221,12 +221,21 @@ func AgentAuth() func(c *gin.Context) {
 			return
 		}
 		if user.AgentType == "" {
-			// 产品决策：被撤销代理若仍有未提取的分润余额，放行只读查询与提现相关接口，
-			// 让其能把余额提完；其余代理功能（名下用户、分润转额度）继续禁止。
-			if user.CommissionQuota > 0 && isAgentGracePath(c.FullPath()) {
-				c.Set("agent_type", "")
-				c.Next()
-				return
+			// 被撤销代理只在仍有余额、待成熟分润或未决提现时放行钱包白名单。
+			// 所有查询继续使用 UserAuth 写入的本人 id，不能借 grace 访问下级或管理接口。
+			if isAgentGracePath(c.FullPath()) {
+				allowed, graceErr := model.HasAgentGraceAccess(user.Id, user.CommissionQuota)
+				if graceErr != nil {
+					common.SysLog("AgentAuth grace access database error: " + graceErr.Error())
+					c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgDatabaseError)})
+					c.Abort()
+					return
+				}
+				if allowed {
+					c.Set("agent_type", "")
+					c.Next()
+					return
+				}
 			}
 			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege)})
 			c.Abort()
@@ -237,7 +246,7 @@ func AgentAuth() func(c *gin.Context) {
 	}
 }
 
-// isAgentGracePath 列出"被撤销代理但仍有分润余额"时允许访问的接口：
+// isAgentGracePath 列出"被撤销代理但仍有待处理分润资产"时允许访问的接口：
 // 分润流水查询 + 提现（发起/列表/取消）。
 func isAgentGracePath(fullPath string) bool {
 	switch fullPath {

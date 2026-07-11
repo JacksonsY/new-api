@@ -1,8 +1,9 @@
 package constant
 
 const (
-	MjErrorUnknown = 5
-	MjRequestError = 4
+	MjErrorUnknown     = 5
+	MjRequestError     = 4
+	MjConcurrencyError = 30
 )
 
 const (

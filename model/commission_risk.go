@@ -13,6 +13,7 @@ package model
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -92,11 +93,16 @@ func IsCommissionAssetsFrozen(userId int) bool {
 	if userId <= 0 {
 		return false
 	}
+	frozen, err := isCommissionAssetsFrozenTx(DB, userId)
+	return err == nil && frozen
+}
+
+func isCommissionAssetsFrozenTx(tx *gorm.DB, userId int) (bool, error) {
 	var count int64
-	_ = DB.Model(&CommissionRiskUser{}).
+	err := tx.Model(&CommissionRiskUser{}).
 		Where("user_id = ? AND status = ? AND freeze_assets = ?", userId, CommissionRiskStatusActive, true).
 		Count(&count).Error
-	return count > 0
+	return count > 0, err
 }
 
 // IsInviteCodeBlocked 邀请码是否被风控封禁（aff_code 解析入口用）。
@@ -119,15 +125,21 @@ func ApplyCommissionRiskControls(userId int, adminId int, freeze bool, block boo
 	if !freeze && !block {
 		return 0, ErrRiskNoActionSelected
 	}
-	var exists int64
-	if err := DB.Model(&User{}).Where("id = ?", userId).Count(&exists).Error; err != nil {
-		return 0, err
-	}
-	if exists == 0 {
-		return 0, ErrRiskUserNotFound
-	}
 	rejected := 0
+	refundDeferred := 0
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		// Every commission asset exit takes this same user-row lock before
+		// checking risk state. This gives freeze a single linearization point:
+		// exits committed first are included in the pending-withdrawal sweep;
+		// exits ordered after it observe the active freeze and fail closed.
+		var user User
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", userId).First(&user).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrRiskUserNotFound
+			}
+			return err
+		}
+
 		var risk CommissionRiskUser
 		err := tx.Where("user_id = ?", userId).First(&risk).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -167,11 +179,12 @@ func ApplyCommissionRiskControls(userId int, adminId int, freeze bool, block boo
 		}
 
 		if freeze {
-			n, err := rejectPendingWithdrawalsTx(tx, userId, adminId)
+			n, deferred, err := rejectPendingWithdrawalsTx(tx, userId, adminId)
 			if err != nil {
 				return err
 			}
 			rejected = n
+			refundDeferred = deferred
 		}
 
 		return createCommissionRiskEventTx(tx, userId, adminId, RiskEventApply, map[string]interface{}{
@@ -179,6 +192,7 @@ func ApplyCommissionRiskControls(userId int, adminId int, freeze bool, block boo
 			"block_invite_code":    block,
 			"reason":               strings.TrimSpace(reason),
 			"rejected_withdrawals": rejected,
+			"refund_deferred":      refundDeferred,
 		})
 	})
 	if err != nil {
@@ -189,14 +203,27 @@ func ApplyCommissionRiskControls(userId int, adminId int, freeze bool, block boo
 
 // rejectPendingWithdrawalsTx 逐单条件更新拒绝待审核提现并退回预扣余额（与人工 reject
 // 同一并发闸门：只有赢得 pending→rejected 迁移的更新执行退款，天然只退一次）。
-func rejectPendingWithdrawalsTx(tx *gorm.DB, userId int, adminId int) (int, error) {
+// 若退款会超过余额上限，则保留 pending 单供余额腾出空间后处理；冻结本身不能因此回滚。
+func rejectPendingWithdrawalsTx(tx *gorm.DB, userId int, adminId int) (int, int, error) {
 	var pending []Withdrawal
-	if err := tx.Where("user_id = ? AND status = ?", userId, WithdrawalPending).
-		Find(&pending).Error; err != nil {
-		return 0, err
+	if err := lockForUpdate(tx).
+		Where("user_id = ? AND status = ?", userId, WithdrawalPending).
+		Order("id asc").Find(&pending).Error; err != nil {
+		return 0, 0, err
+	}
+	var user User
+	if err := tx.Select("id", "commission_quota").Where("id = ?", userId).First(&user).Error; err != nil {
+		return 0, 0, err
 	}
 	rejected := 0
+	deferred := 0
 	for _, w := range pending {
+		if !commissionRefundFits(user.CommissionQuota, w.Amount) {
+			deferred++
+			common.SysLog("risk freeze deferred withdrawal refund due to quota overflow: user=" +
+				strconv.Itoa(userId) + " withdrawal=" + strconv.Itoa(w.Id))
+			continue
+		}
 		res := tx.Model(&Withdrawal{}).
 			Where("id = ? AND status = ?", w.Id, WithdrawalPending).
 			Updates(map[string]interface{}{
@@ -205,24 +232,37 @@ func rejectPendingWithdrawalsTx(tx *gorm.DB, userId int, adminId int) (int, erro
 				"reviewer_id":  adminId,
 			})
 		if res.Error != nil {
-			return rejected, res.Error
+			return rejected, deferred, res.Error
 		}
 		if res.RowsAffected == 0 {
 			continue // 已被并发处理
 		}
-		if err := tx.Model(&User{}).Where("id = ?", w.UserId).
-			Update("commission_quota", gorm.Expr("commission_quota + ?", w.Amount)).Error; err != nil {
-			return rejected, err
+		refund := tx.Model(&User{}).
+			Where("id = ? AND commission_quota <= ?", w.UserId, maxQuotaBalance-w.Amount).
+			Update("commission_quota", gorm.Expr("commission_quota + ?", w.Amount))
+		if refund.Error != nil {
+			return rejected, deferred, refund.Error
 		}
+		if refund.RowsAffected == 0 {
+			return rejected, deferred, ErrQuotaOverflow
+		}
+		user.CommissionQuota += w.Amount
 		rejected++
 	}
-	return rejected, nil
+	return rejected, deferred, nil
 }
 
 // RemoveCommissionRiskControls 解除风控管制：flags 清零、状态置 removed，留痕。
 // pending 分润在下次结转时恢复正常成熟，无需补偿动作。
 func RemoveCommissionRiskControls(userId int, adminId int, remark string) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", userId).First(&user).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrRiskUserNotFound
+			}
+			return err
+		}
 		res := tx.Model(&CommissionRiskUser{}).
 			Where("user_id = ? AND status = ?", userId, CommissionRiskStatusActive).
 			Updates(map[string]interface{}{

@@ -99,8 +99,8 @@ func GetChannelOps(c *gin.Context) {
 }
 
 // getChannelsRecentUsage 返回渠道近期消耗统计（蓝图A 剩余天数估算用）；查询失败
-// 返回 nil——估算是装饰性信息，渠道列表必须照常渲染。消耗按渠道成本倍率折算成
-// 上游成本口径，与 used_quota 的折算口径一致。
+// 返回 nil——估算是装饰性信息，渠道列表必须照常渲染。聚合已按每条日志写入时的
+// channel_ratio 折算，不能再套用渠道当前倍率。
 func getChannelsRecentUsage(channels []*model.Channel) map[int]model.ChannelRecentUsage {
 	channelIds := make([]int, 0, len(channels))
 	for _, channel := range channels {
@@ -111,16 +111,6 @@ func getChannelsRecentUsage(channels []*model.Channel) map[int]model.ChannelRece
 	if err != nil {
 		common.SysError("failed to query channels recent usage: " + err.Error())
 		return nil
-	}
-	for _, channel := range channels {
-		usage, ok := usageMap[channel.Id]
-		if !ok {
-			continue
-		}
-		if ratio := channel.GetChannelRatio(); ratio != 1 {
-			usage.Quota = int64(float64(usage.Quota) * ratio)
-			usageMap[channel.Id] = usage
-		}
 	}
 	return usageMap
 }
@@ -522,6 +512,14 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 
 // validateChannel 通用的渠道校验函数
 func validateChannel(channel *model.Channel, isAdd bool) error {
+	if channel == nil {
+		return fmt.Errorf("channel cannot be empty")
+	}
+	if channel.ChannelRatio != nil {
+		if err := model.ValidateChannelRatio(*channel.ChannelRatio); err != nil {
+			return err
+		}
+	}
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
@@ -529,7 +527,7 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 
 	// 如果是添加操作，检查 channel 和 key 是否为空
 	if isAdd {
-		if channel == nil || channel.Key == "" {
+		if channel.Key == "" {
 			return fmt.Errorf("channel cannot be empty")
 		}
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	channelhealth "github.com/QuantumNous/new-api/pkg/channel_health"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -54,7 +55,14 @@ func TestShouldFastRetrySameChannel(t *testing.T) {
 
 	t.Run("network send failure qualifies", func(t *testing.T) {
 		c := newRelayReliabilityTestContext(t)
+		c.Request.Method = http.MethodGet
 		assert.True(t, shouldFastRetrySameChannel(c, netErr, 0))
+	})
+
+	t.Run("non-idempotent request is not replayed", func(t *testing.T) {
+		c := newRelayReliabilityTestContext(t)
+		assert.False(t, shouldFastRetrySameChannel(c, netErr, 0))
+		assert.False(t, shouldRetry(c, netErr, 1))
 	})
 
 	t.Run("budget exhausted", func(t *testing.T) {
@@ -80,6 +88,16 @@ func TestShouldFastRetrySameChannel(t *testing.T) {
 		c := newRelayReliabilityTestContext(t)
 		assert.False(t, shouldFastRetrySameChannel(c, netErr, 0))
 	})
+}
+
+func TestShouldRetryTaskRelayDoesNotReplayPost(t *testing.T) {
+	c := newRelayReliabilityTestContext(t)
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusBadGateway, http.StatusTemporaryRedirect} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			err := &dto.TaskError{StatusCode: status}
+			assert.False(t, shouldRetryTaskRelay(c, 1, err, 1))
+		})
+	}
 }
 
 func TestMaybeApplyRateLimitCooldown(t *testing.T) {

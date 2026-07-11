@@ -257,14 +257,15 @@ func TestAdv_ReversalReplayIdempotent(t *testing.T) {
 		Status: common.UserStatusEnabled, InviterId: agent.Id}
 	require.NoError(t, DB.Create(down).Error)
 
+	RecordAgentCommission(down.Id, 1000, "task:replaytask:2:1000")
 	key := "task:replaytask:3:1000"
 	for i := 0; i < 5; i++ {
 		RecordAgentCommissionReversal(down.Id, 1000, key)
 	}
 	var r User
 	require.NoError(t, DB.First(&r, agent.Id).Error)
-	// rate=0.1 → 单次回冲 100;5 次重放只应生效一次 → 1000-100=900
-	assert.Equal(t, 900, r.CommissionQuota, "replayed reversal applies exactly once")
+	// 原入账 +100，单次回冲 -100；5 次重放后仍回到初始余额。
+	assert.Equal(t, 1000, r.CommissionQuota, "replayed reversal applies exactly once")
 }
 
 // TestAdv_WithdrawInputBoundaries 防呆边界:零/负/低于最低额/恰好最低额/超余额。

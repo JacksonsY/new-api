@@ -116,9 +116,15 @@ func SyncChannelCache(frequency int) {
 }
 
 func GetRandomSatisfiedChannel(group string, model string, retry int, requestPath string) (*Channel, error) {
+	return GetRandomSatisfiedChannelExcluding(group, model, retry, requestPath, nil)
+}
+
+// GetRandomSatisfiedChannelExcluding selects a channel while omitting channels
+// that already lost an atomic max-concurrency race for the current request.
+func GetRandomSatisfiedChannelExcluding(group string, model string, retry int, requestPath string, excluded map[int]struct{}) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
-		return GetChannel(group, model, retry, requestPath)
+		return GetChannelExcluding(group, model, retry, requestPath, excluded)
 	}
 
 	channelSyncLock.RLock()
@@ -136,9 +142,24 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	if len(channels) == 0 {
 		return nil, nil
 	}
+	if len(excluded) > 0 {
+		available := make([]int, 0, len(channels))
+		for _, channelID := range channels {
+			if _, skip := excluded[channelID]; !skip {
+				available = append(available, channelID)
+			}
+		}
+		channels = available
+		if len(channels) == 0 {
+			return nil, nil
+		}
+	}
 
 	if len(channels) == 1 {
 		if channel, ok := channelsIDM[channels[0]]; ok {
+			if len(filterChannelsByConcurrencyLimit([]*Channel{channel})) == 0 {
+				return nil, nil
+			}
 			return channel, nil
 		}
 		return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channels[0])
@@ -180,8 +201,10 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	}
 
 	// 渠道级并发上限：剔除本实例在飞数已达 max_concurrency 的渠道。
-	// 同层候选全部超限时放行原集合（fail-open，可用性优先于限流精度）。
 	targetChannels = filterChannelsByConcurrencyLimit(targetChannels)
+	if len(targetChannels) == 0 {
+		return nil, nil
+	}
 
 	var sumWeight = 0
 	for _, channel := range targetChannels {
@@ -236,10 +259,9 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 }
 
 // filterChannelsByConcurrencyLimit drops channels whose in-flight count (this
-// instance) has reached their configured max_concurrency. When every candidate
-// is saturated the original slice is returned unchanged — fail-open: smoothing
-// load matters less than never stranding a request. Channels without a limit
-// (absent from channel2maxConcurrency) always pass.
+// instance) has reached their configured max_concurrency. Channels without a
+// limit (absent from channel2maxConcurrency) always pass. An empty result is a
+// hard saturation signal; callers must not fail open past an operator limit.
 // Caller must hold channelSyncLock (read lock). The input slice is never mutated.
 func filterChannelsByConcurrencyLimit(channels []*Channel) []*Channel {
 	if len(channels) == 0 || len(channel2maxConcurrency) == 0 {
@@ -252,10 +274,29 @@ func filterChannelsByConcurrencyLimit(channels []*Channel) []*Channel {
 		}
 		filtered = append(filtered, channel)
 	}
-	if len(filtered) == 0 {
-		return channels
-	}
 	return filtered
+}
+
+// TryAcquireChannelInflight atomically reserves one request slot using the
+// channel's configured max_concurrency. It is paired with
+// channelhealth.ReleaseInflight by the relay controller.
+func TryAcquireChannelInflight(channelID int) bool {
+	if channelID <= 0 {
+		return false
+	}
+	limit := 0
+	if common.MemoryCacheEnabled {
+		channelSyncLock.RLock()
+		limit = channel2maxConcurrency[channelID]
+		channelSyncLock.RUnlock()
+	} else {
+		channel, err := GetChannelById(channelID, true)
+		if err != nil || channel == nil {
+			return false
+		}
+		limit = channel.GetSetting().MaxConcurrency
+	}
+	return channelhealth.TryAcquireInflight(channelID, limit)
 }
 
 // filterChannelsByRequestPath restricts candidates by request path. Only Advanced

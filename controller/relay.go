@@ -207,6 +207,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	// 该渠道（网络层瞬时错误不换渠道，保住优先级与粘性亲和的提示词缓存）。
 	var pinnedChannel *model.Channel
 	sameChannelRetries := 0
+	concurrencyReselectPending := false
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
@@ -221,7 +222,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
-			newAPIError = channelErr
+			if concurrencyReselectPending && channelErr.GetErrorCode() == types.ErrorCodeGetChannelFailed {
+				newAPIError = types.NewErrorWithStatusCode(
+					fmt.Errorf("all candidate channels reached max concurrency"),
+					types.ErrorCodeGetChannelFailed,
+					http.StatusServiceUnavailable,
+					types.ErrOptionWithSkipRetry(),
+				)
+			} else {
+				newAPIError = channelErr
+			}
 			break
 		}
 
@@ -243,7 +253,28 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		// recover), so a slot is never leaked. attemptStart is per-attempt so a
 		// retried success isn't charged the failed attempt's latency.
 		attemptStart := time.Now()
-		channelhealth.AcquireInflight(channel.Id)
+		if !model.TryAcquireChannelInflight(channel.Id) {
+			if _, specific := c.Get("specific_channel_id"); !specific {
+				// The initial middleware-selected channel has not populated
+				// ChannelMeta yet. Snapshot it so the next getChannel call enters
+				// the normal reselection path instead of returning the same channel.
+				if relayInfo.ChannelMeta == nil {
+					relayInfo.InitChannelMeta(c)
+				}
+				retryParam.ExcludeChannel(channel.Id)
+				retryParam.ResetRetryNextTry()
+				concurrencyReselectPending = true
+				continue
+			}
+			newAPIError = types.NewErrorWithStatusCode(
+				fmt.Errorf("channel #%d reached max concurrency", channel.Id),
+				types.ErrorCodeGetChannelFailed,
+				http.StatusServiceUnavailable,
+				types.ErrOptionWithSkipRetry(),
+			)
+			break
+		}
+		concurrencyReselectPending = false
 		func() {
 			defer channelhealth.ReleaseInflight(channel.Id)
 			switch relayFormat {
@@ -469,6 +500,9 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if types.IsChannelError(openaiErr) {
 		return true
 	}
+	if openaiErr.GetErrorCode() == types.ErrorCodeDoRequestFailed && !isIdempotentRelayRequest(c) {
+		return false
+	}
 	if types.IsSkipRetryError(openaiErr) {
 		return false
 	}
@@ -532,6 +566,9 @@ func shouldFastRetrySameChannel(c *gin.Context, err *types.NewAPIError, used int
 	if err == nil || err.GetErrorCode() != types.ErrorCodeDoRequestFailed {
 		return false
 	}
+	if !isIdempotentRelayRequest(c) {
+		return false
+	}
 	if c.Request.Context().Err() != nil {
 		return false
 	}
@@ -539,6 +576,18 @@ func shouldFastRetrySameChannel(c *gin.Context, err *types.NewAPIError, used int
 		return false
 	}
 	return true
+}
+
+func isIdempotentRelayRequest(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	switch c.Request.Method {
+	case http.MethodGet, http.MethodHead, http.MethodPut, http.MethodDelete, http.MethodOptions, http.MethodTrace:
+		return true
+	default:
+		return false
+	}
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
@@ -626,7 +675,7 @@ func RelayMidjourney(c *gin.Context) {
 	log.Println(mjErr)
 	if mjErr != nil {
 		statusCode := http.StatusBadRequest
-		if mjErr.Code == 30 {
+		if mjErr.Code == constant.MjConcurrencyError {
 			mjErr.Result = "当前分组负载已饱和，请稍后再试，或升级账户以提升服务质量。"
 			statusCode = http.StatusTooManyRequests
 		}
@@ -715,11 +764,14 @@ func RelayTask(c *gin.Context) {
 		RequestPath: c.Request.URL.Path,
 		Retry:       common.GetPointer(0),
 	}
+	concurrencyReselectPending := false
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		var channel *model.Channel
+		lockedChannel := false
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
+			lockedChannel = true
 			channel = lockedCh
 			if retryParam.GetRetry() > 0 {
 				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
@@ -732,7 +784,13 @@ func RelayTask(c *gin.Context) {
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
-				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
+				statusCode := http.StatusInternalServerError
+				code := "get_channel_failed"
+				if concurrencyReselectPending && channelErr.GetErrorCode() == types.ErrorCodeGetChannelFailed {
+					statusCode = http.StatusServiceUnavailable
+					code = "channel_concurrency_exceeded"
+				}
+				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, code, statusCode)
 				break
 			}
 		}
@@ -749,7 +807,28 @@ func RelayTask(c *gin.Context) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
-		result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
+		if !model.TryAcquireChannelInflight(channel.Id) {
+			if _, specific := c.Get("specific_channel_id"); !lockedChannel && !specific {
+				if relayInfo.ChannelMeta == nil {
+					relayInfo.InitChannelMeta(c)
+				}
+				retryParam.ExcludeChannel(channel.Id)
+				retryParam.ResetRetryNextTry()
+				concurrencyReselectPending = true
+				continue
+			}
+			taskErr = service.TaskErrorWrapperLocal(
+				fmt.Errorf("channel #%d reached max concurrency", channel.Id),
+				"channel_concurrency_exceeded",
+				http.StatusServiceUnavailable,
+			)
+			break
+		}
+		concurrencyReselectPending = false
+		func() {
+			defer channelhealth.ReleaseInflight(channel.Id)
+			result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
+		}()
 		if taskErr == nil {
 			break
 		}
@@ -774,11 +853,6 @@ func RelayTask(c *gin.Context) {
 
 	// ── 成功：结算 + 日志 + 插入任务 ──
 	if taskErr == nil {
-		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
-			common.SysError("settle task billing error: " + settleErr.Error())
-		}
-		service.LogTaskConsumption(c, relayInfo)
-
 		task := model.InitTask(result.Platform, relayInfo)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 		task.PrivateData.BillingSource = relayInfo.BillingSource
@@ -798,6 +872,14 @@ func RelayTask(c *gin.Context) {
 		task.Action = relayInfo.Action
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
+			taskErr = service.TaskErrorWrapperLocal(
+				insertErr, "insert_task_failed", http.StatusInternalServerError,
+			)
+		} else {
+			if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+				common.SysError("settle task billing error: " + settleErr.Error())
+			}
+			service.LogTaskConsumption(c, relayInfo)
 		}
 	}
 
@@ -822,6 +904,9 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError, retryTimes int) bool {
 	if taskErr == nil {
+		return false
+	}
+	if !isIdempotentRelayRequest(c) {
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {

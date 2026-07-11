@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -12,7 +13,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -94,6 +97,117 @@ func seedToken(t *testing.T, id int, userId int, key string, remainQuota int) {
 		UsedQuota:   0,
 	}
 	require.NoError(t, model.DB.Create(token).Error)
+}
+
+func TestTaskCommissionRefundUsesInitialPublicTaskOwnership(t *testing.T) {
+	require.NoError(t, model.DB.AutoMigrate(&model.Commission{}))
+	ps := operation_setting.GetPaymentSetting()
+	originalCompliance, originalTerms := ps.ComplianceConfirmed, ps.ComplianceTermsVersion
+	originalMaturity := common.AgentCommissionMatureMinutes
+	originalLogConsume := common.LogConsumeEnabled
+	ps.ComplianceConfirmed = true
+	ps.ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+	common.AgentCommissionMatureMinutes = 0
+	common.LogConsumeEnabled = false
+	t.Cleanup(func() {
+		ps.ComplianceConfirmed, ps.ComplianceTermsVersion = originalCompliance, originalTerms
+		common.AgentCommissionMatureMinutes = originalMaturity
+		common.LogConsumeEnabled = originalLogConsume
+	})
+
+	suffix := common.GetUUID()[:8]
+	originalAgent := &model.User{
+		Username: "task-owner-a-" + suffix, AffCode: "toa_" + suffix,
+		Status: common.UserStatusEnabled, AgentType: "normal", UsageProfitRate: 0.2,
+	}
+	newAgent := &model.User{
+		Username: "task-owner-b-" + suffix, AffCode: "tob_" + suffix,
+		Status: common.UserStatusEnabled, AgentType: "normal", UsageProfitRate: 0.5,
+	}
+	require.NoError(t, model.DB.Create(originalAgent).Error)
+	require.NoError(t, model.DB.Create(newAgent).Error)
+	downstream := &model.User{
+		Username: "task-owner-d-" + suffix, AffCode: "tod_" + suffix,
+		Status: common.UserStatusEnabled, InviterId: originalAgent.Id, Quota: 1000,
+	}
+	require.NoError(t, model.DB.Create(downstream).Error)
+	t.Cleanup(func() {
+		model.DB.Where("from_user_id = ?", downstream.Id).Delete(&model.Commission{})
+		model.DB.Unscoped().Delete(&model.User{}, []int{downstream.Id, originalAgent.Id, newAgent.Id})
+	})
+
+	const publicTaskID = "provider:job_1%"
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", nil)
+	c.Set(common.RequestIdKey, "request-id-does-not-own-task-refund")
+	info := &relaycommon.RelayInfo{
+		UserId:          downstream.Id,
+		UsingGroup:      "default",
+		OriginModelName: "task-model",
+		PriceData: types.PriceData{
+			Quota:          1000,
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1},
+		},
+		ChannelMeta:   &relaycommon.ChannelMeta{ChannelId: 1},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{Action: "generate", PublicTaskID: publicTaskID},
+	}
+	LogTaskConsumption(c, info)
+
+	var positive model.Commission
+	require.NoError(t, model.DB.Where("from_user_id = ? AND quota > 0", downstream.Id).First(&positive).Error)
+	require.NotNil(t, positive.SourceKey)
+	assert.Equal(t, model.BuildTaskCommissionSourceKey(1, publicTaskID, "initial", 1000), *positive.SourceKey)
+	assert.Equal(t, originalAgent.Id, positive.AgentId)
+
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", downstream.Id).Update("inviter_id", newAgent.Id).Error)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", originalAgent.Id).Update("usage_profit_rate", 0.9).Error)
+	task := &model.Task{
+		TaskID: publicTaskID, UserId: downstream.Id, Quota: 1000,
+		ChannelId: 1, Group: "default", Status: model.TaskStatusInProgress,
+		CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix(), Data: json.RawMessage(`{}`),
+		PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{OriginModelName: "task-model"}},
+	}
+	require.NoError(t, model.DB.Create(task).Error)
+	t.Cleanup(func() { model.DB.Unscoped().Delete(task) })
+
+	RecalculateTaskQuota(context.Background(), task, 1500, "positive delta")
+	require.Eventually(t, func() bool {
+		var original, rebound model.User
+		if model.DB.First(&original, originalAgent.Id).Error != nil || model.DB.First(&rebound, newAgent.Id).Error != nil {
+			return false
+		}
+		return original.CommissionQuota == 300 && rebound.CommissionQuota == 0
+	}, 2*time.Second, 10*time.Millisecond, "positive deltas must retain the first ownership/rate snapshot")
+
+	// A task may settle more than once. Two distinct transitions can have the
+	// same delta, so amount alone cannot be the commission idempotency key.
+	RecalculateTaskQuota(context.Background(), task, 2000, "second equal positive delta")
+	require.Eventually(t, func() bool {
+		var original, rebound model.User
+		if model.DB.First(&original, originalAgent.Id).Error != nil || model.DB.First(&rebound, newAgent.Id).Error != nil {
+			return false
+		}
+		return original.CommissionQuota == 400 && rebound.CommissionQuota == 0
+	}, 2*time.Second, 10*time.Millisecond, "equal deltas from distinct task transitions must both settle")
+
+	var positives []model.Commission
+	require.NoError(t, model.DB.Where("from_user_id = ? AND quota > 0", downstream.Id).Order("id asc").Find(&positives).Error)
+	require.Len(t, positives, 3)
+	for _, commission := range positives {
+		assert.Equal(t, originalAgent.Id, commission.AgentId)
+		assert.InDelta(t, 0.2, commission.Rate, 1e-12)
+	}
+
+	RefundTaskQuota(context.Background(), task, "upstream failed")
+
+	require.Eventually(t, func() bool {
+		var original, rebound model.User
+		if model.DB.First(&original, originalAgent.Id).Error != nil || model.DB.First(&rebound, newAgent.Id).Error != nil {
+			return false
+		}
+		return original.CommissionQuota == 0 && rebound.CommissionQuota == 0
+	}, 2*time.Second, 10*time.Millisecond)
 }
 
 func seedSubscription(t *testing.T, id int, userId int, amountTotal int64, amountUsed int64) {

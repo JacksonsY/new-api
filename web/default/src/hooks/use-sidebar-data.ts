@@ -40,7 +40,7 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarData } from '@/components/layout/types'
-import { ROLE } from '@/lib/roles'
+import { ROLE, hasRootAccess } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 /**
@@ -54,7 +54,9 @@ export function useSidebarData(): SidebarData {
   // jzlh-agent：代理分销菜单按独立维度 agent_type / role 自条件显示
   const user = useAuthStore((s) => s.auth.user)
   const isAgent = Boolean(user?.agent_type)
+  const hasAgentCenterAccess = isAgent || Boolean(user?.agent_grace_access)
   const isAdmin = (user?.role ?? 0) >= ROLE.ADMIN
+  const isRoot = hasRootAccess(user?.role)
 
   return {
     navGroups: [
@@ -123,7 +125,7 @@ export function useSidebarData(): SidebarData {
           },
         ],
       },
-      ...(isAgent
+      ...(hasAgentCenterAccess
         ? [
             {
               id: 'agent',
@@ -134,11 +136,15 @@ export function useSidebarData(): SidebarData {
                   url: '/agent/wallet',
                   icon: Wallet,
                 },
-                {
-                  title: t('My Users'),
-                  url: '/agent/users',
-                  icon: Share2,
-                },
+                ...(isAgent
+                  ? [
+                      {
+                        title: t('My Users'),
+                        url: '/agent/users',
+                        icon: Share2,
+                      },
+                    ]
+                  : []),
               ],
             },
           ]
@@ -172,7 +178,7 @@ export function useSidebarData(): SidebarData {
             url: '/subscriptions',
             icon: CreditCard,
           },
-          ...(isAdmin
+          ...(isRoot
             ? [
                 {
                   title: t('Agent Management'),

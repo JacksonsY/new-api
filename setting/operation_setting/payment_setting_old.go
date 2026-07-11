@@ -6,6 +6,8 @@ This file is the old version of the payment settings file. If you need to add ne
 package operation_setting
 
 import (
+	"sync"
+
 	"github.com/QuantumNous/new-api/common"
 )
 
@@ -18,11 +20,46 @@ var EpayKey = ""
 var EpayApiVersion = "v1"
 var EpayPlatformPublicKey = ""
 var EpayMerchantPrivateKey = ""
+
+type EpaySettingSnapshot struct {
+	PayAddress         string
+	MerchantID         string
+	MD5Key             string
+	APIVersion         string
+	PlatformPublicKey  string
+	MerchantPrivateKey string
+	PayMethodCount     int
+}
+
+// GetEpaySettingSnapshot returns one coherent view of the legacy Epay options.
+// Production writes are published while holding OptionMapRWMutex, including
+// bulk updates, so readers cannot observe a protocol paired with half-updated
+// credentials.
+func GetEpaySettingSnapshot() EpaySettingSnapshot {
+	// Keep lock ordering aligned with option publication: the option lock always
+	// precedes the PayMethods lock.
+	common.OptionMapRWMutex.RLock()
+	defer common.OptionMapRWMutex.RUnlock()
+	payMethodsMu.RLock()
+	defer payMethodsMu.RUnlock()
+	return EpaySettingSnapshot{
+		PayAddress:         PayAddress,
+		MerchantID:         EpayId,
+		MD5Key:             EpayKey,
+		APIVersion:         EpayApiVersion,
+		PlatformPublicKey:  EpayPlatformPublicKey,
+		MerchantPrivateKey: EpayMerchantPrivateKey,
+		PayMethodCount:     len(payMethods),
+	}
+}
+
 var Price = 7.3
 var MinTopUp = 1
 var USDExchangeRate = 7.3
 
-var PayMethods = []map[string]string{
+var payMethodsMu sync.RWMutex
+
+var payMethods = []map[string]string{
 	{
 		"name": "支付宝",
 		"icon": "SiAlipay",
@@ -42,12 +79,33 @@ var PayMethods = []map[string]string{
 }
 
 func UpdatePayMethodsByJsonString(jsonString string) error {
-	PayMethods = make([]map[string]string, 0)
-	return common.Unmarshal([]byte(jsonString), &PayMethods)
+	var parsed []map[string]string
+	if err := common.Unmarshal([]byte(jsonString), &parsed); err != nil {
+		return err
+	}
+	payMethodsMu.Lock()
+	payMethods = parsed
+	payMethodsMu.Unlock()
+	return nil
+}
+
+func GetPayMethodsSnapshot() []map[string]string {
+	payMethodsMu.RLock()
+	defer payMethodsMu.RUnlock()
+
+	snapshot := make([]map[string]string, len(payMethods))
+	for i, method := range payMethods {
+		methodCopy := make(map[string]string, len(method))
+		for key, value := range method {
+			methodCopy[key] = value
+		}
+		snapshot[i] = methodCopy
+	}
+	return snapshot
 }
 
 func PayMethods2JsonString() string {
-	jsonBytes, err := common.Marshal(PayMethods)
+	jsonBytes, err := common.Marshal(GetPayMethodsSnapshot())
 	if err != nil {
 		return "[]"
 	}
@@ -55,7 +113,9 @@ func PayMethods2JsonString() string {
 }
 
 func ContainsPayMethod(method string) bool {
-	for _, payMethod := range PayMethods {
+	payMethodsMu.RLock()
+	defer payMethodsMu.RUnlock()
+	for _, payMethod := range payMethods {
 		if payMethod["type"] == method {
 			return true
 		}

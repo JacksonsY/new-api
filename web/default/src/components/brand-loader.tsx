@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useTranslation } from 'react-i18next'
+
 import { cn } from '@/lib/utils'
 
 interface BrandLoaderProps {
@@ -27,6 +29,9 @@ interface BrandLoaderProps {
 // 进度条），用于路由跳转 pending 和页面级加载。容器高度由调用方通过
 // className 控制（如 min-h-svh / min-h-40）；小型局部加载请用 LoadingState。
 export function BrandLoader({ className, message }: BrandLoaderProps) {
+  const { t } = useTranslation()
+  const statusMessage = message ?? t('Loading...')
+
   return (
     <div
       className={cn(
@@ -45,9 +50,9 @@ export function BrandLoader({ className, message }: BrandLoaderProps) {
       <div className='brand-loader-track'>
         <div className='brand-loader-fill' />
       </div>
-      {message ? (
-        <p className='text-muted-foreground text-sm'>{message}</p>
-      ) : null}
+      <p className={message ? 'text-muted-foreground text-sm' : 'sr-only'}>
+        {statusMessage}
+      </p>
     </div>
   )
 }

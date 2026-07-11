@@ -20,7 +20,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
 import { AdminWithdrawals } from '@/features/agent'
-import { ROLE } from '@/lib/roles'
+import { hasRootAccess } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 const withdrawalsSearchSchema = z.object({
@@ -37,7 +37,7 @@ export const Route = createFileRoute('/_authenticated/withdrawals/')({
   validateSearch: withdrawalsSearchSchema,
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
+    if (!hasRootAccess(auth.user?.role)) {
       throw redirect({ to: '/403' })
     }
   },

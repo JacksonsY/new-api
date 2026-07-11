@@ -606,6 +606,21 @@ func cacheCreationTokensForOpenAIUsage(usage *dto.Usage) int {
 	return splitCacheCreationTokens
 }
 
+// estimateClaudeUncachedInputTokens converts the request-side total-input
+// estimate into Anthropic's input_tokens semantic, which excludes cache reads
+// and cache creation. Upstreams that report cache fields but omit input_tokens
+// must not be billed once at full input price and again at cache price.
+func estimateClaudeUncachedInputTokens(estimatedTotal int, usage *dto.Usage) int {
+	if estimatedTotal <= 0 || usage == nil {
+		return max(estimatedTotal, 0)
+	}
+	cached := usage.PromptTokensDetails.CachedTokens + cacheCreationTokensForOpenAIUsage(usage)
+	if cached >= estimatedTotal {
+		return 0
+	}
+	return estimatedTotal - cached
+}
+
 func buildOpenAIStyleUsageFromClaudeUsage(usage *dto.Usage) dto.Usage {
 	if usage == nil {
 		return dto.Usage{}
@@ -837,7 +852,7 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 	if claudeInfo.Usage.PromptTokens == 0 {
 		if estimate := info.GetEstimatePromptTokens(); estimate > 0 {
 			common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
-			claudeInfo.Usage.PromptTokens = estimate
+			claudeInfo.Usage.PromptTokens = estimateClaudeUncachedInputTokens(estimate, claudeInfo.Usage)
 			claudeInfo.Usage.TotalTokens = claudeInfo.Usage.PromptTokens + claudeInfo.Usage.CompletionTokens
 		}
 	}
@@ -852,7 +867,7 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 			claudeInfo.Usage.CompletionTokens = fallback.CompletionTokens
 		}
 		if claudeInfo.Usage.PromptTokens == 0 {
-			claudeInfo.Usage.PromptTokens = fallback.PromptTokens
+			claudeInfo.Usage.PromptTokens = estimateClaudeUncachedInputTokens(fallback.PromptTokens, claudeInfo.Usage)
 		}
 		claudeInfo.Usage.TotalTokens = claudeInfo.Usage.PromptTokens + claudeInfo.Usage.CompletionTokens
 	}
@@ -925,7 +940,7 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	usagePatched := false
 	if claudeInfo.Usage.PromptTokens == 0 {
 		if estimate := info.GetEstimatePromptTokens(); estimate > 0 {
-			claudeInfo.Usage.PromptTokens = estimate
+			claudeInfo.Usage.PromptTokens = estimateClaudeUncachedInputTokens(estimate, claudeInfo.Usage)
 			usagePatched = true
 		}
 	}

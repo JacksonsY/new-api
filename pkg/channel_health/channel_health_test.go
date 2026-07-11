@@ -248,7 +248,7 @@ func TestShouldEscapeAffinity(t *testing.T) {
 func TestSharedCircuitExcludesAcrossInstances(t *testing.T) {
 	configureAdaptive(t)
 	// Simulate another instance having tripped channel 41 (openUntil in future).
-	sharedCircuits.Store(map[int]int64{41: time.Now().Add(time.Minute).UnixNano()})
+	sharedCircuits.Store(map[int]int64{41: time.Now().Add(time.Minute).UnixMilli()})
 	// This replica never observed 41 locally, yet must exclude it cluster-wide.
 	for i := 0; i < 50; i++ {
 		id, ok := Select([]Candidate{{ChannelID: 40, Weight: 100}, {ChannelID: 41, Weight: 100}})
@@ -259,7 +259,7 @@ func TestSharedCircuitExcludesAcrossInstances(t *testing.T) {
 
 func TestSharedCircuitEscapeWithoutLocalStat(t *testing.T) {
 	configureAdaptive(t)
-	sharedCircuits.Store(map[int]int64{42: time.Now().Add(time.Minute).UnixNano()})
+	sharedCircuits.Store(map[int]int64{42: time.Now().Add(time.Minute).UnixMilli()})
 	// No local stat for 42, but the cluster says open -> escape the anchor.
 	assert.True(t, ShouldEscapeAffinity(42))
 	// Unknown, unobserved channel does not escape.
@@ -270,11 +270,11 @@ func TestSharedCircuitMergedIntoRead(t *testing.T) {
 	configureAdaptive(t)
 
 	// Future openUntil => cluster-open, merged into the local read.
-	sharedCircuits.Store(map[int]int64{43: time.Now().Add(time.Minute).UnixNano()})
+	sharedCircuits.Store(map[int]int64{43: time.Now().Add(time.Minute).UnixMilli()})
 	assert.Equal(t, circuitOpen, getStat(43).read().state)
 
 	// Past openUntil => cluster half-open (recovering), not full exclusion.
-	sharedCircuits.Store(map[int]int64{43: time.Now().Add(-time.Second).UnixNano()})
+	sharedCircuits.Store(map[int]int64{43: time.Now().Add(-time.Second).UnixMilli()})
 	assert.Equal(t, circuitHalfOpen, getStat(43).read().state)
 }
 
@@ -286,13 +286,13 @@ func TestResetClearsHealthAndCircuit(t *testing.T) {
 		ReportResult(60, false, true, 0)
 	}
 	require.True(t, mustView(t, 60).CircuitOpen)
-	sharedCircuits.Store(map[int]int64{60: time.Now().Add(time.Minute).UnixNano()})
+	sharedCircuits.Store(map[int]int64{60: time.Now().Add(time.Minute).UnixMilli()})
 
 	Reset(60)
 
 	_, ok := GetStatView(60)
 	assert.False(t, ok, "reset should drop the local stat")
-	open, half := sharedCircuitState(60, time.Now().UnixNano())
+	open, half := sharedCircuitState(60, time.Now().UnixMilli())
 	assert.False(t, open, "reset should clear the shared trip")
 	assert.False(t, half)
 
@@ -300,10 +300,10 @@ func TestResetClearsHealthAndCircuit(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		ReportResult(61, false, true, 0)
 	}
-	sharedCircuits.Store(map[int]int64{62: time.Now().Add(time.Minute).UnixNano()})
+	sharedCircuits.Store(map[int]int64{62: time.Now().Add(time.Minute).UnixMilli()})
 	Reset(0)
 	assert.Empty(t, AllStatViews(), "reset-all should drop every local stat")
-	o, h := sharedCircuitState(62, time.Now().UnixNano())
+	o, h := sharedCircuitState(62, time.Now().UnixMilli())
 	assert.False(t, o)
 	assert.False(t, h)
 }

@@ -60,9 +60,9 @@ export function Home() {
   if (!isLoaded) {
     return (
       <PremiumPublicLayout showMainContainer={false} showFooter={false}>
-        <main className='flex min-h-svh items-center justify-center'>
+        <div className='flex min-h-svh items-center justify-center'>
           <div className='text-muted-foreground'>{t('Loading...')}</div>
-        </main>
+        </div>
       </PremiumPublicLayout>
     )
   }

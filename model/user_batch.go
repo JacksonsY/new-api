@@ -3,16 +3,15 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-
-	"gorm.io/gorm"
 )
 
 // 批量用户运营操作（代理/分销管下级）：批量换分组、批量调余额。
 // 逐用户独立执行、逐用户角色守卫，跳过的用户带稳定原因码返回；
-// 余额调整全部走条件原子 UPDATE（不用 FOR UPDATE），multiply 用 CAS 防并发覆盖。
+// 余额调整全部走快照 CAS（不用 FOR UPDATE），避免覆盖并发消费或充值。
 
 const (
 	BatchQuotaModeAdd      = "add"
@@ -27,6 +26,29 @@ const (
 	BatchSkipReasonConflict          = "conflict"
 	BatchSkipReasonNoChange          = "no_change"
 )
+
+// ValidateBatchQuotaAdjustment validates the public contract for batch quota
+// changes. Keep this in the model layer as defense in depth: HTTP validation is
+// not the only possible caller of the balance mutation.
+func ValidateBatchQuotaAdjustment(mode string, amount int, factor float64) error {
+	switch mode {
+	case BatchQuotaModeAdd, BatchQuotaModeSubtract:
+		if amount <= 0 || amount > common.MaxQuota {
+			return errors.New("invalid batch quota amount")
+		}
+	case BatchQuotaModeOverride:
+		if amount < 0 || amount > common.MaxQuota {
+			return errors.New("invalid batch quota amount")
+		}
+	case BatchQuotaModeMultiply:
+		if math.IsNaN(factor) || math.IsInf(factor, 0) || factor <= 0 || factor > 100 {
+			return errors.New("invalid batch quota factor")
+		}
+	default:
+		return errors.New("invalid batch quota mode")
+	}
+	return nil
+}
 
 type BatchUserSkip struct {
 	UserId int    `json:"user_id"`
@@ -77,7 +99,14 @@ func BatchUpdateUserGroup(operatorRole int, userIds []int, group string, adminIn
 			result.Skipped = append(result.Skipped, BatchUserSkip{UserId: user.Id, Reason: BatchSkipReasonNoChange})
 			continue
 		}
-		if err := DB.Model(&User{}).Where("id = ?", user.Id).Update("group", group).Error; err != nil {
+		res := DB.Model(&User{}).
+			Where(fmt.Sprintf("id = ? AND role = ? AND %s = ?", commonGroupCol), user.Id, user.Role, user.Group).
+			Update("group", group)
+		if res.Error != nil || res.RowsAffected == 0 {
+			err := res.Error
+			if err == nil {
+				err = errors.New("batch group target changed concurrently")
+			}
 			common.SysError(fmt.Sprintf("batch group update failed: user=%d, err=%v", user.Id, err))
 			result.Skipped = append(result.Skipped, BatchUserSkip{UserId: user.Id, Reason: BatchSkipReasonConflict})
 			continue
@@ -94,8 +123,11 @@ func BatchUpdateUserGroup(operatorRole int, userIds []int, group string, adminIn
 
 // BatchAdjustUserQuota 批量调整用户余额。
 // add/subtract 用 amount（>0）；override 用 amount（>=0）；multiply 用 factor（>0）。
-// subtract 余额不足跳过不透支；multiply 以 CAS 提交，并发冲突跳过。
+// subtract 余额不足跳过不透支；所有模式以 CAS 提交，并发冲突跳过。
 func BatchAdjustUserQuota(operatorRole int, userIds []int, mode string, amount int, factor float64, adminInfo map[string]interface{}) (*BatchUserOpResult, error) {
+	if err := ValidateBatchQuotaAdjustment(mode, amount, factor); err != nil {
+		return nil, err
+	}
 	result := &BatchUserOpResult{Skipped: make([]BatchUserSkip, 0)}
 	users, err := loadBatchTargets(userIds, result)
 	if err != nil {
@@ -112,35 +144,64 @@ func BatchAdjustUserQuota(operatorRole int, userIds []int, mode string, amount i
 		applied := true
 		switch mode {
 		case BatchQuotaModeAdd:
-			newQuota = oldQuota + amount
-			updateErr = DB.Model(&User{}).Where("id = ?", user.Id).
-				Update("quota", gorm.Expr("quota + ?", amount)).Error
-		case BatchQuotaModeSubtract:
-			newQuota = oldQuota - amount
-			res := DB.Model(&User{}).Where("id = ? AND quota >= ?", user.Id, amount).
-				Update("quota", gorm.Expr("quota - ?", amount))
-			updateErr = res.Error
-			if updateErr == nil && res.RowsAffected == 0 {
+			newQuota = common.QuotaFromFloat(float64(oldQuota) + float64(amount))
+			if newQuota == oldQuota {
 				applied = false
-				result.Skipped = append(result.Skipped, BatchUserSkip{UserId: user.Id, Reason: BatchSkipReasonInsufficientQuota})
+				result.Skipped = append(result.Skipped, BatchUserSkip{UserId: user.Id, Reason: BatchSkipReasonNoChange})
+				break
 			}
-		case BatchQuotaModeOverride:
-			newQuota = amount
-			updateErr = DB.Model(&User{}).Where("id = ?", user.Id).Update("quota", amount).Error
-		case BatchQuotaModeMultiply:
-			newQuota = int(float64(oldQuota) * factor)
-			if newQuota < 0 {
-				newQuota = 0
-			}
-			res := DB.Model(&User{}).Where("id = ? AND quota = ?", user.Id, oldQuota).
+			res := DB.Model(&User{}).Where("id = ? AND role = ? AND quota = ?", user.Id, user.Role, oldQuota).
 				Update("quota", newQuota)
 			updateErr = res.Error
 			if updateErr == nil && res.RowsAffected == 0 {
 				applied = false
 				result.Skipped = append(result.Skipped, BatchUserSkip{UserId: user.Id, Reason: BatchSkipReasonConflict})
 			}
-		default:
-			return nil, errors.New("invalid batch quota mode")
+		case BatchQuotaModeSubtract:
+			if oldQuota < amount {
+				applied = false
+				result.Skipped = append(result.Skipped, BatchUserSkip{UserId: user.Id, Reason: BatchSkipReasonInsufficientQuota})
+				break
+			}
+			newQuota = oldQuota - amount
+			res := DB.Model(&User{}).Where("id = ? AND role = ? AND quota = ?", user.Id, user.Role, oldQuota).
+				Update("quota", newQuota)
+			updateErr = res.Error
+			if updateErr == nil && res.RowsAffected == 0 {
+				applied = false
+				result.Skipped = append(result.Skipped, BatchUserSkip{UserId: user.Id, Reason: BatchSkipReasonConflict})
+			}
+		case BatchQuotaModeOverride:
+			newQuota = amount
+			if newQuota == oldQuota {
+				applied = false
+				result.Skipped = append(result.Skipped, BatchUserSkip{UserId: user.Id, Reason: BatchSkipReasonNoChange})
+				break
+			}
+			res := DB.Model(&User{}).Where("id = ? AND role = ? AND quota = ?", user.Id, user.Role, oldQuota).
+				Update("quota", newQuota)
+			updateErr = res.Error
+			if updateErr == nil && res.RowsAffected == 0 {
+				applied = false
+				result.Skipped = append(result.Skipped, BatchUserSkip{UserId: user.Id, Reason: BatchSkipReasonConflict})
+			}
+		case BatchQuotaModeMultiply:
+			newQuota = common.QuotaFromFloat(float64(oldQuota) * factor)
+			if newQuota < 0 {
+				newQuota = 0
+			}
+			if newQuota == oldQuota {
+				applied = false
+				result.Skipped = append(result.Skipped, BatchUserSkip{UserId: user.Id, Reason: BatchSkipReasonNoChange})
+				break
+			}
+			res := DB.Model(&User{}).Where("id = ? AND role = ? AND quota = ?", user.Id, user.Role, oldQuota).
+				Update("quota", newQuota)
+			updateErr = res.Error
+			if updateErr == nil && res.RowsAffected == 0 {
+				applied = false
+				result.Skipped = append(result.Skipped, BatchUserSkip{UserId: user.Id, Reason: BatchSkipReasonConflict})
+			}
 		}
 		if updateErr != nil {
 			common.SysError(fmt.Sprintf("batch quota update failed: user=%d, mode=%s, err=%v", user.Id, mode, updateErr))

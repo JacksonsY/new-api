@@ -902,12 +902,26 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	return nil
 }
 
-// GetChannelRatio 返回渠道计费倍率。nil（旧数据/未配置）或负数（非法）按 1.0 处理；允许 0。
+// MaxChannelRatio keeps stored ratios within the same representable range as
+// quota deltas. Larger values cannot produce a meaningful channel statistic.
+const MaxChannelRatio = float64(common.MaxQuota)
+
+// ValidateChannelRatio rejects values that cannot be safely persisted or used
+// in channel quota accounting. Zero is valid for channels whose upstream cost
+// is intentionally ignored.
+func ValidateChannelRatio(ratio float64) error {
+	if math.IsNaN(ratio) || math.IsInf(ratio, 0) || ratio < 0 || ratio > MaxChannelRatio {
+		return errors.New("invalid channel ratio")
+	}
+	return nil
+}
+
+// GetChannelRatio 返回渠道计费倍率。nil 或非法值按 1.0 处理；允许 0。
 func (channel *Channel) GetChannelRatio() float64 {
 	if channel == nil || channel.ChannelRatio == nil {
 		return 1.0
 	}
-	if *channel.ChannelRatio < 0 {
+	if ValidateChannelRatio(*channel.ChannelRatio) != nil {
 		return 1.0
 	}
 	return *channel.ChannelRatio
@@ -916,8 +930,8 @@ func (channel *Channel) GetChannelRatio() float64 {
 // UpdateChannelRatio 回写渠道成本倍率（上游分组倍率自动同步用）。仅更新单列；
 // 内存渠道缓存待 SyncChannelCache 周期刷新——倍率只影响统计口径，短暂滞后无碍。
 func UpdateChannelRatio(id int, ratio float64) error {
-	if ratio < 0 {
-		return errors.New("invalid channel ratio")
+	if err := ValidateChannelRatio(ratio); err != nil {
+		return err
 	}
 	return DB.Model(&Channel{}).Where("id = ?", id).Update("channel_ratio", ratio).Error
 }
@@ -932,7 +946,7 @@ func applyChannelRatio(id int, quota int) int {
 	if ratio == 1 {
 		return quota
 	}
-	return int(math.Round(float64(quota) * ratio))
+	return common.QuotaRound(float64(quota) * ratio)
 }
 
 func UpdateChannelUsedQuota(id int, quota int) {
@@ -1028,6 +1042,9 @@ func (channel *Channel) ValidateSettings() error {
 		if err != nil {
 			return err
 		}
+	}
+	if channelParams.MaxConcurrency < 0 {
+		return fmt.Errorf("max_concurrency must be non-negative")
 	}
 	channelOtherSettings := &dto.ChannelOtherSettings{}
 	if channel.OtherSettings != "" {

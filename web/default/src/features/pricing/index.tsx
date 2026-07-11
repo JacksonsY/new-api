@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { PremiumPublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
 
@@ -210,7 +211,7 @@ export function Pricing() {
               className='hover-scrollbar sticky top-4 hidden max-h-[calc(100dvh-2rem)] self-start overflow-y-auto xl:block'
             />
 
-            <main className='min-w-0 space-y-4'>
+            <div className='min-w-0 space-y-4'>
               <PricingToolbar
                 filteredCount={filteredModels.length}
                 totalCount={models?.length}
@@ -243,7 +244,7 @@ export function Pricing() {
               />
 
               {renderPricingContent()}
-            </main>
+            </div>
           </div>
 
           {selectedModel && (

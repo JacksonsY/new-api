@@ -1,28 +1,39 @@
 package model
 
+import (
+	"fmt"
+	"time"
+)
+
+const (
+	MidjourneyBillingReady = iota
+	MidjourneyBillingPending
+)
+
 type Midjourney struct {
-	Id          int    `json:"id"`
-	Code        int    `json:"code"`
-	UserId      int    `json:"user_id" gorm:"index"`
-	Action      string `json:"action" gorm:"type:varchar(40);index"`
-	MjId        string `json:"mj_id" gorm:"index"`
-	Prompt      string `json:"prompt"`
-	PromptEn    string `json:"prompt_en"`
-	Description string `json:"description"`
-	State       string `json:"state"`
-	SubmitTime  int64  `json:"submit_time" gorm:"index"`
-	StartTime   int64  `json:"start_time" gorm:"index"`
-	FinishTime  int64  `json:"finish_time" gorm:"index"`
-	ImageUrl    string `json:"image_url"`
-	VideoUrl    string `json:"video_url"`
-	VideoUrls   string `json:"video_urls"`
-	Status      string `json:"status" gorm:"type:varchar(20);index"`
-	Progress    string `json:"progress" gorm:"type:varchar(30);index"`
-	FailReason  string `json:"fail_reason"`
-	ChannelId   int    `json:"channel_id"`
-	Quota       int    `json:"quota"`
-	Buttons     string `json:"buttons"`
-	Properties  string `json:"properties"`
+	Id            int    `json:"id"`
+	Code          int    `json:"code"`
+	UserId        int    `json:"user_id" gorm:"index"`
+	Action        string `json:"action" gorm:"type:varchar(40);index"`
+	MjId          string `json:"mj_id" gorm:"index"`
+	Prompt        string `json:"prompt"`
+	PromptEn      string `json:"prompt_en"`
+	Description   string `json:"description"`
+	State         string `json:"state"`
+	SubmitTime    int64  `json:"submit_time" gorm:"index"`
+	StartTime     int64  `json:"start_time" gorm:"index"`
+	FinishTime    int64  `json:"finish_time" gorm:"index"`
+	ImageUrl      string `json:"image_url"`
+	VideoUrl      string `json:"video_url"`
+	VideoUrls     string `json:"video_urls"`
+	Status        string `json:"status" gorm:"type:varchar(20);index"`
+	Progress      string `json:"progress" gorm:"type:varchar(30);index"`
+	FailReason    string `json:"fail_reason"`
+	ChannelId     int    `json:"channel_id"`
+	Quota         int    `json:"quota"`
+	BillingStatus int    `json:"-" gorm:"index"`
+	Buttons       string `json:"buttons"`
+	Properties    string `json:"properties"`
 }
 
 // TaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
@@ -94,7 +105,7 @@ func GetAllUnFinishTasks() []*Midjourney {
 	var tasks []*Midjourney
 	var err error
 	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Find(&tasks).Error
+	err = DB.Where("progress != ? AND (billing_status = ? OR billing_status IS NULL)", "100%", MidjourneyBillingReady).Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -108,7 +119,7 @@ func GetAllUnFinishTasks() []*Midjourney {
 func HasUnfinishedMidjourneyTasks() bool {
 	var id int
 	err := DB.Model(&Midjourney{}).
-		Where("progress != ?", "100%").
+		Where("progress != ? AND (billing_status = ? OR billing_status IS NULL)", "100%", MidjourneyBillingReady).
 		Limit(1).
 		Pluck("id", &id).Error
 	return err == nil && id != 0
@@ -170,9 +181,36 @@ func (midjourney *Midjourney) Update() error {
 	return err
 }
 
-// UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).
-// Returns (true, nil) if this caller won the update, (false, nil) if
-// another process already moved the task out of fromStatus.
+// FinishBilling publishes a task to the poller with its final refundable quota.
+// The two fields change in one UPDATE so a poller can never observe a ready task
+// with a provisional billing amount.
+func (midjourney *Midjourney) FinishBilling(quota int) error {
+	if midjourney == nil || midjourney.Id <= 0 {
+		return fmt.Errorf("midjourney task is not persisted")
+	}
+	if quota < 0 {
+		return fmt.Errorf("midjourney task quota cannot be negative")
+	}
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		lastErr = DB.Model(&Midjourney{}).
+			Where("id = ?", midjourney.Id).
+			Updates(map[string]interface{}{
+				"quota":          quota,
+				"billing_status": MidjourneyBillingReady,
+			}).Error
+		if lastErr == nil {
+			midjourney.Quota = quota
+			midjourney.BillingStatus = MidjourneyBillingReady
+			return nil
+		}
+		if attempt < 3 {
+			time.Sleep(time.Duration(attempt*50) * time.Millisecond)
+		}
+	}
+	return fmt.Errorf("finish midjourney billing task_id=%d mj_id=%q: %w", midjourney.Id, midjourney.MjId, lastErr)
+}
+
 // UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).
 // Uses Model().Select("*").Updates() to avoid GORM Save()'s INSERT fallback.
 func (midjourney *Midjourney) UpdateWithStatus(fromStatus string) (bool, error) {

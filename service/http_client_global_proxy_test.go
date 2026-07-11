@@ -35,17 +35,15 @@ func setGlobalProxyForTest(t *testing.T, proxyURL string, directFallback bool) {
 	})
 }
 
-func TestDirectFallbackTransportRetriesWithReplayableBody(t *testing.T) {
+func TestDirectFallbackTransportSkipsReplayableNonIdempotentRequest(t *testing.T) {
 	proxyErr := errors.New("proxy connect refused")
-	directBody := ""
+	directCalled := false
 	transport := &directFallbackTransport{
 		proxy: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			return nil, proxyErr
 		}),
-		direct: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			data, err := io.ReadAll(req.Body)
-			require.NoError(t, err)
-			directBody = string(data)
+		direct: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			directCalled = true
 			return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 		}),
 	}
@@ -54,9 +52,30 @@ func TestDirectFallbackTransportRetriesWithReplayableBody(t *testing.T) {
 	require.NoError(t, err)
 
 	resp, err := transport.RoundTrip(req)
+	require.ErrorIs(t, err, proxyErr)
+	assert.Nil(t, resp)
+	assert.False(t, directCalled)
+}
+
+func TestDirectFallbackTransportRetriesIdempotentRequest(t *testing.T) {
+	proxyErr := errors.New("proxy connect refused")
+	directCalled := false
+	transport := &directFallbackTransport{
+		proxy: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			return nil, proxyErr
+		}),
+		direct: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			directCalled = true
+			return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+		}),
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "http://upstream.example/v1/models", nil)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, `{"model":"gpt-4o"}`, directBody)
+	resp, err := transport.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, directCalled)
 }
 
 func TestDirectFallbackTransportSkipsNonReplayableBody(t *testing.T) {
@@ -166,4 +185,18 @@ func TestGetHttpClientInvalidGlobalProxySchemeFallsBackDirect(t *testing.T) {
 
 	client := GetHttpClient()
 	assert.Same(t, httpClient, client)
+}
+
+func TestGetHttpClientInvalidGlobalProxySchemeWithoutFallbackFailsClosed(t *testing.T) {
+	setGlobalProxyForTest(t, "ftp://127.0.0.1:21", false)
+
+	client := GetHttpClient()
+	require.NotNil(t, client)
+	require.NotSame(t, httpClient, client)
+
+	req, err := http.NewRequest(http.MethodGet, "http://upstream.example/v1/models", nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.Error(t, err)
+	assert.Nil(t, resp)
 }
