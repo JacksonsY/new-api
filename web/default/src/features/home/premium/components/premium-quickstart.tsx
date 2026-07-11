@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useRef } from 'react'
 import { Check } from 'lucide-react'
+import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { useReveal } from '../lib'
 
 const C = {
@@ -48,7 +49,8 @@ export function PremiumQuickstart() {
             {t('Quickstart')}
           </span>
           <h2 data-reveal className='pf-h2 mb-5'>
-            {t('Ship in')} <span className='pf-fire-text'>{t('one line.')}</span>
+            {t('Ship in')}{' '}
+            <span className='pf-fire-text'>{t('one line.')}</span>
           </h2>
           <p
             data-reveal
@@ -107,25 +109,35 @@ export function PremiumQuickstart() {
             style={{ fontFamily: 'var(--font-mono, ui-monospace, monospace)' }}
           >
             <code>
-              <span style={{ color: C.dim }}># one endpoint, every model{'\n'}</span>
+              <span style={{ color: C.dim }}>
+                # one endpoint, every model{'\n'}
+              </span>
               <span style={{ color: C.fn }}>curl</span>{' '}
               {typeof window !== 'undefined'
                 ? window.location.origin
                 : 'https://api.jzlh99.com'}
               <span style={{ color: C.str }}>/v1/chat/completions</span> \{'\n'}
-              {'  '}-H <span style={{ color: C.str }}>"Authorization: Bearer $JZLH_KEY"</span> \{'\n'}
+              {'  '}-H{' '}
+              <span style={{ color: C.str }}>
+                "Authorization: Bearer $JZLH_KEY"
+              </span>{' '}
+              \{'\n'}
               {'  '}-d <span style={{ color: C.str }}>{"'{"}</span>
               {'\n'}
-              {'       '}<span style={{ color: C.key }}>"model"</span>:{' '}
+              {'       '}
+              <span style={{ color: C.key }}>"model"</span>:{' '}
               <span style={{ color: C.str }}>"gpt-4o"</span>,{'\n'}
-              {'       '}<span style={{ color: C.key }}>"stream"</span>:{' '}
+              {'       '}
+              <span style={{ color: C.key }}>"stream"</span>:{' '}
               <span style={{ color: C.num }}>true</span>,{'\n'}
-              {'       '}<span style={{ color: C.key }}>"messages"</span>: [
-              {'{'} <span style={{ color: C.key }}>"role"</span>:{' '}
+              {'       '}
+              <span style={{ color: C.key }}>"messages"</span>: [{'{'}{' '}
+              <span style={{ color: C.key }}>"role"</span>:{' '}
               <span style={{ color: C.str }}>"user"</span>,{' '}
               <span style={{ color: C.key }}>"content"</span>:{' '}
               <span style={{ color: C.str }}>"离火当令"</span> {'}'}]{'\n'}
-              {'     '}<span style={{ color: C.str }}>{"}'"}</span>
+              {'     '}
+              <span style={{ color: C.str }}>{"}'"}</span>
             </code>
           </pre>
         </div>

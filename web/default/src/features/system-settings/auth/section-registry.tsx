@@ -52,7 +52,8 @@ const AUTH_SECTIONS = [
           GitHubOAuthEnabled: settings.GitHubOAuthEnabled,
           GitHubClientId: settings.GitHubClientId,
           GitHubClientSecret: settings.GitHubClientSecret,
-          GitHubMinimumAccountAgeSeconds: settings.GitHubMinimumAccountAgeSeconds,
+          GitHubMinimumAccountAgeSeconds:
+            settings.GitHubMinimumAccountAgeSeconds,
           'discord.enabled': settings['discord.enabled'],
           'discord.client_id': settings['discord.client_id'],
           'discord.client_secret': settings['discord.client_secret'],

@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type CSSProperties, useMemo, useRef } from 'react'
 import DottedMap from 'dotted-map'
+import { type CSSProperties, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { useReveal } from '../lib'
 
 // Glowing nodes — major regions a global AI gateway routes through.

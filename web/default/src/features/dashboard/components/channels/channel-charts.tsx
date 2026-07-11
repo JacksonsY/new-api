@@ -30,8 +30,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Tabs, TabsList, TabsTrigger } from '@/components/design-system/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
 import { getChannelQuotaDates } from '@/features/dashboard/api'
 import {
@@ -238,11 +238,7 @@ export function ChannelCharts() {
               {t('Top Channels')}
             </span>
             {TOP_OPTIONS.map((n) => (
-              <TabsTrigger
-                key={n}
-                value={String(n)}
-                className='px-2.5 text-xs'
-              >
+              <TabsTrigger key={n} value={String(n)} className='px-2.5 text-xs'>
                 {t('Top {{count}}', { count: n })}
               </TabsTrigger>
             ))}

@@ -23,9 +23,9 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Button } from '@/components/design-system/button'
+import { Input } from '@/components/design-system/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 
@@ -67,7 +67,9 @@ export function TopupAutoGroupSection({ defaultValues }: Props) {
   const [onlyNewTopups, setOnlyNewTopups] = useState(
     defaultValues.onlyNewTopups
   )
-  const [baseGroup, setBaseGroup] = useState(defaultValues.baseGroup || 'default')
+  const [baseGroup, setBaseGroup] = useState(
+    defaultValues.baseGroup || 'default'
+  )
   const [rules, setRules] = useState<Rule[]>(() =>
     parseRules(defaultValues.rules)
   )
@@ -88,9 +90,7 @@ export function TopupAutoGroupSection({ defaultValues }: Props) {
   const removeRule = (idx: number) =>
     setRules((prev) => prev.filter((_, i) => i !== idx))
   const updateRule = (idx: number, patch: Partial<Rule>) =>
-    setRules((prev) =>
-      prev.map((r, i) => (i === idx ? { ...r, ...patch } : r))
-    )
+    setRules((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
 
   async function onSave() {
     // 校验：启用时规则非空、阈值≥0、分组名非空、阈值不重复

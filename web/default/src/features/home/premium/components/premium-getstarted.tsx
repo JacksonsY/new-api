@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useRef } from 'react'
 import { KeyRound, Rocket, Wallet } from 'lucide-react'
+import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { useReveal } from '../lib'
 
 export function PremiumGetstarted() {
@@ -84,7 +85,9 @@ export function PremiumGetstarted() {
                     strokeWidth={1.75}
                     style={{ color: 'var(--pf-violet)' }}
                   />
-                  <h3 className='text-lg font-bold tracking-tight'>{s.title}</h3>
+                  <h3 className='text-lg font-bold tracking-tight'>
+                    {s.title}
+                  </h3>
                 </div>
                 <p
                   className='text-sm leading-relaxed'

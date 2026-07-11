@@ -27,6 +27,11 @@ export { AuthenticatedLayout } from './components/authenticated-layout'
 export { PublicLayout } from './components/public-layout'
 export { PremiumPublicLayout } from './components/premium-public-layout'
 export { PublicHeader } from './components/public-header'
+export {
+  PublicPageHeader,
+  PublicPageShell,
+  PUBLIC_PAGE_SHELL_CLASS,
+} from './components/public-page-header'
 export { PublicNavigation } from './components/public-navigation'
 export { HeaderLogo } from './components/header-logo'
 export { NavLinkItem, NavLinkList } from './components/nav-link-item'

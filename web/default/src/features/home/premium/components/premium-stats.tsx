@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useGSAP } from '@gsap/react'
 import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useGSAP } from '@gsap/react'
+
 import { gsap, prefersReducedMotion, registerGsap, useReveal } from '../lib'
 
 function format(v: number, decimals: number) {

@@ -52,7 +52,8 @@ For commercial licensing, please contact support@quantumnous.com
   /* liquid glass */
   --pf-glass-bg: rgba(255, 255, 255, 0.62);
   --pf-glass-brd: rgba(255, 255, 255, 0.7);
-  --pf-glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset,
+  --pf-glass-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
     0 18px 50px -24px rgba(54, 22, 92, 0.32);
 
   position: relative;
@@ -61,8 +62,15 @@ For commercial licensing, please contact support@quantumnous.com
   background: var(--pf-bg);
   color: var(--pf-ink);
   font-family:
-    'Public Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
-    'PingFang SC', 'Microsoft YaHei', sans-serif;
+    'Public Sans',
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   font-feature-settings: 'ss01', 'cv05';
@@ -108,11 +116,7 @@ html.lenis body {
   height: 52vw;
   top: -16vw;
   left: -8vw;
-  background: radial-gradient(
-    circle,
-    rgba(124, 58, 237, 0.5),
-    transparent 62%
-  );
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.5), transparent 62%);
   animation: pf-drift-a 22s ease-in-out infinite alternate;
 }
 .pf-aurora::after {

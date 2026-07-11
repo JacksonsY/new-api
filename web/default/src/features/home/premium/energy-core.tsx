@@ -28,6 +28,7 @@ For commercial licensing, please contact support@quantumnous.com
  */
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+
 import { cn } from '@/lib/utils'
 
 const SNOISE = /* glsl */ `

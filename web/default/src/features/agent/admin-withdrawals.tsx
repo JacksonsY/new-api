@@ -26,10 +26,6 @@ import { toast } from 'sonner'
 
 import { BadgeCell, DataTablePage, useDataTable } from '@/components/data-table'
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
-import { Dialog } from '@/components/dialog'
-import { SectionPageLayout } from '@/components/layout'
-import { LongText } from '@/components/long-text'
-import { TableId } from '@/components/table-id'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,10 +35,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
+} from '@/components/design-system/alert-dialog'
+import { Button } from '@/components/design-system/button'
+import { Input } from '@/components/design-system/input'
+import { Dialog } from '@/components/dialog'
+import { SectionPageLayout } from '@/components/layout'
+import { LongText } from '@/components/long-text'
+import { TableId } from '@/components/table-id'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
@@ -789,9 +789,7 @@ function WaitingHint({ w }: { w: Withdrawal }) {
   const hours = Math.floor((now / 1000 - w.created_at) / 3600)
   if (hours < 1) return null
   const text =
-    hours >= 24
-      ? `${Math.floor(hours / 24)}d ${hours % 24}h`
-      : `${hours} h`
+    hours >= 24 ? `${Math.floor(hours / 24)}d ${hours % 24}h` : `${hours} h`
   return (
     <div
       className={

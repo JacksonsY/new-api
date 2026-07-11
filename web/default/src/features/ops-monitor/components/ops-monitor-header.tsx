@@ -25,11 +25,8 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from '@/components/ui/native-select'
+import { Button } from '@/components/design-system/button'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
@@ -80,7 +77,9 @@ export function OpsMonitorHeader(props: OpsMonitorHeaderProps) {
             {props.autoRefresh && (
               <>
                 <span aria-hidden>·</span>
-                <span>{t('Next in {{seconds}}s', { seconds: props.countdown })}</span>
+                <span>
+                  {t('Next in {{seconds}}s', { seconds: props.countdown })}
+                </span>
               </>
             )}
           </div>
@@ -118,7 +117,9 @@ export function OpsMonitorHeader(props: OpsMonitorHeaderProps) {
             disabled={props.loading}
             className='h-8 gap-1.5'
           >
-            <RefreshCw className={cn('size-3.5', props.loading && 'animate-spin')} />
+            <RefreshCw
+              className={cn('size-3.5', props.loading && 'animate-spin')}
+            />
             <span className='hidden sm:inline'>{t('Refresh')}</span>
           </Button>
           <Button

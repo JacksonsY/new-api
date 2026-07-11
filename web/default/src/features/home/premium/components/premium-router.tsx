@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ComponentType, useRef } from 'react'
 import {
   Anthropic,
   DeepSeek,
@@ -26,7 +25,9 @@ import {
   OpenAI,
 } from '@lobehub/icons'
 import { ChevronDown, GitBranch, KeyRound, Receipt, Scale } from 'lucide-react'
+import { type ComponentType, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { useReveal } from '../lib'
 
 type LogoMark = ComponentType<{ size: number; className?: string }>
@@ -133,8 +134,14 @@ export function PremiumRouter() {
             </defs>
 
             {/* app → hub */}
-            <path className='pf-spoke' d={`M${APP.x} ${APP.y} L${HUB.x} ${HUB.y}`} />
-            <path className='pf-flow' d={`M${APP.x} ${APP.y} L${HUB.x} ${HUB.y}`} />
+            <path
+              className='pf-spoke'
+              d={`M${APP.x} ${APP.y} L${HUB.x} ${HUB.y}`}
+            />
+            <path
+              className='pf-flow'
+              d={`M${APP.x} ${APP.y} L${HUB.x} ${HUB.y}`}
+            />
 
             {/* hub → providers */}
             {NODE_Y.map((y, i) => {
@@ -223,7 +230,10 @@ export function PremiumRouter() {
               sk-jzlh-••••a39f
             </span>
           </div>
-          <ChevronDown className='size-5' style={{ color: 'var(--pf-magenta)' }} />
+          <ChevronDown
+            className='size-5'
+            style={{ color: 'var(--pf-magenta)' }}
+          />
           <div className='flex flex-col items-center gap-2'>
             <span className='pf-hub flex size-16 items-center justify-center rounded-full'>
               <Trigram />
@@ -235,7 +245,10 @@ export function PremiumRouter() {
               {t('Gateway')}
             </span>
           </div>
-          <ChevronDown className='size-5' style={{ color: 'var(--pf-ember)' }} />
+          <ChevronDown
+            className='size-5'
+            style={{ color: 'var(--pf-ember)' }}
+          />
           <div className='flex flex-wrap justify-center gap-2'>
             {NODES.map((node) => (
               <RouteChip key={node.name} node={node} />
@@ -249,15 +262,24 @@ export function PremiumRouter() {
           className='mt-14 flex flex-wrap items-center justify-center gap-3'
         >
           <span className='pf-pill'>
-            <GitBranch className='size-3.5' style={{ color: 'var(--pf-violet)' }} />
+            <GitBranch
+              className='size-3.5'
+              style={{ color: 'var(--pf-violet)' }}
+            />
             {t('Automatic failover')}
           </span>
           <span className='pf-pill'>
-            <Scale className='size-3.5' style={{ color: 'var(--pf-magenta)' }} />
+            <Scale
+              className='size-3.5'
+              style={{ color: 'var(--pf-magenta)' }}
+            />
             {t('Load balancing')}
           </span>
           <span className='pf-pill'>
-            <Receipt className='size-3.5' style={{ color: 'var(--pf-ember)' }} />
+            <Receipt
+              className='size-3.5'
+              style={{ color: 'var(--pf-ember)' }}
+            />
             {t('Unified billing')}
           </span>
         </div>

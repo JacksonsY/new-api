@@ -62,10 +62,7 @@ export function OpsMonitor() {
   const health = useChannelHealth()
   const [fullscreen, setFullscreen] = useState(false)
 
-  const overview = useMemo(
-    () => computeOverview(health.rows),
-    [health.rows]
-  )
+  const overview = useMemo(() => computeOverview(health.rows), [health.rows])
 
   useEffect(() => {
     if (!fullscreen) return

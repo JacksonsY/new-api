@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useMemo, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PremiumPublicLayout } from '@/components/layout'
@@ -25,12 +26,9 @@ import { PageTransition } from '@/components/page-transition'
 import {
   LoadingSkeleton,
   EmptyState,
-  SearchBar,
   PricingTable,
-  PricingSidebar,
   PricingToolbar,
   ModelCardGrid,
-  ModelDetailsDrawer,
 } from './components'
 import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
@@ -38,17 +36,13 @@ import { usePricingData } from './hooks/use-pricing-data'
 
 export function Pricing() {
   const { t } = useTranslation()
-  const [selectedModelName, setSelectedModelName] = useState<string | null>(
-    null
-  )
+  const navigate = useNavigate({ from: '/pricing/' })
 
   const {
     models,
     vendors,
     groupRatio,
     usableGroup,
-    endpointMap,
-    autoGroups,
     isLoading,
     priceRate,
     usdExchangeRate,
@@ -79,22 +73,20 @@ export function Pricing() {
     hasActiveFilters,
     activeFilterCount,
     availableTags,
+    routeSearch,
     clearFilters,
     clearSearch,
   } = useFilters(models || [])
 
-  const handleModelClick = useCallback((modelName: string) => {
-    setSelectedModelName(modelName)
-  }, [])
-
-  const selectedModel = useMemo(
-    () =>
-      selectedModelName
-        ? (models || []).find(
-            (model) => model.model_name === selectedModelName
-          ) || null
-        : null,
-    [models, selectedModelName]
+  const handleModelClick = useCallback(
+    (modelName: string) => {
+      navigate({
+        to: '/pricing/$modelId',
+        params: { modelId: modelName },
+        search: routeSearch,
+      })
+    },
+    [navigate, routeSearch]
   )
 
   const availableGroups = useMemo(
@@ -110,40 +102,36 @@ export function Pricing() {
     clearSearch()
   }, [clearFilters, clearSearch])
 
-  const renderPricingContent = () => {
-    if (filteredModels.length === 0) {
-      return (
-        <EmptyState
-          searchQuery={searchInput}
-          hasActiveFilters={hasActiveFilters}
-          onClearFilters={handleClearAll}
-        />
-      )
-    }
+  let pricingContent = (
+    <PricingTable
+      models={filteredModels}
+      priceRate={priceRate}
+      usdExchangeRate={usdExchangeRate}
+      tokenUnit={tokenUnit}
+      showRechargePrice={showRechargePrice}
+      selectedGroup={groupFilter}
+      onModelClick={handleModelClick}
+    />
+  )
 
-    if (viewMode === VIEW_MODES.CARD) {
-      return (
-        <ModelCardGrid
-          models={filteredModels}
-          onModelClick={handleModelClick}
-          priceRate={priceRate}
-          usdExchangeRate={usdExchangeRate}
-          tokenUnit={tokenUnit}
-          showRechargePrice={showRechargePrice}
-          selectedGroup={groupFilter}
-        />
-      )
-    }
-
-    return (
-      <PricingTable
+  if (filteredModels.length === 0) {
+    pricingContent = (
+      <EmptyState
+        searchQuery={searchInput}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={handleClearAll}
+      />
+    )
+  } else if (viewMode === VIEW_MODES.CARD) {
+    pricingContent = (
+      <ModelCardGrid
         models={filteredModels}
+        onModelClick={handleModelClick}
         priceRate={priceRate}
         usdExchangeRate={usdExchangeRate}
         tokenUnit={tokenUnit}
         showRechargePrice={showRechargePrice}
         selectedGroup={groupFilter}
-        onModelClick={handleModelClick}
       />
     )
   }
@@ -162,6 +150,7 @@ export function Pricing() {
     <PremiumPublicLayout showMainContainer={false}>
       <div className='relative'>
         <PageTransition className='relative mx-auto w-full max-w-[1800px] px-3 pt-24 pb-8 sm:px-6 sm:pt-28 sm:pb-10 xl:px-8'>
+          {/* 搜索已并入下方 PricingToolbar（上游重构），品牌 hero 只保留文案。 */}
           <header className='mx-auto mb-6 max-w-3xl pt-4 text-center sm:mb-10 sm:pt-8'>
             <p className='pf-eyebrow justify-center'>{t('Model Square')}</p>
             <h1 className='pf-display mt-3 !text-[clamp(2.2rem,5.5vw,3.6rem)]'>
@@ -178,19 +167,23 @@ export function Pricing() {
                 'Discover curated AI models, compare pricing and capabilities, and choose the right model for every scenario.'
               )}
             </p>
-            <SearchBar
-              value={searchInput}
-              onChange={setSearchInput}
-              onClear={clearSearch}
-              placeholder={t(
-                'Search model name, provider, endpoint, or tag...'
-              )}
-              className='mx-auto mt-4 max-w-2xl sm:mt-6'
-            />
           </header>
 
-          <div className='grid gap-4 xl:grid-cols-[330px_minmax(0,1fr)]'>
-            <PricingSidebar
+          <main className='space-y-4'>
+            <PricingToolbar
+              searchInput={searchInput}
+              onSearchChange={setSearchInput}
+              onClearSearch={clearSearch}
+              filteredCount={filteredModels.length}
+              totalCount={models?.length}
+              sortBy={sortBy}
+              onSortChange={setSortBy}
+              tokenUnit={tokenUnit}
+              onTokenUnitChange={setTokenUnit}
+              showRechargePrice={showRechargePrice}
+              onRechargePriceChange={setShowRechargePrice}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
               quotaTypeFilter={quotaTypeFilter}
               endpointTypeFilter={endpointTypeFilter}
               vendorFilter={vendorFilter}
@@ -207,68 +200,12 @@ export function Pricing() {
               tags={availableTags}
               models={models || []}
               hasActiveFilters={hasActiveFilters}
+              activeFilterCount={activeFilterCount}
               onClearFilters={clearFilters}
-              className='hover-scrollbar sticky top-4 hidden max-h-[calc(100dvh-2rem)] self-start overflow-y-auto xl:block'
             />
 
-            <div className='min-w-0 space-y-4'>
-              <PricingToolbar
-                filteredCount={filteredModels.length}
-                totalCount={models?.length}
-                sortBy={sortBy}
-                onSortChange={setSortBy}
-                tokenUnit={tokenUnit}
-                onTokenUnitChange={setTokenUnit}
-                showRechargePrice={showRechargePrice}
-                onRechargePriceChange={setShowRechargePrice}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                quotaTypeFilter={quotaTypeFilter}
-                endpointTypeFilter={endpointTypeFilter}
-                vendorFilter={vendorFilter}
-                groupFilter={groupFilter}
-                tagFilter={tagFilter}
-                onQuotaTypeChange={setQuotaTypeFilter}
-                onEndpointTypeChange={setEndpointTypeFilter}
-                onVendorChange={setVendorFilter}
-                onGroupChange={setGroupFilter}
-                onTagChange={setTagFilter}
-                vendors={vendors || []}
-                groups={availableGroups}
-                groupRatios={groupRatio}
-                tags={availableTags}
-                models={models || []}
-                hasActiveFilters={hasActiveFilters}
-                activeFilterCount={activeFilterCount}
-                onClearFilters={clearFilters}
-              />
-
-              {renderPricingContent()}
-            </div>
-          </div>
-
-          {selectedModel && (
-            <ModelDetailsDrawer
-              open={Boolean(selectedModel)}
-              onOpenChange={(open) => {
-                if (!open) setSelectedModelName(null)
-              }}
-              model={selectedModel}
-              groupRatio={groupRatio || {}}
-              usableGroup={usableGroup || {}}
-              endpointMap={
-                (endpointMap as Record<
-                  string,
-                  { path?: string; method?: string }
-                >) || {}
-              }
-              autoGroups={autoGroups || []}
-              priceRate={priceRate ?? 1}
-              usdExchangeRate={usdExchangeRate ?? 1}
-              tokenUnit={tokenUnit}
-              showRechargePrice={showRechargePrice}
-            />
-          )}
+            {pricingContent}
+          </main>
         </PageTransition>
       </div>
     </PremiumPublicLayout>

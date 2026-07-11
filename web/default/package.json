@@ -35,7 +35,6 @@
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-router": "^1.170.17",
     "@tanstack/react-table": "^8.21.3",
-    "@tanstack/react-virtual": "^3.14.5",
     "@visactor/react-vchart": "^2.1.2",
     "@visactor/vchart": "^2.1.2",
     "ai": "^7.0.14",
@@ -73,7 +72,6 @@
     "three": "^0.185.0",
     "tw-animate-css": "^1.4.0",
     "use-stick-to-bottom": "^1.1.6",
-    "vaul": "^1.1.2",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },

@@ -27,9 +27,6 @@ import { toast } from 'sonner'
 
 import { DataTablePage, useDataTable } from '@/components/data-table'
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
-import { SectionPageLayout } from '@/components/layout'
-import { LongText } from '@/components/long-text'
-import { TableId } from '@/components/table-id'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,12 +36,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+} from '@/components/design-system/alert-dialog'
+import { Button } from '@/components/design-system/button'
+import { Input } from '@/components/design-system/input'
+import { SectionPageLayout } from '@/components/layout'
+import { LongText } from '@/components/long-text'
+import { TableId } from '@/components/table-id'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Sheet,

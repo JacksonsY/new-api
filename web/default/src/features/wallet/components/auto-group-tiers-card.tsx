@@ -30,8 +30,7 @@ export function AutoGroupTiersCard({ info }: { info: AutoGroupInfo }) {
   if (!info?.enabled || !info.rules?.length) return null
 
   const total = info.total_topup_usd || 0
-  const fmt = (n: number) =>
-    `$${Number.isInteger(n) ? n : n.toFixed(2)}`
+  const fmt = (n: number) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`
 
   // 当前已达最高档 + 下一档（用于进度提示）
   const reached = info.rules.filter((r) => total >= r.threshold_usd)
@@ -39,7 +38,7 @@ export function AutoGroupTiersCard({ info }: { info: AutoGroupInfo }) {
   const nextTier = info.rules.find((r) => total < r.threshold_usd) || null
 
   return (
-    <div className='space-y-3 rounded-lg border bg-muted/30 p-4'>
+    <div className='bg-muted/30 space-y-3 rounded-lg border p-4'>
       <div className='flex items-center gap-1.5'>
         <Crown className='size-4 text-amber-500' />
         <span className='text-sm font-medium'>
@@ -91,9 +90,7 @@ export function AutoGroupTiersCard({ info }: { info: AutoGroupInfo }) {
                   {rule.group}
                 </Badge>
                 {done && (
-                  <span className='text-xs text-green-600'>
-                    {t('reached')}
-                  </span>
+                  <span className='text-xs text-green-600'>{t('reached')}</span>
                 )}
               </div>
             </div>

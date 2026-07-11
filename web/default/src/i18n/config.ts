@@ -27,6 +27,7 @@ import {
 import {
   convertDetectedLanguage,
   normalizeInterfaceLanguage,
+  toIntlLocale,
 } from './languages'
 
 // Each locale bundle is ~350–530 KB of JSON. Static-importing all seven put
@@ -94,5 +95,18 @@ export const i18nReady: Promise<void> = Promise.all([
 i18n.on('languageChanged', (lng) => {
   void loadLanguage(normalizeInterfaceLanguage(lng)).catch(() => undefined)
 })
+
+// Keep <html lang> in sync with the active UI language. Han unification means
+// zh-CN / zh-TW / ja share code points but need different glyphs; without a
+// correct lang attribute browsers guess (index.html ships lang="en") and CJK
+// text renders with the wrong regional font.
+function syncDocumentLanguage(language?: string) {
+  if (typeof document === 'undefined') return
+  const locale = toIntlLocale(language ?? i18n.resolvedLanguage)
+  if (locale) document.documentElement.lang = locale
+}
+
+i18n.on('languageChanged', syncDocumentLanguage)
+syncDocumentLanguage(i18n.resolvedLanguage)
 
 export default i18n

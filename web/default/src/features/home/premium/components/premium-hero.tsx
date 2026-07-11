@@ -16,11 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { lazy, Suspense, useRef } from 'react'
+import { useGSAP } from '@gsap/react'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight } from 'lucide-react'
+import { lazy, Suspense, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useGSAP } from '@gsap/react'
+
 import { gsap, prefersReducedMotion, registerGsap } from '../lib'
 
 // three.js is heavy (~600kB) — lazy-load it into its own async chunk so the
@@ -44,11 +45,7 @@ export function PremiumHero({ isAuthenticated }: { isAuthenticated: boolean }) {
         duration: 1.3,
         ease: 'expo.out',
       })
-        .from(
-          '[data-an="eyebrow"]',
-          { y: 18, opacity: 0, duration: 0.7 },
-          0.25
-        )
+        .from('[data-an="eyebrow"]', { y: 18, opacity: 0, duration: 0.7 }, 0.25)
         .from(
           '[data-an="line"]',
           { yPercent: 118, opacity: 0, duration: 0.95, stagger: 0.12 },
@@ -160,7 +157,6 @@ export function PremiumHero({ isAuthenticated }: { isAuthenticated: boolean }) {
           </Link>
         </div>
       </div>
-
     </section>
   )
 }

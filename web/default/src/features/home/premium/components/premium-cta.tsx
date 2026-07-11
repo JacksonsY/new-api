@@ -16,10 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useRef } from 'react'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight } from 'lucide-react'
+import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { useReveal } from '../lib'
 
 export function PremiumCTA({ isAuthenticated }: { isAuthenticated: boolean }) {

@@ -21,10 +21,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { Dialog } from '@/components/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Button } from '@/components/design-system/button'
+import { Input } from '@/components/design-system/input'
 import {
   Select,
   SelectContent,
@@ -32,7 +30,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+} from '@/components/design-system/select'
+import { Dialog } from '@/components/dialog'
+import { Label } from '@/components/ui/label'
 import { getCurrencyLabel } from '@/lib/currency'
 import { parseQuotaFromDollars } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -233,26 +233,24 @@ export function UsersBatchQuotaDialog(props: BatchDialogProps) {
         <div className='space-y-2'>
           <Label>{t('Mode')}</Label>
           <div className='flex gap-1'>
-            {(['add', 'subtract', 'override', 'multiply'] as const).map(
-              (m) => (
-                <Button
-                  key={m}
-                  type='button'
-                  variant='outline'
-                  size='sm'
-                  className={cn(
-                    mode === m &&
-                      'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
-                  )}
-                  onClick={() => {
-                    setMode(m)
-                    setAmount('')
-                  }}
-                >
-                  {modeLabels[m]}
-                </Button>
-              )
-            )}
+            {(['add', 'subtract', 'override', 'multiply'] as const).map((m) => (
+              <Button
+                key={m}
+                type='button'
+                variant='outline'
+                size='sm'
+                className={cn(
+                  mode === m &&
+                    'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
+                )}
+                onClick={() => {
+                  setMode(m)
+                  setAmount('')
+                }}
+              >
+                {modeLabels[m]}
+              </Button>
+            ))}
           </div>
         </div>
 

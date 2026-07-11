@@ -277,12 +277,9 @@ function buildColumns(t: (k: string) => string): ColumnDef<AgentUser>[] {
         const percentage = total > 0 ? (remaining / total) * 100 : 0
         if (total === 0) {
           return (
-            <StatusBadge
-              label={t('No Quota')}
-              variant='neutral'
-              copyable={false}
-              className='-ml-1.5'
-            />
+            <StatusBadge variant='neutral' className='-ml-1.5'>
+              {t('No Quota')}
+            </StatusBadge>
           )
         }
         return (
@@ -338,17 +335,9 @@ function buildColumns(t: (k: string) => string): ColumnDef<AgentUser>[] {
       cell: ({ row }) => (
         <BadgeCell>
           {row.original.status === USER_STATUS.ENABLED ? (
-            <StatusBadge
-              label={t('Enabled')}
-              variant='success'
-              copyable={false}
-            />
+            <StatusBadge variant='success'>{t('Enabled')}</StatusBadge>
           ) : (
-            <StatusBadge
-              label={t('Disabled')}
-              variant='neutral'
-              copyable={false}
-            />
+            <StatusBadge variant='neutral'>{t('Disabled')}</StatusBadge>
           )}
         </BadgeCell>
       ),

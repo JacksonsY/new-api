@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useRef } from 'react'
 import {
   Activity,
   CreditCard,
@@ -25,7 +24,9 @@ import {
   Workflow,
   Zap,
 } from 'lucide-react'
+import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { useReveal } from '../lib'
 
 export function PremiumBento() {
@@ -52,7 +53,9 @@ export function PremiumBento() {
     {
       icon: Zap,
       title: t('Blazing speed'),
-      desc: t('Streaming-first, low-overhead proxy tuned for time-to-first-token.'),
+      desc: t(
+        'Streaming-first, low-overhead proxy tuned for time-to-first-token.'
+      ),
       span: '',
     },
     {

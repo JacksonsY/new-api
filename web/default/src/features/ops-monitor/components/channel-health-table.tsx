@@ -20,12 +20,9 @@ import { ArrowDown, ArrowUp, RotateCcw, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from '@/components/ui/native-select'
+import { Button } from '@/components/design-system/button'
+import { Input } from '@/components/design-system/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { cn } from '@/lib/utils'
 
 import { channelHealthState } from '../lib/overview'
@@ -177,7 +174,8 @@ export function ChannelHealthTable(props: ChannelHealthTableProps) {
           break
         case 'state':
           cmp =
-            STATE_RANK[channelHealthState(a)] - STATE_RANK[channelHealthState(b)]
+            STATE_RANK[channelHealthState(a)] -
+            STATE_RANK[channelHealthState(b)]
           break
         case 'weight':
           cmp = a.weight - b.weight
@@ -242,7 +240,9 @@ export function ChannelHealthTable(props: ChannelHealthTableProps) {
           onChange={(e) => setStateFilter(e.target.value as StateFilter)}
         >
           <NativeSelectOption value='all'>{t('All states')}</NativeSelectOption>
-          <NativeSelectOption value='healthy'>{t('Healthy')}</NativeSelectOption>
+          <NativeSelectOption value='healthy'>
+            {t('Healthy')}
+          </NativeSelectOption>
           <NativeSelectOption value='degraded'>
             {t('Half-open')}
           </NativeSelectOption>
@@ -465,7 +465,9 @@ export function ChannelHealthTable(props: ChannelHealthTableProps) {
                     >
                       {(() => {
                         const rate = cacheHitRateOf(row)
-                        return rate == null ? '—' : `${(rate * 100).toFixed(0)}%`
+                        return rate == null
+                          ? '—'
+                          : `${(rate * 100).toFixed(0)}%`
                       })()}
                     </td>
                     <td className='text-foreground pl-3 text-right font-mono tabular-nums'>

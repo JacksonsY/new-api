@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSystemConfig } from '@/hooks/use-system-config'
+
 import '@/features/home/premium/premium.css'
 
 type AuthLayoutProps = {

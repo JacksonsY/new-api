@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Loader2 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -27,8 +28,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Loader2 } from 'lucide-react'
+} from '@/components/design-system/dialog'
 
 import { getEpayOrderStatus, requestEpayQRPayment } from '../../api'
 import type { PaymentMethod } from '../../types'
@@ -132,9 +132,7 @@ export function EpayQRDialog({
 
   const renderQRBody = () => {
     if (loading) {
-      return (
-        <Loader2 className='text-muted-foreground h-8 w-8 animate-spin' />
-      )
+      return <Loader2 className='text-muted-foreground h-8 w-8 animate-spin' />
     }
     if (errorMsg) {
       return <p className='text-destructive text-center text-sm'>{errorMsg}</p>

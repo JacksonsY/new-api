@@ -23,6 +23,15 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
 
+import { Input } from '@/components/design-system/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/design-system/select'
 import {
   Form,
   FormControl,
@@ -32,15 +41,6 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
@@ -548,9 +548,7 @@ export function RoutingReliabilitySection({
 
           <div className='flex min-w-0 flex-col gap-4'>
             <div className='flex flex-col gap-1'>
-              <h4 className='text-sm font-medium'>
-                {t('Reliability guards')}
-              </h4>
+              <h4 className='text-sm font-medium'>{t('Reliability guards')}</h4>
             </div>
             <div className='grid min-w-0 gap-6 lg:grid-cols-2'>
               <FormField

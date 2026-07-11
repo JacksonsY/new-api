@@ -51,11 +51,13 @@ interface StatCardProps {
   action?: ReactNode
 }
 
-// 九紫离火谱: rose→九紫 violet (chart-1), teal→离火 ember (chart-3).
+/* Sparklines are data visualization, so they draw from chart tokens — solid
+ * fills, no decorative gradients, consistent with the dashboard charts.
+ * 九紫离火谱: rose→九紫 violet (chart-1), teal→离火 ember (chart-3). */
 const TONE_CLASSES: Record<StatCardTone, string> = {
-  rose: 'from-chart-1/80 via-chart-1/40 to-chart-1/5 dark:from-chart-1/70 dark:via-chart-1/30 dark:to-chart-1/5',
-  teal: 'from-chart-3/80 via-chart-3/40 to-chart-3/5 dark:from-chart-3/70 dark:via-chart-3/30 dark:to-chart-3/5',
-  gray: 'from-muted-foreground/50 via-muted-foreground/20 to-transparent dark:from-muted-foreground/40 dark:via-muted-foreground/20',
+  rose: 'bg-chart-1/60',
+  teal: 'bg-chart-3/60',
+  gray: 'bg-muted-foreground/30',
 }
 
 const LINE_TONE_CLASSES: Record<StatCardTone, string> = {
@@ -167,7 +169,7 @@ function BarSparkline(props: { values?: number[]; tone: StatCardTone }) {
         <span
           key={`spark-${index}`}
           className={cn(
-            'flex-1 rounded-t-sm bg-linear-to-t',
+            'flex-1 rounded-t-sm',
             height <= 0 && 'opacity-20',
             TONE_CLASSES[props.tone]
           )}
@@ -186,7 +188,7 @@ function StatCardDetails(props: { details: StatCardDetail[] }) {
           key={detail.label}
           className='bg-muted/40 rounded-lg border border-transparent px-2.5 py-2'
         >
-          <div className='text-muted-foreground truncate text-[11px] leading-none font-medium'>
+          <div className='text-muted-foreground truncate text-xs leading-none font-medium'>
             {detail.label}
           </div>
           <div
@@ -229,7 +231,7 @@ export function StatCard(props: StatCardProps) {
         </div>
       ) : props.error ? (
         <div className='flex flex-col gap-1'>
-          <div className='text-muted-foreground mt-0.5 font-mono text-base font-bold tracking-tight break-all tabular-nums sm:text-2xl'>
+          <div className='text-muted-foreground mt-0.5 text-2xl font-semibold tracking-tight break-all tabular-nums'>
             --
           </div>
           <p className='text-muted-foreground/60 text-xs'>
@@ -238,7 +240,7 @@ export function StatCard(props: StatCardProps) {
         </div>
       ) : (
         <div className='flex flex-col gap-1'>
-          <div className='text-foreground font-mono text-2xl font-semibold tracking-tight break-all tabular-nums'>
+          <div className='text-foreground text-2xl font-semibold tracking-tight break-all tabular-nums'>
             {props.value}
           </div>
           <p className='text-muted-foreground/60 text-xs leading-relaxed'>

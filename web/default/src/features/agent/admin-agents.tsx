@@ -33,6 +33,8 @@ import {
   DataTablePage,
   useDataTable,
 } from '@/components/data-table'
+import { Button } from '@/components/design-system/button'
+import { Input } from '@/components/design-system/input'
 import { Dialog } from '@/components/dialog'
 import {
   SideDrawerSection,
@@ -45,9 +47,7 @@ import { SectionPageLayout } from '@/components/layout'
 import { LongText } from '@/components/long-text'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
-import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Sheet,
@@ -333,17 +333,9 @@ function buildColumns(
       cell: ({ row }) => (
         <BadgeCell>
           {row.original.status === USER_STATUS.ENABLED ? (
-            <StatusBadge
-              label={t('Enabled')}
-              variant='success'
-              copyable={false}
-            />
+            <StatusBadge variant='success'>{t('Enabled')}</StatusBadge>
           ) : (
-            <StatusBadge
-              label={t('Disabled')}
-              variant='neutral'
-              copyable={false}
-            />
+            <StatusBadge variant='neutral'>{t('Disabled')}</StatusBadge>
           )}
         </BadgeCell>
       ),

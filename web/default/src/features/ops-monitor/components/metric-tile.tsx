@@ -50,7 +50,10 @@ export function MetricTile(props: MetricTileProps) {
   return (
     <div className='bg-card flex min-h-24 flex-col justify-between gap-2 rounded-xl border p-3 sm:p-4'>
       <div className='text-muted-foreground flex items-center gap-1.5 text-xs font-medium'>
-        <Icon className='text-muted-foreground/60 size-3.5 shrink-0' aria-hidden />
+        <Icon
+          className='text-muted-foreground/60 size-3.5 shrink-0'
+          aria-hidden
+        />
         <span className='truncate'>{props.label}</span>
       </div>
       {props.loading ? (

@@ -53,7 +53,7 @@ export function Features(_props: FeaturesProps) {
             (name) => (
               <div
                 key={name}
-                className='border-border/30 bg-muted/20 text-muted-foreground flex items-center justify-center rounded-lg border px-3 py-2 text-xs transition-colors duration-300 hover:border-primary/30 hover:bg-primary/5'
+                className='border-border/30 bg-muted/20 text-muted-foreground hover:border-primary/30 hover:bg-primary/5 flex items-center justify-center rounded-lg border px-3 py-2 text-xs transition-colors duration-300'
               >
                 {name}
               </div>
@@ -105,7 +105,7 @@ export function Features(_props: FeaturesProps) {
       title: t('Global Coverage'),
       desc: t('Multi-region deployment for stable global access'),
       span: 'md:col-span-1',
-      icon: <Globe className='size-4 text-primary' />,
+      icon: <Globe className='text-primary size-4' />,
       visual: (
         <div className='mt-4 space-y-2'>
           {[t('Load Balancing'), t('Rate Limiting'), t('Cost Tracking')].map(
@@ -114,7 +114,7 @@ export function Features(_props: FeaturesProps) {
                 <div
                   className={`flex size-6 items-center justify-center rounded-full text-[10px] font-bold ${
                     i === 1
-                      ? 'border border-primary/30 bg-primary/20 text-primary'
+                      ? 'border-primary/30 bg-primary/20 text-primary border'
                       : 'border-border/40 bg-muted text-muted-foreground border'
                   }`}
                 >
@@ -148,7 +148,7 @@ export function Features(_props: FeaturesProps) {
             ))}
           </div>
           <div className='text-muted-foreground flex items-center gap-1.5 text-xs'>
-            <Code className='size-3.5 text-primary' />
+            <Code className='text-primary size-3.5' />
             {t('Multi-protocol Compatible')}
           </div>
         </div>

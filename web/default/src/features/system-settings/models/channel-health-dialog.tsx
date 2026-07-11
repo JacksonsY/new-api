@@ -20,8 +20,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Button } from '@/components/design-system/button'
 import { Dialog } from '@/components/dialog'
-import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 
 interface ChannelHealthRow {
@@ -119,7 +119,9 @@ export function ChannelHealthDialog(props: Props) {
             ? t(
                 'Live per-channel health observed by this instance (in-flight counts are per-instance).'
               )
-            : t('Adaptive routing is disabled; values are stale until enabled.')}
+            : t(
+                'Adaptive routing is disabled; values are stale until enabled.'
+              )}
         </p>
         <div className='flex shrink-0 gap-2'>
           <Button

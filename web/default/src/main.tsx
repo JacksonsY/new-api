@@ -38,7 +38,6 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { DirectionProvider } from './context/direction-provider'
-import { FontProvider } from './context/font-provider'
 import { ThemeProvider } from './context/theme-provider'
 import { i18nReady } from './i18n/config'
 import { startApplicationAfterI18n } from './i18n/start-application'
@@ -198,11 +197,9 @@ if (!rootElement.innerHTML) {
       <StrictMode>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
-            <FontProvider>
-              <DirectionProvider>
-                <RouterProvider router={router} />
-              </DirectionProvider>
-            </FontProvider>
+            <DirectionProvider>
+              <RouterProvider router={router} />
+            </DirectionProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </StrictMode>

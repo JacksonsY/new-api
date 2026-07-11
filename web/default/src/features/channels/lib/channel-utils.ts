@@ -349,12 +349,12 @@ export function formatBalance(balance: number | null | undefined): string {
  */
 export function getBalanceVariant(
   balance: number
-): 'success' | 'warning' | 'danger' | 'neutral' {
+): 'success' | 'warning' | 'destructive' | 'neutral' {
   if (balance === 0) {
     return 'neutral'
   }
   if (balance < 1) {
-    return 'danger'
+    return 'destructive'
   }
   if (balance < 10) {
     return 'warning'
@@ -402,8 +402,8 @@ export function estimateChannelDaysRemaining(
 /** 剩余天数染色：≤7 危险、≤15 警告，其余中性。阈值只管列表展示，与告警阈值独立。 */
 export function getDaysRemainingVariant(
   days: number
-): 'danger' | 'warning' | 'neutral' {
-  if (days <= 7) return 'danger'
+): 'destructive' | 'warning' | 'neutral' {
+  if (days <= 7) return 'destructive'
   if (days <= 15) return 'warning'
   return 'neutral'
 }

@@ -23,7 +23,8 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
 
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/design-system/button'
+import { Input } from '@/components/design-system/input'
 import {
   Form,
   FormControl,
@@ -33,7 +34,6 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 
@@ -47,7 +47,6 @@ import { SettingsSection } from '../components/settings-section'
 import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
-
 import { ChannelHealthDialog } from './channel-health-dialog'
 
 const adaptiveRoutingSchema = z.object({
@@ -118,8 +117,7 @@ const buildFormDefaults = (
   ttftPenalty: defaults['adaptive_routing_setting.ttft_penalty'] ?? 0.5,
   errorPenalty: defaults['adaptive_routing_setting.error_penalty'] ?? 0.8,
   healthFloor: defaults['adaptive_routing_setting.health_floor'] ?? 0.05,
-  inflightPenalty:
-    defaults['adaptive_routing_setting.inflight_penalty'] ?? 0.5,
+  inflightPenalty: defaults['adaptive_routing_setting.inflight_penalty'] ?? 0.5,
   topK: defaults['adaptive_routing_setting.top_k'] ?? 0,
   circuitEnabled: defaults['adaptive_routing_setting.circuit_enabled'] ?? true,
   openThreshold: defaults['adaptive_routing_setting.open_threshold'] ?? 5,
@@ -225,17 +223,14 @@ export function AdaptiveRoutingSection({
             </div>
           </div>
 
-          <ChannelHealthDialog
-            open={healthOpen}
-            onOpenChange={setHealthOpen}
-          />
+          <ChannelHealthDialog open={healthOpen} onOpenChange={setHealthOpen} />
 
           <Separator />
 
           <div className='flex min-w-0 flex-col gap-4'>
             <div className='flex flex-col gap-1'>
               <h4 className='text-sm font-medium'>{t('Health scoring')}</h4>
-              <p className='text-sm text-muted-foreground'>
+              <p className='text-muted-foreground text-sm'>
                 {t(
                   'Scoring only penalizes slow/erroring channels (never rewards a fast one) to avoid stampeding onto the momentary leader.'
                 )}
@@ -330,7 +325,9 @@ export function AdaptiveRoutingSection({
                       />
                     </FormControl>
                     <FormDescription>
-                      {t('Weight reduction per unit of channel-fault error rate.')}
+                      {t(
+                        'Weight reduction per unit of channel-fault error rate.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -418,7 +415,7 @@ export function AdaptiveRoutingSection({
           <div className='flex min-w-0 flex-col gap-4'>
             <div className='flex flex-col gap-1'>
               <h4 className='text-sm font-medium'>{t('Circuit breaker')}</h4>
-              <p className='text-sm text-muted-foreground'>
+              <p className='text-muted-foreground text-sm'>
                 {t(
                   'Opens a channel after consecutive channel-fault failures, then recovers from real traffic after a cooldown (no synthetic probe).'
                 )}
@@ -521,7 +518,7 @@ export function AdaptiveRoutingSection({
           <div className='flex min-w-0 flex-col gap-4'>
             <div className='flex flex-col gap-1'>
               <h4 className='text-sm font-medium'>{t('Affinity escape')}</h4>
-              <p className='text-sm text-muted-foreground'>
+              <p className='text-muted-foreground text-sm'>
                 {t(
                   'Abandon an affinity-anchored channel only when it degrades past these absolute thresholds. Blunt on purpose: leaving forfeits the warm upstream prompt cache.'
                 )}

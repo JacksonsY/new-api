@@ -62,7 +62,9 @@ export function HealthScoreRing(props: HealthScoreRingProps) {
 
   const idle = props.score == null
   const clamped = idle ? 0 : Math.max(0, Math.min(100, props.score as number))
-  const dashOffset = idle ? circumference : circumference - (clamped / 100) * circumference
+  const dashOffset = idle
+    ? circumference
+    : circumference - (clamped / 100) * circumference
 
   const level = scoreLevel(props.score)
   const toneClass = LEVEL_TONE[level]
@@ -70,7 +72,10 @@ export function HealthScoreRing(props: HealthScoreRingProps) {
 
   return (
     <div className='flex flex-col items-center justify-center gap-3'>
-      <div className={cn('relative', toneClass)} style={{ width: size, height: size }}>
+      <div
+        className={cn('relative', toneClass)}
+        style={{ width: size, height: size }}
+      >
         <svg width={size} height={size} className='-rotate-90'>
           <circle
             cx={size / 2}
@@ -103,7 +108,9 @@ export function HealthScoreRing(props: HealthScoreRingProps) {
           </span>
         </div>
       </div>
-      <div className={cn('text-sm font-semibold', toneClass)}>{conditionLabel}</div>
+      <div className={cn('text-sm font-semibold', toneClass)}>
+        {conditionLabel}
+      </div>
     </div>
   )
 }

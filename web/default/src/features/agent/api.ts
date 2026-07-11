@@ -260,11 +260,7 @@ export async function updateWithdrawSettings(
   const entries: [keyof WithdrawSettings, string, string][] = [
     ['minQuota', 'AgentWithdrawMinQuota', String(Math.round(s.minQuota))],
     ['feeRate', 'AgentWithdrawFeeRate', String(s.feeRate)],
-    [
-      'maxPending',
-      'AgentWithdrawMaxPending',
-      String(Math.round(s.maxPending)),
-    ],
+    ['maxPending', 'AgentWithdrawMaxPending', String(Math.round(s.maxPending))],
   ]
   const result: WithdrawSettingsUpdateResult = {
     appliedKeys: [],

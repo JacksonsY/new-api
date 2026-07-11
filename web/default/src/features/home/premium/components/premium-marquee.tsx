@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ComponentType } from 'react'
 import {
   Anthropic,
   Cohere,
@@ -31,6 +30,7 @@ import {
   Suno,
   XAI,
 } from '@lobehub/icons'
+import { type ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
 
 type LogoMark = ComponentType<{ size: number; className?: string }>

@@ -17,6 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { useGSAP } from '@gsap/react'
+import { gsap } from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import Lenis from 'lenis'
 /**
  * Motion engine for the premium landing.
  *
@@ -26,10 +30,6 @@ For commercial licensing, please contact support@quantumnous.com
  * fully bypassed under `prefers-reduced-motion`.
  */
 import { type RefObject, useEffect } from 'react'
-import { useGSAP } from '@gsap/react'
-import { gsap } from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import Lenis from 'lenis'
 
 let registered = false
 
