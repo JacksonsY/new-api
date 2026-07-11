@@ -29,6 +29,7 @@ import ReactDOM from 'react-dom/client'
 import { toast } from 'sonner'
 
 import { RoutePendingLoader } from '@/components/brand-loader'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { getStatus } from '@/lib/api'
 import { installBuildMetadata } from '@/lib/build-metadata'
 import { applyFaviconToDom } from '@/lib/dom-utils'
@@ -124,10 +125,11 @@ declare module '@tanstack/react-router' {
 }
 
 // Render the app
-const rootElement = document.querySelector<HTMLElement>('#root')
+const rootElement = document.querySelector<HTMLDivElement>('#root')
 if (!rootElement) {
   throw new Error('Root element not found')
 }
+
 // Set document.title and favicon from cached status, then refresh from network
 ;(function initSystemBranding() {
   try {
@@ -198,7 +200,9 @@ if (!rootElement.innerHTML) {
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
             <DirectionProvider>
-              <RouterProvider router={router} />
+              <TooltipProvider>
+                <RouterProvider router={router} />
+              </TooltipProvider>
             </DirectionProvider>
           </ThemeProvider>
         </QueryClientProvider>
