@@ -27,6 +27,9 @@ import (
 type TokenDetails struct {
 	TextTokens  int
 	AudioTokens int
+	// CachedTokens 是输入侧缓存命中数(OpenAI 口径:text+audio 总输入的子集,
+	// 上游不细分文本/音频)。仅输入侧有意义,输出侧保持 0。
+	CachedTokens int
 }
 
 type QuotaInfo struct {
@@ -37,6 +40,9 @@ type QuotaInfo struct {
 	ModelPrice    float64
 	ModelRatio    float64
 	GroupRatio    float64
+	// CacheRatio 缓存读取倍率(与文本路径 PriceData.CacheRatio 同源)。
+	// <=0 视为未配置,按全价计——防止未接线调用方的零值结构意外免单。
+	CacheRatio float64
 }
 
 func hasCustomModelRatio(modelName string, currentRatio float64) bool {
@@ -70,10 +76,25 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 	inputAudioTokens := decimal.NewFromInt(int64(info.InputDetails.AudioTokens))
 	outputAudioTokens := decimal.NewFromInt(int64(info.OutputDetails.AudioTokens))
 
+	// 缓存折扣:cached 是输入(text+audio)的子集且上游不细分归属,先抵扣
+	// 文本侧、溢出计入音频侧;超出总输入的部分丢弃——上游回报的缓存数不可信,
+	// 不允许它把配额抵成负数(计费安全:宁全价不倒贴)。
+	cachedText, cachedAudio := 0, 0
+	cacheRatio := decimal.NewFromInt(1)
+	if info.InputDetails.CachedTokens > 0 && info.CacheRatio > 0 {
+		cacheRatio = decimal.NewFromFloat(info.CacheRatio)
+		cachedText = min(info.InputDetails.CachedTokens, max(info.InputDetails.TextTokens, 0))
+		cachedAudio = min(info.InputDetails.CachedTokens-cachedText, max(info.InputDetails.AudioTokens, 0))
+	}
+	cachedTextTokens := decimal.NewFromInt(int64(cachedText))
+	cachedAudioTokens := decimal.NewFromInt(int64(cachedAudio))
+
 	quota := decimal.Zero
-	quota = quota.Add(inputTextTokens)
+	quota = quota.Add(inputTextTokens.Sub(cachedTextTokens))
+	quota = quota.Add(cachedTextTokens.Mul(cacheRatio))
 	quota = quota.Add(outputTextTokens.Mul(completionRatio))
-	quota = quota.Add(inputAudioTokens.Mul(audioRatio))
+	quota = quota.Add(inputAudioTokens.Sub(cachedAudioTokens).Mul(audioRatio))
+	quota = quota.Add(cachedAudioTokens.Mul(cacheRatio).Mul(audioRatio))
 	quota = quota.Add(outputAudioTokens.Mul(audioRatio).Mul(audioCompletionRatio))
 
 	quota = quota.Mul(ratio)
@@ -107,6 +128,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	audioOutTokens := usage.OutputTokenDetails.AudioTokens
 	groupRatio := ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	modelRatio, _, _ := ratio_setting.GetModelRatio(modelName)
+	cacheRatio, _ := ratio_setting.GetCacheRatio(modelName)
 
 	autoGroup, exists := common.GetContextKey(ctx, constant.ContextKeyAutoGroup)
 	if exists {
@@ -123,8 +145,9 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{
-			TextTokens:  textInputTokens,
-			AudioTokens: audioInputTokens,
+			TextTokens:   textInputTokens,
+			AudioTokens:  audioInputTokens,
+			CachedTokens: usage.InputTokenDetails.CachedTokens,
 		},
 		OutputDetails: TokenDetails{
 			TextTokens:  textOutTokens,
@@ -134,6 +157,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		UsePrice:   relayInfo.UsePrice,
 		ModelRatio: modelRatio,
 		GroupRatio: actualGroupRatio,
+		CacheRatio: cacheRatio,
 	}
 
 	quota, clamp := calculateAudioQuota(quotaInfo)
@@ -184,11 +208,13 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	groupRatio := relayInfo.PriceData.GroupRatioInfo.GroupRatio
 	modelPrice := relayInfo.PriceData.ModelPrice
 	usePrice := relayInfo.PriceData.UsePrice
+	cacheRatio := relayInfo.PriceData.CacheRatio
 
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{
-			TextTokens:  textInputTokens,
-			AudioTokens: audioInputTokens,
+			TextTokens:   textInputTokens,
+			AudioTokens:  audioInputTokens,
+			CachedTokens: usage.InputTokenDetails.CachedTokens,
 		},
 		OutputDetails: TokenDetails{
 			TextTokens:  textOutTokens,
@@ -198,6 +224,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		UsePrice:   usePrice,
 		ModelRatio: modelRatio,
 		GroupRatio: groupRatio,
+		CacheRatio: cacheRatio,
 	}
 
 	quota, clamp := calculateAudioQuota(quotaInfo)
@@ -237,7 +264,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		logContent += ", " + extraContent
 	}
 	other := GenerateWssOtherInfo(ctx, relayInfo, usage, modelRatio, groupRatio,
-		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
+		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), cacheRatio, modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	if tieredResult != nil {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
@@ -307,11 +334,13 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	groupRatio := relayInfo.PriceData.GroupRatioInfo.GroupRatio
 	modelPrice := relayInfo.PriceData.ModelPrice
 	usePrice := relayInfo.PriceData.UsePrice
+	cacheRatio := relayInfo.PriceData.CacheRatio
 
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{
-			TextTokens:  textInputTokens,
-			AudioTokens: audioInputTokens,
+			TextTokens:   textInputTokens,
+			AudioTokens:  audioInputTokens,
+			CachedTokens: usage.PromptTokensDetails.CachedTokens,
 		},
 		OutputDetails: TokenDetails{
 			TextTokens:  textOutTokens,
@@ -321,6 +350,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		UsePrice:   usePrice,
 		ModelRatio: modelRatio,
 		GroupRatio: groupRatio,
+		CacheRatio: cacheRatio,
 	}
 
 	quota, clamp := calculateAudioQuota(quotaInfo)
@@ -360,7 +390,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		logContent += ", " + extraContent
 	}
 	other := GenerateAudioOtherInfo(ctx, relayInfo, usage, modelRatio, groupRatio,
-		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
+		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), cacheRatio, modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	if tieredResult != nil {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}

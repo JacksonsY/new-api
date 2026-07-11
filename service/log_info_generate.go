@@ -244,8 +244,9 @@ func appendFinalRequestFormat(relayInfo *relaycommon.RelayInfo, other map[string
 	}
 }
 
-func GenerateWssOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage, modelRatio, groupRatio, completionRatio, audioRatio, audioCompletionRatio, modelPrice, userGroupRatio float64) map[string]interface{} {
-	info := GenerateTextOtherInfo(ctx, relayInfo, modelRatio, groupRatio, completionRatio, 0, 0.0, modelPrice, userGroupRatio)
+func GenerateWssOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage, modelRatio, groupRatio, completionRatio, audioRatio, audioCompletionRatio, cacheRatio, modelPrice, userGroupRatio float64) map[string]interface{} {
+	// cache_tokens/cache_ratio 与文本路径同键,前端净值口径(getUsageTokenParts)自动生效
+	info := GenerateTextOtherInfo(ctx, relayInfo, modelRatio, groupRatio, completionRatio, usage.InputTokenDetails.CachedTokens, cacheRatio, modelPrice, userGroupRatio)
 	info["ws"] = true
 	info["audio_input"] = usage.InputTokenDetails.AudioTokens
 	info["audio_output"] = usage.OutputTokenDetails.AudioTokens
@@ -256,8 +257,8 @@ func GenerateWssOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	return info
 }
 
-func GenerateAudioOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, modelRatio, groupRatio, completionRatio, audioRatio, audioCompletionRatio, modelPrice, userGroupRatio float64) map[string]interface{} {
-	info := GenerateTextOtherInfo(ctx, relayInfo, modelRatio, groupRatio, completionRatio, 0, 0.0, modelPrice, userGroupRatio)
+func GenerateAudioOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, modelRatio, groupRatio, completionRatio, audioRatio, audioCompletionRatio, cacheRatio, modelPrice, userGroupRatio float64) map[string]interface{} {
+	info := GenerateTextOtherInfo(ctx, relayInfo, modelRatio, groupRatio, completionRatio, usage.PromptTokensDetails.CachedTokens, cacheRatio, modelPrice, userGroupRatio)
 	info["audio"] = true
 	info["audio_input"] = usage.PromptTokensDetails.AudioTokens
 	info["audio_output"] = usage.CompletionTokenDetails.AudioTokens
