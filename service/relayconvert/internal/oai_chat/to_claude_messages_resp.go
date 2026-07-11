@@ -43,9 +43,12 @@ func buildClaudeUsageFromOpenAIUsage(oaiUsage *dto.Usage) *dto.ClaudeUsage {
 	// input_tokens 与 cache_read/cache_creation 并列。转换 OpenAI 语义时必须扣除，
 	// 否则 /v1/messages 客户端或按 anthropic 口径计费的下游会重复计算缓存 token。
 	// 上游已是 anthropic 语义（prompt_tokens 本就不含缓存）时不能再扣。
+	// 创建侧含 OpenAI 原生 cache_write（CacheCreationTokensTotal）；cached 与
+	// cache_write 都是未调整前缀、可能重叠，负余数一律钳 0（上游 48068ce9 语义）。
+	cacheCreationTokens := oaiUsage.PromptTokensDetails.CacheCreationTokensTotal()
 	inputTokens := oaiUsage.PromptTokens
 	if oaiUsage.UsageSemantic != dto.BillingUsageSemanticAnthropic {
-		inputTokens -= oaiUsage.PromptTokensDetails.CachedTokens + oaiUsage.PromptTokensDetails.CachedCreationTokens
+		inputTokens = oaiUsage.PromptTokens - oaiUsage.PromptTokensDetails.CachedTokens - cacheCreationTokens
 		if inputTokens < 0 {
 			inputTokens = 0
 		}
@@ -53,7 +56,7 @@ func buildClaudeUsageFromOpenAIUsage(oaiUsage *dto.Usage) *dto.ClaudeUsage {
 	usage := &dto.ClaudeUsage{
 		InputTokens:              inputTokens,
 		OutputTokens:             oaiUsage.CompletionTokens,
-		CacheCreationInputTokens: oaiUsage.PromptTokensDetails.CachedCreationTokens,
+		CacheCreationInputTokens: cacheCreationTokens,
 		CacheReadInputTokens:     oaiUsage.PromptTokensDetails.CachedTokens,
 		BillingUsage:             billingUsage,
 	}
