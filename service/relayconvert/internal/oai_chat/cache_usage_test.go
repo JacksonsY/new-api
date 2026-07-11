@@ -1,4 +1,4 @@
-package service
+package oaichat
 
 import (
 	"testing"
@@ -34,7 +34,7 @@ func TestBuildClaudeUsageFromOpenAIUsageKeepsAnthropicSemanticInput(t *testing.T
 	usage := buildClaudeUsageFromOpenAIUsage(&dto.Usage{
 		PromptTokens:     200,
 		CompletionTokens: 20,
-		UsageSemantic:    "anthropic",
+		UsageSemantic:    dto.BillingUsageSemanticAnthropic,
 		PromptTokensDetails: dto.InputTokenDetails{
 			CachedTokens: 800,
 		},
