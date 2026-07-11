@@ -351,20 +351,18 @@ function BillingBreakdown(props: {
     })
   }
 
-  // 原始费用 = 实付 ÷ 生效分组倍率（折前官方口径），所有用户可见——分组倍率
-  // 本身就展示给用户，折前价可自行推出，这里直接给结果；与总费用相同时（倍率
-  // 为 1）不重复展示。分组倍率缺失或非法按 1 兜底。
+  // 原始费用 = 实付 ÷ 生效分组倍率（折前官方口径），所有用户可见并无条件展示：
+  // 即便分组倍率为 1（原始费用等于总费用）也明确给出这个基数，便于审计渠道成本
+  // 而无需自行心算。分组倍率缺失或非法按 1 兜底。
   const groupRatioForCost =
     effectiveGR != null && Number.isFinite(effectiveGR) && effectiveGR > 0
       ? effectiveGR
       : 1
   const rawQuota = log.quota / groupRatioForCost
-  if (groupRatioForCost !== 1) {
-    rows.push({
-      label: t('Original Cost'),
-      value: formatLogQuota(Math.round(rawQuota)),
-    })
-  }
+  rows.push({
+    label: t('Original Cost'),
+    value: formatLogQuota(Math.round(rawQuota)),
+  })
 
   // 渠道成本（仅管理员可见，不影响用户扣费）。成本倍率（含 sub2api/上游分组
   // 自动同步）是相对官方原价的折扣，log.quota 是乘过分组倍率的用户实付，
