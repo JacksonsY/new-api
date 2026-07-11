@@ -78,7 +78,7 @@ func CommitMidjourneyTaskBilling(
 		CommissionSourceKeyRequired: true,
 	})
 	model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, priceData.Quota)
-	model.UpdateChannelUsedQuota(task.ChannelId, priceData.Quota)
+	model.UpdateChannelUsedQuota(task.ChannelId, priceData.Quota, priceData.GroupRatioInfo.GroupRatio)
 	if err := task.FinishBilling(priceData.Quota); err != nil {
 		common.SysError(fmt.Sprintf(
 			"failed to publish midjourney billing task_id=%d mj_id=%q: %v",

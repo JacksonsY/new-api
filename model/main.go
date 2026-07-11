@@ -433,6 +433,7 @@ func migrateClickHouseLogDB() error {
 var clickHouseLogAddColumns = []string{
 	"channel_ratio Float64 DEFAULT 0",
 	"channel_ratio_set UInt8 DEFAULT 0",
+	"channel_quota Int64 DEFAULT 0",
 }
 
 func ensureClickHouseLogColumns() error {
@@ -486,6 +487,7 @@ CREATE TABLE IF NOT EXISTS logs (
 	channel_id Int32 DEFAULT 0,
 	channel_ratio Float64 DEFAULT 0,
 	channel_ratio_set UInt8 DEFAULT 0,
+	channel_quota Int64 DEFAULT 0,
 	token_id Int32 DEFAULT 0,
 	`+"`group`"+` String DEFAULT '',
 	ip String DEFAULT '',

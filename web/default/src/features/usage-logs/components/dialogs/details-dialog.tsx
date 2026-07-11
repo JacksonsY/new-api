@@ -351,38 +351,44 @@ function BillingBreakdown(props: {
     })
   }
 
-  // 原始费用 = 实付 ÷ 生效分组倍率（折前官方口径），所有用户可见——分组倍率
-  // 本身就展示给用户，折前价可自行推出，这里直接给结果；与总费用相同时（倍率
-  // 为 1）不重复展示。分组倍率缺失或非法按 1 兜底。
-  const groupRatioForCost =
-    effectiveGR != null && Number.isFinite(effectiveGR) && effectiveGR > 0
-      ? effectiveGR
-      : 1
-  const rawQuota = log.quota / groupRatioForCost
-  if (groupRatioForCost !== 1) {
-    rows.push({
-      label: t('Original Cost'),
-      value: formatLogQuota(Math.round(rawQuota)),
-    })
-  }
-
   // 渠道成本（仅管理员可见，不影响用户扣费）。成本倍率（含 sub2api/上游分组
-  // 自动同步）是相对官方原价的折扣，log.quota 是乘过分组倍率的用户实付，
-  // 分组倍率≠1 时直接乘实付会错估成本，基数必须用原始费用。
-  if (
-    isAdmin &&
-    typeof log.channel_ratio === 'number' &&
-    log.channel_ratio > 0 && // 旧日志加列前默认 0 = 未打快照，不展示
-    log.channel_ratio !== 1
-  ) {
-    rows.push({
-      label: t('Channel cost ratio'),
-      value: `${log.channel_ratio}x`,
-    })
-    rows.push({
-      label: t('Channel Cost'),
-      value: formatLogQuota(Math.round(rawQuota * log.channel_ratio)),
-    })
+  // 自动同步）是相对官方原价的折扣，而 log.quota 是乘过分组倍率的用户实付，
+  // 分组倍率≠1 时直接乘实付会错估成本。基数改用原始费用 = 实付 ÷ 生效分组倍率
+  // （折前官方口径）；分组倍率缺失或非法按 1 兜底，等价旧口径。
+  if (isAdmin) {
+    const groupRatioForCost =
+      effectiveGR != null && Number.isFinite(effectiveGR) && effectiveGR > 0
+        ? effectiveGR
+        : 1
+    const rawQuota = log.quota / groupRatioForCost
+    if (groupRatioForCost !== 1) {
+      rows.push({
+        label: t('Original Cost'),
+        value: formatLogQuota(Math.round(rawQuota)),
+      })
+    }
+    if (
+      typeof log.channel_ratio === 'number' &&
+      log.channel_ratio > 0 && // 旧日志加列前默认 0 = 未打快照，不展示
+      log.channel_ratio !== 1
+    ) {
+      rows.push({
+        label: t('Channel cost ratio'),
+        value: `${log.channel_ratio}x`,
+      })
+      // 优先用后端落库的成本快照（与渠道支出聚合/面板同源）；
+      // 快照列加列前的旧日志回退本地推导，口径一致
+      const snapshotCost =
+        typeof log.channel_quota === 'number' && log.channel_quota !== 0
+          ? log.channel_quota
+          : null
+      rows.push({
+        label: t('Channel Cost'),
+        value: formatLogQuota(
+          snapshotCost ?? Math.round(rawQuota * log.channel_ratio)
+        ),
+      })
+    }
   }
 
   if (isAdmin && other.admin_info) {

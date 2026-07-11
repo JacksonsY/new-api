@@ -80,14 +80,19 @@ type Log struct {
 	// 默认在写入时显式赋值（GetChannelRatio 兜底），不用 gorm default 标签。
 	// omitempty：用户侧路径经 formatUserLogs 清零后，该字段整个不出现在响应里
 	// ——成本倍率是经营机密，普通用户连字段名都不该看到。
-	ChannelRatio      float64 `json:"channel_ratio,omitempty"`
-	ChannelRatioSet   bool    `json:"-"`
-	TokenId           int     `json:"token_id" gorm:"default:0;index"`
-	Group             string  `json:"group" gorm:"index"`
-	Ip                string  `json:"ip" gorm:"index;default:''"`
-	RequestId         string  `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
-	UpstreamRequestId string  `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
-	Other             string  `json:"other"`
+	ChannelRatio    float64 `json:"channel_ratio,omitempty"`
+	ChannelRatioSet bool    `json:"-"`
+	// ChannelQuota 渠道成本快照：原始费用（实付 ÷ 生效分组倍率）× 渠道倍率，
+	// QuotaRound 后落库。物化是必须的——分组倍率埋在 other JSON 里，渠道支出
+	// SQL 聚合取不到。旧行为 0/NULL 时聚合回退 quota×channel_ratio 旧口径。
+	// 同为管理员维度信息：formatUserLogs 对普通用户清零，omitempty 隐藏字段名。
+	ChannelQuota      int    `json:"channel_quota,omitempty" gorm:"default:0"`
+	TokenId           int    `json:"token_id" gorm:"default:0;index"`
+	Group             string `json:"group" gorm:"index"`
+	Ip                string `json:"ip" gorm:"index;default:''"`
+	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
+	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
+	Other             string `json:"other"`
 }
 
 // don't use iota, avoid change log type value
@@ -126,8 +131,9 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
-		// 渠道计费倍率属于管理员维度信息，对普通用户隐藏
+		// 渠道计费倍率/成本快照属于管理员维度信息，对普通用户隐藏
 		logs[i].ChannelRatio = 0
+		logs[i].ChannelQuota = 0
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
 		if otherMap != nil {
@@ -359,6 +365,15 @@ type RecordConsumeLogParams struct {
 	CommissionSourceKeyRequired bool   `json:"-"`
 }
 
+// groupRatioFromLogOther 从日志 other 取该笔消费生效的分组倍率（用户专属倍率
+// 生效时 group_ratio 已是覆盖后的值）。缺失或非正值按 1 兜底，等价旧口径。
+func groupRatioFromLogOther(other map[string]interface{}) float64 {
+	if ratio, ok := other["group_ratio"].(float64); ok && ratio > 0 {
+		return ratio
+	}
+	return 1
+}
+
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
 	// >>> jzlh-agent 消费分润（异步，不阻塞主链；独立于日志开关）
 	// 幂等键取 request id；必须在 goroutine 外读取，handler 返回后 c 可能被回收。
@@ -398,11 +413,13 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
 	otherStr := common.MapToJsonStr(params.Other)
-	// 渠道计费倍率快照：用于管理员维度的渠道成本统计，与用户扣费无关。
+	// 渠道计费倍率 + 渠道成本快照：用于管理员维度的渠道成本统计，与用户扣费无关。
+	// 成本基数为原始费用（实付 ÷ 生效分组倍率），见 channelCostQuota。
 	channelRatio := 1.0
 	if channel, err := CacheGetChannel(params.ChannelId); err == nil && channel != nil {
 		channelRatio = channel.GetChannelRatio()
 	}
+	channelQuota := channelCostQuota(params.Quota, groupRatioFromLogOther(params.Other), channelRatio)
 	// 判断是否需要记录 IP
 	needRecordIp := false
 	if settingMap, err := GetUserSetting(userId, false); err == nil {
@@ -424,6 +441,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		ChannelId:        params.ChannelId,
 		ChannelRatio:     channelRatio,
 		ChannelRatioSet:  true,
+		ChannelQuota:     channelQuota,
 		TokenId:          params.TokenId,
 		UseTime:          params.UseTimeSeconds,
 		IsStream:         params.IsStream,
@@ -443,8 +461,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		logger.LogError(c, "failed to record log: "+err.Error())
 	}
 	if common.DataExportEnabled {
-		// 渠道维度成本 = 原始额度 × 渠道计费倍率，随用量数据一并预聚合进 quota_data
-		channelQuota := common.QuotaRound(float64(params.Quota) * channelRatio)
+		// 渠道维度成本随用量数据一并预聚合进 quota_data，与日志快照同源同口径
 		LogQuotaData(QuotaDataLogParams{
 			UserID:       userId,
 			Username:     username,
@@ -524,6 +541,8 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	if channel, err := CacheGetChannel(params.ChannelId); err == nil && channel != nil {
 		channelRatio = channel.GetChannelRatio()
 	}
+	// 渠道成本快照：基数为原始费用（实付 ÷ 生效分组倍率），见 channelCostQuota。
+	channelQuota := channelCostQuota(params.Quota, groupRatioFromLogOther(params.Other), channelRatio)
 	log := &Log{
 		UserId:          params.UserId,
 		Username:        username,
@@ -536,6 +555,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		ChannelId:       params.ChannelId,
 		ChannelRatio:    channelRatio,
 		ChannelRatioSet: true,
+		ChannelQuota:    channelQuota,
 		TokenId:         params.TokenId,
 		Group:           params.Group,
 		Other:           common.MapToJsonStr(params.Other),
@@ -549,8 +569,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		if nodeName == "" {
 			nodeName = common.NodeName
 		}
-		// 渠道维度成本 = 原始额度 × 渠道计费倍率
-		channelQuota := common.QuotaRound(float64(params.Quota) * channelRatio)
+		// 渠道维度成本随用量数据一并预聚合进 quota_data，与日志快照同源同口径
 		LogQuotaData(QuotaDataLogParams{
 			UserID:       params.UserId,
 			Username:     username,
@@ -888,12 +907,17 @@ func channelQuotaSnapshotSQL() string {
 	// (notably PostgreSQL may use ties-to-even). FLOOR-based branches implement
 	// the half-away-from-zero rule used by common.QuotaRound everywhere.
 	roundedExpr := "CASE WHEN " + productExpr + " >= 0 THEN FLOOR(" + productExpr + " + 0.5) ELSE -FLOOR(-(" + productExpr + ") + 0.5) END"
-	return fmt.Sprintf(
+	legacyExpr := fmt.Sprintf(
 		"CASE WHEN %s >= %d THEN %d WHEN %s <= %d THEN %d ELSE %s END",
 		roundedExpr, common.MaxQuota, common.MaxQuota,
 		roundedExpr, common.MinQuota, common.MinQuota,
 		roundedExpr,
 	)
+	// 新行写入时已把 原始费用（实付÷生效分组倍率）×渠道倍率 物化进 channel_quota
+	// （分组倍率埋在 other JSON 里，SQL 取不到，只能物化）。加列前的旧行该列为
+	// 0/NULL，回退上面 quota×channel_ratio 的旧口径表达式；真 0 成本行（quota=0
+	// 或显式 0 倍率）回退结果同为 0，两分支无歧义。
+	return "CASE WHEN channel_quota <> 0 THEN channel_quota ELSE " + legacyExpr + " END"
 }
 
 // GetChannelsRecentUsage 返回每个渠道"最近 maxActiveDays 个有消费的 UTC 日"的

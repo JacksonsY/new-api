@@ -71,7 +71,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		CommissionSourceKeyRequired: true,
 	})
 	model.UpdateUserUsedQuotaAndRequestCount(info.UserId, info.PriceData.Quota)
-	model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota)
+	model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota, info.PriceData.GroupRatioInfo.GroupRatio)
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +248,12 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		logType = model.LogTypeConsume
 		logQuota = quotaDelta
 		model.UpdateUserUsedQuotaAndRequestCount(task.UserId, quotaDelta)
-		model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
+		// 渠道成本按原始费用口径折算；无 BillingContext 的旧任务分组倍率按 1 兜底
+		groupRatio := 1.0
+		if bc := task.PrivateData.BillingContext; bc != nil {
+			groupRatio = bc.GroupRatio
+		}
+		model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta, groupRatio)
 	} else {
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta

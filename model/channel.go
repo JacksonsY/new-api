@@ -936,21 +936,33 @@ func UpdateChannelRatio(id int, ratio float64) error {
 	return DB.Model(&Channel{}).Where("id = ?", id).Update("channel_ratio", ratio).Error
 }
 
-// applyChannelRatio 按渠道计费倍率折算渠道维度用量；仅作用于渠道 used_quota 统计，不影响用户扣费。
-func applyChannelRatio(id int, quota int) int {
-	channel, err := CacheGetChannel(id)
-	if err != nil || channel == nil {
-		return quota
+// channelCostQuota 渠道成本折算。quota 是乘过分组倍率的用户实付，而渠道成本
+// 倍率（含 sub2api actual_cost/cost、上游分组倍率自动同步）是相对官方原价的
+// 折扣，先除生效分组倍率还原原始费用（折前官方口径），再乘渠道倍率。
+// groupRatio<=0（缺失/非法/NaN）按 1 兜底，等价旧口径；结果经 QuotaRound 饱和。
+func channelCostQuota(quota int, groupRatio float64, channelRatio float64) int {
+	base := float64(quota)
+	if groupRatio > 0 {
+		base /= groupRatio
 	}
-	ratio := channel.GetChannelRatio()
-	if ratio == 1 {
-		return quota
-	}
-	return common.QuotaRound(float64(quota) * ratio)
+	return common.QuotaRound(base * channelRatio)
 }
 
-func UpdateChannelUsedQuota(id int, quota int) {
-	quota = applyChannelRatio(id, quota)
+// applyChannelRatio 按渠道计费倍率折算渠道维度用量；仅作用于渠道 used_quota
+// 统计，不影响用户扣费。groupRatio 为该笔消费生效的分组倍率（见 channelCostQuota）。
+func applyChannelRatio(id int, quota int, groupRatio float64) int {
+	ratio := 1.0
+	if channel, err := CacheGetChannel(id); err == nil && channel != nil {
+		ratio = channel.GetChannelRatio()
+	}
+	if ratio == 1 && (groupRatio <= 0 || groupRatio == 1) {
+		return quota
+	}
+	return channelCostQuota(quota, groupRatio, ratio)
+}
+
+func UpdateChannelUsedQuota(id int, quota int, groupRatio float64) {
+	quota = applyChannelRatio(id, quota, groupRatio)
 	if common.BatchUpdateEnabled {
 		addNewRecord(BatchUpdateTypeChannelUsedQuota, id, quota)
 		return

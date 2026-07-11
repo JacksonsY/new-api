@@ -155,6 +155,37 @@ func TestGetChannelsUsageRoundsHalfAwayFromZero(t *testing.T) {
 	assert.EqualValues(t, -1, usage[negativeChannel])
 }
 
+// 渠道支出聚合优先读 channel_quota 快照（原始费用口径：实付÷生效分组倍率×渠道
+// 倍率）；加列前的旧行（快照 0/NULL）回退 quota×channel_ratio 旧口径，两代数据
+// 混存时各自口径成立、可直接相加。
+func TestGetChannelsUsagePrefersChannelQuotaSnapshot(t *testing.T) {
+	require.NoError(t, LOG_DB.AutoMigrate(&Log{}))
+	now := common.GetTimestamp()
+	const ch = 92041
+
+	// 新行：实付 500、分组倍率 0.5、渠道倍率 0.2 → 快照 500÷0.5×0.2 = 200
+	// （若错用实付基数会得 100，聚合总额将暴露回归）
+	require.NoError(t, DB.Create(&Log{
+		UserId: 1, Type: LogTypeConsume, ChannelId: ch,
+		Quota: 500, ChannelRatio: 0.2, ChannelRatioSet: true, ChannelQuota: 200,
+		CreatedAt: now - 60,
+	}).Error)
+	// 旧行：无快照，回退 100×0.2 = 20
+	require.NoError(t, DB.Create(&Log{
+		UserId: 1, Type: LogTypeConsume, ChannelId: ch,
+		Quota: 100, ChannelRatio: 0.2, ChannelRatioSet: true,
+		CreatedAt: now - 30,
+	}).Error)
+
+	usage, err := GetChannelsQuotaSince([]int{ch}, now-3600)
+	require.NoError(t, err)
+	assert.EqualValues(t, 220, usage[ch], "新行读快照(200)，旧行回退旧口径(20)")
+
+	daily, err := GetChannelsRecentUsage([]int{ch}, now-3600, ChannelRecentUsageActiveDays)
+	require.NoError(t, err)
+	assert.EqualValues(t, 220, daily[ch].Quota, "按日聚合与滑窗聚合同一口径")
+}
+
 func TestGetChannelsUsageDistinguishesLegacyAndExplicitZeroRatio(t *testing.T) {
 	require.NoError(t, LOG_DB.AutoMigrate(&Log{}))
 	now := common.GetTimestamp()
