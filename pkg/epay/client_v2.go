@@ -175,9 +175,11 @@ func (c *clientV2) VerifyNotify(params map[string]string) (*NotifyResult, error)
 	return result, nil
 }
 
-// QueryOrderByOutTradeNo 查单：POST api/pay/query。
-// 官方 SDK 示例按平台单号 trade_no 查询；主动对账时我们只有商户单号，
-// v2 查单接口同样接受 out_trade_no（平台文档），两个字段都带上以最大化兼容。
+// QueryOrderByOutTradeNo 查单：POST api/pay/query,仅带商户单号 out_trade_no
+// (主动对账兜住的是"回调丢失"的单,此时拿不到平台单号 trade_no;发空 trade_no
+// 实测会让平台回 HTML 错误页,不能同时带)。已知局限:官方 SDK 示例按 trade_no
+// 查询,严格只认 trade_no 的 v2 平台会回非 JSON 错误页(NonJSONResponseError),
+// 对账调用方须把该错误当作"平台不支持按商户单号查单"明确告警,而不是静默跳过。
 func (c *clientV2) QueryOrderByOutTradeNo(outTradeNo string) (*OrderInfo, error) {
 	if outTradeNo == "" {
 		return nil, errors.New("epay: out_trade_no is required")

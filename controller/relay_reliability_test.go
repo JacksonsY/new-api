@@ -59,10 +59,12 @@ func TestShouldFastRetrySameChannel(t *testing.T) {
 		assert.True(t, shouldFastRetrySameChannel(c, netErr, 0))
 	})
 
-	t.Run("non-idempotent request is not replayed", func(t *testing.T) {
+	// relay 主流量全是 POST:同渠道快速重试与跨渠道转移必须对 POST 生效,
+	// 否则该特性(默认开启、有 UI 配置)对真实流量形同虚设。
+	t.Run("POST network failure qualifies too", func(t *testing.T) {
 		c := newRelayReliabilityTestContext(t)
-		assert.False(t, shouldFastRetrySameChannel(c, netErr, 0))
-		assert.False(t, shouldRetry(c, netErr, 1))
+		assert.True(t, shouldFastRetrySameChannel(c, netErr, 0))
+		assert.True(t, shouldRetry(c, netErr, 1))
 	})
 
 	t.Run("budget exhausted", func(t *testing.T) {
@@ -90,14 +92,26 @@ func TestShouldFastRetrySameChannel(t *testing.T) {
 	})
 }
 
-func TestShouldRetryTaskRelayDoesNotReplayPost(t *testing.T) {
+// 任务提交全是 POST,可重试状态码(429/307/5xx)必须触发跨渠道转移;
+// 客户端可自愈的 400/408 与本地错误不重试。
+func TestShouldRetryTaskRelayRetriesTransientStatuses(t *testing.T) {
 	c := newRelayReliabilityTestContext(t)
 	for _, status := range []int{http.StatusTooManyRequests, http.StatusBadGateway, http.StatusTemporaryRedirect} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			err := &dto.TaskError{StatusCode: status}
+			assert.True(t, shouldRetryTaskRelay(c, 1, err, 1))
+		})
+	}
+	for _, status := range []int{http.StatusBadRequest, http.StatusRequestTimeout} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			err := &dto.TaskError{StatusCode: status}
 			assert.False(t, shouldRetryTaskRelay(c, 1, err, 1))
 		})
 	}
+	t.Run("local error not retried", func(t *testing.T) {
+		err := &dto.TaskError{StatusCode: http.StatusUnauthorized, LocalError: true}
+		assert.False(t, shouldRetryTaskRelay(c, 1, err, 1))
+	})
 }
 
 func TestMaybeApplyRateLimitCooldown(t *testing.T) {

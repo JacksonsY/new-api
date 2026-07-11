@@ -73,6 +73,16 @@ type channelStat struct {
 
 	mu sync.Mutex
 
+	// mutationMu serializes circuit transitions together with their shared
+	// generation allocation (a synchronous Redis round-trip). Lock order is
+	// always mutationMu -> mu. Allocation must NOT happen under mu: Select's
+	// read() takes mu inside channelSyncLock, so a Redis stall there would
+	// freeze channel selection gateway-wide. Holding mutationMu across
+	// "transition under mu, then allocate + publish" keeps per-channel
+	// generation order consistent with transition order without exposing mu
+	// to Redis latency.
+	mutationMu sync.Mutex
+
 	hasErr   bool
 	errEWMA  float64 // [0,1]
 	hasTtft  bool
@@ -183,17 +193,17 @@ func ForceOpenUntil(channelID int, until time.Time) {
 		return
 	}
 	s := getStat(channelID)
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
 	s.mu.Lock()
 	extended := until.After(s.openUntil)
-	mutationGeneration := int64(0)
 	if extended {
 		s.state = circuitOpen
 		s.openUntil = until
-		mutationGeneration = nextSharedMutationGeneration()
 	}
 	s.mu.Unlock()
 	if extended {
-		publishOpen(channelID, until, mutationGeneration)
+		publishOpen(channelID, until, nextSharedMutationGeneration())
 	}
 }
 
@@ -248,6 +258,8 @@ func ReportResult(channelID int, success bool, channelFault bool, ttftMs int64) 
 	}
 
 	s := getStat(channelID)
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
 	s.mu.Lock()
 
 	errSample := 0.0
@@ -257,7 +269,10 @@ func ReportResult(channelID int, success bool, channelFault bool, ttftMs int64) 
 	if s.hasErr {
 		s.errEWMA = alpha*errSample + (1-alpha)*s.errEWMA
 	} else {
-		s.errEWMA = errSample
+		// 首样本视作对"零错误先验"的一次标准 EWMA 更新,而不是直接播种样本值:
+		// 否则锚定渠道单次故障就把 errEWMA 打到 1.0(> 逃逸阈值 0.5),立刻丢弃
+		// 粘性亲和的温热 prompt 缓存,与"钝化、只逃 genuinely bad"的设计相悖。
+		s.errEWMA = alpha * errSample
 		s.hasErr = true
 	}
 
@@ -273,13 +288,11 @@ func ReportResult(channelID int, success bool, channelFault bool, ttftMs int64) 
 
 	var tripped, recovered bool
 	var openUntil time.Time
-	var mutationGeneration int64
 	if setting.CircuitEnabled {
 		if success {
 			s.consecutiveFailures = 0
 			if s.state != circuitClosed {
 				recovered = true // half-open/open -> closed on this instance
-				mutationGeneration = nextSharedMutationGeneration()
 			}
 			s.state = circuitClosed
 		} else {
@@ -290,7 +303,6 @@ func ReportResult(channelID int, success bool, channelFault bool, ttftMs int64) 
 				// a probe failed -> straight back to open
 				s.trip(setting)
 				tripped, openUntil = true, s.openUntil
-				mutationGeneration = nextSharedMutationGeneration()
 			case circuitClosed:
 				threshold := setting.OpenThreshold
 				if threshold <= 0 {
@@ -299,20 +311,20 @@ func ReportResult(channelID int, success bool, channelFault bool, ttftMs int64) 
 				if s.consecutiveFailures >= threshold {
 					s.trip(setting)
 					tripped, openUntil = true, s.openUntil
-					mutationGeneration = nextSharedMutationGeneration()
 				}
 			}
 		}
 	}
 	s.mu.Unlock()
 
-	// Broadcast circuit transitions to the cluster outside the lock (no-op
-	// without Redis). A trip must reach other replicas so they stop selecting a
-	// dead channel; a recovery clears the shared trip.
+	// Broadcast circuit transitions to the cluster outside mu (no-op without
+	// Redis). Generation allocation is a synchronous Redis call and therefore
+	// happens here — under mutationMu but never under mu — so a Redis stall
+	// can only delay result reporting on this channel, never block Select.
 	if tripped {
-		publishOpen(channelID, openUntil, mutationGeneration)
+		publishOpen(channelID, openUntil, nextSharedMutationGeneration())
 	} else if recovered {
-		publishClosed(channelID, mutationGeneration)
+		publishClosed(channelID, nextSharedMutationGeneration())
 	} else if success && setting.CircuitEnabled {
 		// This replica's local circuit was already closed, but a success while
 		// the channel is only half-open cluster-wide (tripped by another replica)

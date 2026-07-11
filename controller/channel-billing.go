@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -185,8 +186,15 @@ func GetClaudeAuthHeader(token string) http.Header {
 	return h
 }
 
+// getResponseBodyTimeout 余额/费率类外呼的固定超时。RELAY_TIMEOUT 默认 0(无限),
+// 不能沿用:定时余额同步是单 goroutine 串行,一个挂起的上游会让全部渠道的
+// 余额+倍率同步停摆,手动查余额接口也会挂死。
+const getResponseBodyTimeout = 30 * time.Second
+
 func GetResponseBody(method, url string, channel *model.Channel, headers http.Header) ([]byte, error) {
-	req, err := http.NewRequest(method, url, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), getResponseBodyTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, err
 	}

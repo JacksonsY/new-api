@@ -23,8 +23,10 @@ import {
   RefreshCw,
   RotateCcw,
 } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/design-system/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Switch } from '@/components/ui/switch'
@@ -50,6 +52,7 @@ interface OpsMonitorHeaderProps {
 
 export function OpsMonitorHeader(props: OpsMonitorHeaderProps) {
   const { t } = useTranslation()
+  const [resetAllOpen, setResetAllOpen] = useState(false)
 
   return (
     <div className='bg-card flex flex-col gap-4 rounded-2xl border p-4 sm:p-5'>
@@ -126,13 +129,27 @@ export function OpsMonitorHeader(props: OpsMonitorHeaderProps) {
             type='button'
             variant='outline'
             size='sm'
-            onClick={props.onResetAll}
+            onClick={() => setResetAllOpen(true)}
             disabled={!props.hasRows}
             className='h-8 gap-1.5'
           >
             <RotateCcw className='size-3.5' />
             <span className='hidden sm:inline'>{t('Clear all')}</span>
           </Button>
+          <ConfirmDialog
+            open={resetAllOpen}
+            onOpenChange={setResetAllOpen}
+            title={t('Reset all channel health?')}
+            desc={t(
+              'This clears learned health scores and circuit breaker state for all channels across the cluster. This action cannot be undone.'
+            )}
+            confirmText={t('Reset all')}
+            destructive
+            handleConfirm={() => {
+              setResetAllOpen(false)
+              props.onResetAll()
+            }}
+          />
           <Button
             type='button'
             variant='outline'

@@ -106,15 +106,20 @@ func isCommissionAssetsFrozenTx(tx *gorm.DB, userId int) (bool, error) {
 }
 
 // IsInviteCodeBlocked 邀请码是否被风控封禁（aff_code 解析入口用）。
-func IsInviteCodeBlocked(userId int) bool {
+// 返回 error 而非吞错 fail-open:DB 瞬时错误时若默认"未封禁",被封邀请码会在
+// 该瞬间恢复绑定新下级。调用方须把错误当作"无法确认→不绑定"(fail-closed)。
+func IsInviteCodeBlocked(userId int) (bool, error) {
 	if userId <= 0 {
-		return false
+		return false, nil
 	}
 	var count int64
-	_ = DB.Model(&CommissionRiskUser{}).
+	err := DB.Model(&CommissionRiskUser{}).
 		Where("user_id = ? AND status = ? AND block_invite_code = ?", userId, CommissionRiskStatusActive, true).
 		Count(&count).Error
-	return count > 0
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // ApplyCommissionRiskControls 施加风控管制（幂等 OR 叠加：已 freeze 再 block 不会互相清掉）。

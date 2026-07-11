@@ -455,13 +455,21 @@ export function ChannelHealthTable(props: ChannelHealthTableProps) {
                     </td>
                     <td
                       className='text-foreground pl-3 text-right font-mono tabular-nums'
-                      title={`TPM: ${row.tpm}`}
+                      title={t('TPM: {{tpm}}', { tpm: row.tpm })}
                     >
                       {row.rpm}
                     </td>
                     <td
                       className='text-foreground pl-3 text-right font-mono tabular-nums'
-                      title={`60s: ${row.cache_tpm}/${row.input_tpm} · total: ${row.cache_read_tokens_total}/${row.input_tokens_total}`}
+                      title={t(
+                        '60s: {{cacheTpm}}/{{inputTpm}} · total: {{cacheTotal}}/{{inputTotal}}',
+                        {
+                          cacheTpm: row.cache_tpm,
+                          inputTpm: row.input_tpm,
+                          cacheTotal: row.cache_read_tokens_total,
+                          inputTotal: row.input_tokens_total,
+                        }
+                      )}
                     >
                       {(() => {
                         const rate = cacheHitRateOf(row)

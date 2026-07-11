@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { Eye, EyeOff } from 'lucide-react'
-import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
+import { useState, useCallback, useMemo, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/design-system/button'
@@ -31,6 +31,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { lazyWithRetry } from '@/lib/lazy-with-retry'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -59,43 +60,47 @@ import {
 
 const route = getRouteApi('/_authenticated/dashboard/$section')
 
-const LazyLogStatCards = lazy(() =>
+const LazyLogStatCards = lazyWithRetry('dashboard-log-stat-cards', () =>
   import('./components/models/log-stat-cards').then((m) => ({
     default: m.LogStatCards,
   }))
 )
 
-const LazyModelCharts = lazy(() =>
+const LazyModelCharts = lazyWithRetry('dashboard-model-charts', () =>
   import('./components/models/model-charts').then((m) => ({
     default: m.ModelCharts,
   }))
 )
 
-const LazyConsumptionDistributionChart = lazy(() =>
-  import('./components/models/consumption-distribution-chart').then((m) => ({
-    default: m.ConsumptionDistributionChart,
-  }))
+const LazyConsumptionDistributionChart = lazyWithRetry(
+  'dashboard-consumption-distribution-chart',
+  () =>
+    import('./components/models/consumption-distribution-chart').then((m) => ({
+      default: m.ConsumptionDistributionChart,
+    }))
 )
 
-const LazyPerformanceOverview = lazy(() =>
-  import('./components/models/performance-overview').then((m) => ({
-    default: m.PerformanceOverview,
-  }))
+const LazyPerformanceOverview = lazyWithRetry(
+  'dashboard-performance-overview',
+  () =>
+    import('./components/models/performance-overview').then((m) => ({
+      default: m.PerformanceOverview,
+    }))
 )
 
-const LazyUserCharts = lazy(() =>
+const LazyUserCharts = lazyWithRetry('dashboard-user-charts', () =>
   import('./components/users/user-charts').then((m) => ({
     default: m.UserCharts,
   }))
 )
 
-const LazyChannelCharts = lazy(() =>
+const LazyChannelCharts = lazyWithRetry('dashboard-channel-charts', () =>
   import('./components/channels/channel-charts').then((m) => ({
     default: m.ChannelCharts,
   }))
 )
 
-const LazyFlowCharts = lazy(() =>
+const LazyFlowCharts = lazyWithRetry('dashboard-flow-charts', () =>
   import('./components/flow/flow-charts').then((m) => ({
     default: m.FlowCharts,
   }))

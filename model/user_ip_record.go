@@ -9,6 +9,7 @@ package model
 import (
 	"net"
 	"strconv"
+	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/bytedance/gopkg/util/gopool"
@@ -27,10 +28,42 @@ func (UserIPRecord) TableName() string {
 	return "user_ip_records"
 }
 
+const ipRecordDedupSeconds = 3600
+
+// ipRecordSeenMaxEntries 是进程内去重表的内存护栏:超过后整表丢弃重建,
+// 代价只是短暂退回 DB 去重,绝不无限增长。20 万条 ≈ 每小时 20 万活跃
+// (user,ip,action) 组合,远超常规部署。
+const ipRecordSeenMaxEntries = 200_000
+
+var (
+	ipRecordSeenMu sync.Mutex
+	ipRecordSeen   = make(map[string]int64)
+)
+
+// ipRecordSeenRecently 进程内 test-and-set:窗口内已见过返回 true;否则登记
+// 当前时间并返回 false。绝大多数 relay 请求在这里 O(1) 返回,不再每请求打一次
+// 主库 COUNT,也不再入 gopool——主库变慢时埋点 goroutine 无界堆积的放大面随之消除。
+// DB 侧 COUNT 保留为第二层去重,负责跨实例与进程重启后的窗口。
+func ipRecordSeenRecently(key string, now int64) bool {
+	ipRecordSeenMu.Lock()
+	defer ipRecordSeenMu.Unlock()
+	if last, ok := ipRecordSeen[key]; ok && now-last < ipRecordDedupSeconds {
+		return true
+	}
+	if len(ipRecordSeen) >= ipRecordSeenMaxEntries {
+		ipRecordSeen = make(map[string]int64)
+	}
+	ipRecordSeen[key] = now
+	return false
+}
+
 // RecordUserIP 异步落一条用户 IP 记录。1 小时内同 (user, ip, action) 去重，
 // 控制高频 api_call 场景的写入量；并发下偶发的重复行无害（检测按 DISTINCT ip）。
 func RecordUserIP(userId int, ip string, action string) {
 	if userId <= 0 || ip == "" || ip == "127.0.0.1" || ip == "::1" {
+		return
+	}
+	if ipRecordSeenRecently(strconv.Itoa(userId)+"|"+ip+"|"+action, common.GetTimestamp()) {
 		return
 	}
 	gopool.Go(func() {

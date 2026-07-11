@@ -122,7 +122,14 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
 
+	var upstreamStreamError *types.NewAPIError
+
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		if apiErr := detectUpstreamStreamError(data); apiErr != nil {
+			upstreamStreamError = apiErr
+			sr.Stop(apiErr)
+			return
+		}
 		if lastStreamData != "" {
 			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
 				common.SysLog("error handling stream format: " + err.Error())
@@ -142,6 +149,13 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			}
 		}
 	})
+
+	// 上游在 200 流里下发的顶层 error 事件走统一错误出口(含护上游脱敏与重试),
+	// 不能当普通 chunk 原样转发。错误若是首个数据行(常见:中转 200 后立刻报错),
+	// 此时还未向客户端写出任何内容,错误响应与跨渠道重试都能正常进行。
+	if upstreamStreamError != nil {
+		return nil, upstreamStreamError
+	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {
@@ -298,4 +312,27 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return &simpleResponse.Usage, nil
+}
+
+// detectUpstreamStreamError 识别上游在 200 流里下发的顶层 error 事件
+// (data: {"error":{...}}),订阅转 API 类中转常用这种方式回报配额/鉴权错误。
+// 这类行必须转成 NewAPIError 走统一错误出口(含护上游脱敏与重试),不能当普通
+// chunk 原样转发给客户端——Claude 流路径已有同等检测,此处对齐。
+// 含 choices 的正常增量(即使正文里出现 "error" 字样)不受影响。
+func detectUpstreamStreamError(data string) *types.NewAPIError {
+	if !strings.Contains(data, `"error"`) {
+		return nil
+	}
+	var probe dto.OpenAITextResponse
+	if err := common.UnmarshalJsonStr(data, &probe); err != nil {
+		return nil
+	}
+	if len(probe.Choices) > 0 {
+		return nil
+	}
+	oaiErr := probe.GetOpenAIError()
+	if oaiErr == nil || (oaiErr.Type == "" && oaiErr.Message == "") {
+		return nil
+	}
+	return types.WithOpenAIError(*oaiErr, http.StatusInternalServerError)
 }

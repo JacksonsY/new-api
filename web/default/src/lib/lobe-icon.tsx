@@ -26,11 +26,12 @@ For commercial licensing, please contact support@quantumnous.com
  * of provider logos out of the initial/entry bundle, the resolver lives in a
  * React.lazy chunk (`./lobe-icon-impl`) that loads on first render.
  */
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
 
+import { lazyWithRetry } from './lazy-with-retry'
 import { LobeIconFallback } from './lobe-icon-fallback'
 
-const LobeIconImpl = lazy(() =>
+const LobeIconImpl = lazyWithRetry('lobe-icon-impl', () =>
   import('./lobe-icon-impl').then((m) => ({ default: m.LobeIconImpl }))
 )
 

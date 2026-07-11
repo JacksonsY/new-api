@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -227,6 +228,15 @@ func reconcileOneEpayOrder(client epay.Client, merchantID string, kind string, t
 
 	info, err := client.QueryOrderByOutTradeNo(tradeNo)
 	if err != nil {
+		// 非 JSON 错误页 = 平台大概率只认 trade_no 查单,按商户单号的自动对账
+		// 在该平台形同虚设。失败方向安全(不会错误入账),但必须显式告警,
+		// 否则"回调丢失→用户付钱不到账"的兜底静默失效,只能等用户投诉。
+		var nonJSON *epay.NonJSONResponseError
+		if errors.As(err, &nonJSON) {
+			item.Reason = "查单失败: 平台不支持按商户单号(out_trade_no)查单,自动对账对该平台无效,请人工核对: " + err.Error()
+			common.SysError("epay reconcile: platform rejected out_trade_no query (v2 query likely requires trade_no), automatic reconcile is ineffective for this platform, trade_no=" + tradeNo)
+			return item
+		}
 		item.Reason = "查单失败: " + err.Error()
 		return item
 	}

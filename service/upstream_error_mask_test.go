@@ -41,13 +41,31 @@ func TestMaskUpstreamErrorForClientMasksUpstreamError(t *testing.T) {
 
 	MaskUpstreamErrorForClient(c, apiErr)
 
+	// 429 是限流,归入可重试文案
 	require.Equal(t, UpstreamErrorMaskedMessage, apiErr.Error())
 	openaiOut := apiErr.ToOpenAIError()
 	assert.Equal(t, UpstreamErrorMaskedMessage, openaiOut.Message, "OpenAI 序列化路径必须是脱敏文案")
-	assert.Equal(t, "insufficient_quota", openaiOut.Type, "非泄漏字段保留")
+	// Type/Code/Param 一并归一,防上游软件栈/配额状态指纹泄漏
+	assert.Equal(t, string(types.ErrorTypeUpstreamError), openaiOut.Type, "泄漏指纹的 type 必须归一")
+	assert.NotEqual(t, "insufficient_quota", openaiOut.Code, "泄漏指纹的 code 必须清除")
+	assert.Empty(t, openaiOut.Param)
 	claudeOut := apiErr.ToClaudeError()
 	assert.NotContains(t, claudeOut.Message, "example-relay.com", "Claude 序列化路径不得泄漏")
 	assert.Equal(t, http.StatusTooManyRequests, apiErr.StatusCode, "状态码保持原样")
+}
+
+// 4xx(非 429)是客户端可自查的错误,脱敏文案不能是"稍后重试",否则误导无谓重试。
+func TestMaskUpstreamErrorClientFixableStatus(t *testing.T) {
+	c := newMaskTestContext(t, true, 0)
+	apiErr := types.WithOpenAIError(types.OpenAIError{
+		Message: leakyUpstreamMessage,
+		Type:    "invalid_request_error",
+	}, http.StatusBadRequest)
+
+	MaskUpstreamErrorForClient(c, apiErr)
+
+	assert.Equal(t, UpstreamErrorMaskedMessageClient, apiErr.Error())
+	assert.NotContains(t, apiErr.Error(), "example-relay.com")
 }
 
 func TestMaskUpstreamErrorForClientMasksClaudeError(t *testing.T) {
@@ -60,7 +78,7 @@ func TestMaskUpstreamErrorForClientMasksClaudeError(t *testing.T) {
 	MaskUpstreamErrorForClient(c, apiErr)
 
 	assert.Equal(t, UpstreamErrorMaskedMessage, apiErr.ToClaudeError().Message)
-	assert.Equal(t, "overloaded_error", apiErr.ToClaudeError().Type)
+	assert.Equal(t, string(types.ErrorTypeUpstreamError), apiErr.ToClaudeError().Type, "type 归一防指纹泄漏")
 	assert.NotContains(t, apiErr.ToOpenAIError().Message, "example-relay.com")
 }
 

@@ -291,7 +291,9 @@ func CreateWithdrawal(userId int, amount int, method string, payeeName string, p
 		if res.RowsAffected == 0 {
 			return ErrInsufficientCommission
 		}
-		fee := int(float64(amount) * common.AgentWithdrawFeeRate)
+		// 走集中化饱和转换,不用裸 int():amount 已上界(<=maxQuotaBalance)、
+		// 费率已钳制在 [0,1],此处不会触发饱和,但遵守项目 quota 转换铁律。
+		fee := common.QuotaFromFloat(float64(amount) * common.AgentWithdrawFeeRate)
 		w = &Withdrawal{
 			UserId:       userId,
 			Amount:       amount,

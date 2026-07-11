@@ -16,14 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
+
+import { lazyWithRetry } from '@/lib/lazy-with-retry'
 
 // The markdown renderer pulls in marked + katex (+ katex CSS) + dompurify — a large,
 // first-paint-irrelevant stack. It is rendered inside the app shell (NotificationPopover
 // in both headers), which otherwise hoists that stack into the initial chunk. Splitting it
 // behind React.lazy keeps marked/katex/dompurify out of first paint; the chunk loads the
 // first time any markdown is actually rendered and is cached thereafter.
-const MarkdownImpl = lazy(() =>
+const MarkdownImpl = lazyWithRetry('markdown-impl', () =>
   import('./markdown-impl').then((m) => ({ default: m.Markdown }))
 )
 

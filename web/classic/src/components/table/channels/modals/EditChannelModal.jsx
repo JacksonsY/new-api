@@ -533,7 +533,23 @@ const EditChannelModal = (props) => {
     setInputs((prev) => ({ ...prev, [key]: value }));
 
     // 生成setting JSON并更新
-    const newSettings = { ...channelSettings, [key]: value };
+    // 先保留渠道当前 setting 中不由本面板管理的键（后端/其他端写入的配置），再覆盖受管键
+    let existingSettings = {};
+    if (inputs.setting) {
+      try {
+        const parsed = JSON.parse(inputs.setting);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          existingSettings = parsed;
+        }
+      } catch (error) {
+        console.error('解析渠道设置失败:', error);
+      }
+    }
+    const newSettings = {
+      ...existingSettings,
+      ...channelSettings,
+      [key]: value,
+    };
     const settingsJson = JSON.stringify(newSettings);
     handleInputChange('setting', settingsJson);
   };
@@ -1740,14 +1756,27 @@ const EditChannelModal = (props) => {
     }
 
     // 生成渠道额外设置JSON
-    const channelExtraSettings = {
-      force_format: localInputs.force_format || false,
-      thinking_to_content: localInputs.thinking_to_content || false,
-      proxy: localInputs.proxy || '',
-      pass_through_body_enabled: localInputs.pass_through_body_enabled || false,
-      system_prompt: localInputs.system_prompt || '',
-      system_prompt_override: localInputs.system_prompt_override || false,
-    };
+    // 先保留渠道当前 setting 中不由本表单管理的键（后端/其他端写入的配置），再覆盖受管键
+    let channelExtraSettings = {};
+    if (localInputs.setting) {
+      try {
+        const parsed = JSON.parse(localInputs.setting);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          channelExtraSettings = parsed;
+        }
+      } catch (error) {
+        console.error('解析渠道设置失败:', error);
+      }
+    }
+    channelExtraSettings.force_format = localInputs.force_format || false;
+    channelExtraSettings.thinking_to_content =
+      localInputs.thinking_to_content || false;
+    channelExtraSettings.proxy = localInputs.proxy || '';
+    channelExtraSettings.pass_through_body_enabled =
+      localInputs.pass_through_body_enabled || false;
+    channelExtraSettings.system_prompt = localInputs.system_prompt || '';
+    channelExtraSettings.system_prompt_override =
+      localInputs.system_prompt_override || false;
     localInputs.setting = JSON.stringify(channelExtraSettings);
 
     // 处理 settings 字段（包括企业账户设置和字段透传控制）
