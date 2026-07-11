@@ -316,6 +316,14 @@ func resolveFraudAlert(id int, action string, adminId int, remark string) error 
 		if err := tx.First(&alert, id).Error; err != nil {
 			return ErrFraudAlertNotFound
 		}
+		// Every commission asset exit takes this same user-row lock; clawback's
+		// fund aggregation must too, or a concurrent MatureAgentCommissions can
+		// flip pending rows to matured between the SUM snapshot and the UPDATE,
+		// letting that money escape confiscation while history is still debited.
+		var agent User
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", alert.AgentId).First(&agent).Error; err != nil {
+			return err
+		}
 		// 并发闸门：只有把 detected 翻成 resolved 的那次调用执行处置
 		res := tx.Model(&CommissionFraudAlert{}).
 			Where("id = ? AND status = ?", id, FraudAlertStatusDetected).

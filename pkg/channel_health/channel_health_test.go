@@ -240,6 +240,12 @@ func TestShouldEscapeAffinity(t *testing.T) {
 	}
 	assert.True(t, ShouldEscapeAffinity(3), "error rate past EscapeErrorRate should escape")
 
+	// 单次故障不逃逸:首样本是对零错误先验的一次 EWMA 更新(errEWMA=alpha),
+	// 不是直接播种 1.0——否则锚定渠道一次抖动就丢弃温热 prompt 缓存。
+	resetHealth()
+	ReportResult(4, false, true, 0)
+	assert.False(t, ShouldEscapeAffinity(4), "a single failure must not trigger affinity escape")
+
 	// disabling the feature suppresses escape entirely
 	s.Enabled = false
 	assert.False(t, ShouldEscapeAffinity(3))

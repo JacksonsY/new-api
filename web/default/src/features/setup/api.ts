@@ -26,6 +26,10 @@ export async function getSetupStatus(): Promise<SetupResponse> {
     params: {
       t: Date.now(),
     },
+    // The root route awaits this in beforeLoad; without a deadline an
+    // unresponsive backend (TCP open, no reply) would hang the app on the
+    // loading screen forever.
+    timeout: 10000,
   })
   return res.data
 }

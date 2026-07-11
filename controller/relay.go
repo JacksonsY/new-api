@@ -383,9 +383,9 @@ func channelHealthTraffic(info *relaycommon.RelayInfo, attemptStart time.Time) c
 		generationMs = now.Sub(info.FirstResponseTime).Milliseconds()
 	}
 	var outputTokens, inputTokens, cacheReadTokens int64
-	if info != nil && info.Usage != nil {
-		outputTokens = int64(info.Usage.CompletionTokens)
-		inputTokens, cacheReadTokens = usageInputCacheTokens(info.Usage)
+	if usage := info.GetTrafficUsage(); usage != nil {
+		outputTokens = int64(usage.CompletionTokens)
+		inputTokens, cacheReadTokens = usageInputCacheTokens(usage)
 	}
 	return channelhealth.Traffic{
 		Success:         true,
@@ -500,9 +500,6 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if types.IsChannelError(openaiErr) {
 		return true
 	}
-	if openaiErr.GetErrorCode() == types.ErrorCodeDoRequestFailed && !isIdempotentRelayRequest(c) {
-		return false
-	}
 	if types.IsSkipRetryError(openaiErr) {
 		return false
 	}
@@ -566,28 +563,13 @@ func shouldFastRetrySameChannel(c *gin.Context, err *types.NewAPIError, used int
 	if err == nil || err.GetErrorCode() != types.ErrorCodeDoRequestFailed {
 		return false
 	}
-	if !isIdempotentRelayRequest(c) {
-		return false
-	}
-	if c.Request.Context().Err() != nil {
+	if c == nil || c.Request == nil || c.Request.Context().Err() != nil {
 		return false
 	}
 	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
 	}
 	return true
-}
-
-func isIdempotentRelayRequest(c *gin.Context) bool {
-	if c == nil || c.Request == nil {
-		return false
-	}
-	switch c.Request.Method {
-	case http.MethodGet, http.MethodHead, http.MethodPut, http.MethodDelete, http.MethodOptions, http.MethodTrace:
-		return true
-	default:
-		return false
-	}
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
@@ -684,7 +666,7 @@ func RelayMidjourney(c *gin.Context) {
 		logger.LogError(c, fmt.Sprintf("relay error (channel #%d, status code %d): %s", channelId, statusCode, description))
 		// 渠道开了错误脱敏时对下游隐藏 MJ 上游报错细节（原文已进上面的服务端日志）
 		if service.ShouldMaskUpstreamError(c) {
-			description = service.UpstreamErrorMaskedMessage
+			description = service.MaskedMessageForStatus(statusCode)
 		}
 		c.JSON(statusCode, gin.H{
 			"description": description,
@@ -896,7 +878,7 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	// 渠道开了错误脱敏时，上游来源的 task 错误对下游换通用文案（本地错误保留）
 	if !taskErr.LocalError && service.ShouldMaskUpstreamError(c) {
 		logger.LogError(c, fmt.Sprintf("task upstream error masked for client: %s", common.LocalLogPreview(taskErr.Message)))
-		taskErr.Message = service.UpstreamErrorMaskedMessage
+		taskErr.Message = service.MaskedMessageForStatus(taskErr.StatusCode)
 		taskErr.Data = nil
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
@@ -904,9 +886,6 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError, retryTimes int) bool {
 	if taskErr == nil {
-		return false
-	}
-	if !isIdempotentRelayRequest(c) {
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {

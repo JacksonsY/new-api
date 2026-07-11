@@ -184,6 +184,12 @@ type RelayInfo struct {
 
 	StreamStatus *StreamStatus
 
+	// TrafficUsage 是本次请求最终计费口径的 usage 快照,由结算入口
+	// (service.PostTextConsumeQuota)统一写入,渠道健康监控读取。
+	// 不能复用 ClaudeConvertInfo.Usage:那是 Claude 协议转换的中间态,
+	// 只在 Claude 格式入口初始化,其余格式经 nil 嵌入指针访问会 panic。
+	TrafficUsage *dto.Usage
+
 	ThinkingContentInfo
 	TokenCountMeta
 	*ClaudeConvertInfo
@@ -191,6 +197,21 @@ type RelayInfo struct {
 	*ResponsesUsageInfo
 	*ChannelMeta
 	*TaskRelayInfo
+}
+
+// GetTrafficUsage 返回用于渠道健康/流量监控的 usage,对未初始化
+// ClaudeConvertInfo 的格式 nil 安全。优先结算快照,回退协议转换中间态。
+func (info *RelayInfo) GetTrafficUsage() *dto.Usage {
+	if info == nil {
+		return nil
+	}
+	if info.TrafficUsage != nil {
+		return info.TrafficUsage
+	}
+	if info.ClaudeConvertInfo != nil {
+		return info.ClaudeConvertInfo.Usage
+	}
+	return nil
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {

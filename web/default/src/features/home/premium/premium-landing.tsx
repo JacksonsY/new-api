@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
 
 import { PublicHeader } from '@/components/layout/components/public-header'
+import { lazyWithRetry } from '@/lib/lazy-with-retry'
 
 import { PremiumBento } from './components/premium-bento'
 import { PremiumCTA } from './components/premium-cta'
@@ -36,7 +37,7 @@ import './premium.css'
 // Below-the-fold section whose only heavy dependency is `dotted-map` (embeds world
 // geo data). Split it out so the landing route's critical chunk — the hero — parses
 // and paints without waiting on the map; it loads as its own chunk on demand.
-const PremiumWorldMap = lazy(() =>
+const PremiumWorldMap = lazyWithRetry('premium-worldmap', () =>
   import('./components/premium-worldmap').then((m) => ({
     default: m.PremiumWorldMap,
   }))

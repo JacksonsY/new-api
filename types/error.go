@@ -197,21 +197,30 @@ func (e *NewAPIError) SetMessage(message string) {
 	e.Err = errors.New(message)
 }
 
-// MaskClientMessage 把回给下游客户的错误正文整体替换为给定文案。
-// 序列化路径（ToOpenAIError/ToClaudeError）对上游包裹错误直接使用 RelayError，
-// 所以必须同时覆盖 Err 与 RelayError 的 Message，仅保留无泄漏风险的 Type/Code/Param。
-// 调用方须先把原文记入服务端日志。
+// MaskClientMessage 把回给下游客户的错误正文整体替换为给定文案,并归一
+// Type/Code/Param。序列化路径(ToOpenAIError/ToClaudeError)对上游包裹错误直接
+// 使用 RelayError 或 e.errorType/e.errorCode,若只换 Message,客户仍能据 Type
+// (如上游是另一个 new-api 站的 "new_api_error")与 Code("insufficient_user_quota")
+// 反推上游软件栈与配额状态,构成供应链指纹泄漏。这里把它们统一成
+// upstream_error,只保留状态码。调用方须先把原文记入服务端日志。
 func (e *NewAPIError) MaskClientMessage(message string) {
 	if e == nil {
 		return
 	}
 	e.Err = errors.New(message)
+	e.errorType = ErrorTypeUpstreamError
+	e.errorCode = ""
 	switch relayErr := e.RelayError.(type) {
 	case OpenAIError:
 		relayErr.Message = message
+		relayErr.Type = string(ErrorTypeUpstreamError)
+		relayErr.Code = nil
+		relayErr.Param = ""
+		relayErr.Metadata = nil
 		e.RelayError = relayErr
 	case ClaudeError:
 		relayErr.Message = message
+		relayErr.Type = string(ErrorTypeUpstreamError)
 		e.RelayError = relayErr
 	}
 	if len(e.Metadata) > 0 {

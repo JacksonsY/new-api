@@ -117,6 +117,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 }
 
 func SubscriptionEpayNotify(c *gin.Context) {
+	// 与充值 notify 同一门禁:管理员下线 epay 后订阅回调同样停止处理。
+	if !isEpayWebhookEnabled() {
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
+
 	var params map[string]string
 
 	if c.Request.Method == "POST" {
@@ -160,6 +166,15 @@ func SubscriptionEpayNotify(c *gin.Context) {
 
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
+
+	// 金额纵深校验（M1）：主到账通道与 return/对账路径同强度,回调金额与
+	// 订阅订单不符则拒绝——防"改单/少付"通道下合法签名回调全额开通订阅。
+	if order := model.GetSubscriptionOrderByTradeNo(verifyInfo.ServiceTradeNo); order != nil &&
+		!service.EpayCallbackMoneyMatches(verifyInfo.Money, order.Money) {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 订阅 notify 金额与订单不符，拒绝入账 trade_no=%s local_money=%.2f callback_money=%q", verifyInfo.ServiceTradeNo, order.Money, verifyInfo.Money))
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
 
 	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
 		_, _ = c.Writer.Write([]byte("fail"))

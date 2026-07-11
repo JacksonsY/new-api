@@ -89,7 +89,15 @@ func GetUserQuotaDates(c *gin.Context) {
 func GetChannelQuotaDates(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	// 与 GetUserQuotaDates 一致：限制时间跨度，避免对 quota_data 的无界聚合
+	// 限制时间跨度,避免对 quota_data 的无界聚合。缺参/非法参数(0 或 end<start)
+	// 会让下游查询不加时间条件,变成全表聚合,必须显式拒绝而不是放行。
+	if startTimestamp <= 0 || endTimestamp <= 0 || endTimestamp < startTimestamp {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "必须提供有效的起止时间",
+		})
+		return
+	}
 	if endTimestamp-startTimestamp > 2592000 {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,

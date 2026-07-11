@@ -19,14 +19,16 @@ For commercial licensing, please contact support@quantumnous.com
 import { useGSAP } from '@gsap/react'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight } from 'lucide-react'
-import { lazy, Suspense, useRef } from 'react'
+import { Suspense, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import { lazyWithRetry } from '@/lib/lazy-with-retry'
 
 import { gsap, prefersReducedMotion, registerGsap } from '../lib'
 
 // three.js is heavy (~600kB) — lazy-load it into its own async chunk so the
 // hero paints instantly. The CSS orb stands in until WebGL is ready.
-const EnergyCore = lazy(() =>
+const EnergyCore = lazyWithRetry('premium-energy-core', () =>
   import('../energy-core').then((m) => ({ default: m.EnergyCore }))
 )
 

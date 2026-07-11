@@ -427,7 +427,12 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 	}
 	// jzlh-agent 风控封码：被封邀请码的用户不再绑定新下级。
 	// 注册与 OAuth 两条绑定路径都经此函数且忽略错误(inviterId 落 0)，天然全覆盖。
-	if IsInviteCodeBlocked(user.Id) {
+	// DB 错误按 fail-closed 处理:无法确认封禁状态时同样拒绝绑定,不给封码留恢复窗口。
+	blocked, err := IsInviteCodeBlocked(user.Id)
+	if err != nil {
+		return 0, err
+	}
+	if blocked {
 		return 0, errors.New("aff code blocked by risk control")
 	}
 	return user.Id, nil
