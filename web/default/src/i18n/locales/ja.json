@@ -5708,6 +5708,7 @@
     "Upstream Response (billing-usage-openai-estimated)": "アップストリームレスポンス (billing-usage-openai-estimated)",
     "Use exact client model names, separated by commas. Prefixes and wildcards are not supported.": "クライアントの正確なモデル名をカンマ区切りで入力します。プレフィックスやワイルドカードは使えません。",
     "Use exact model names such as gpt-4o, or regex rules prefixed with re: such as re:^gemini-.": "gpt-4o のような完全一致のモデル名、または re:^gemini- のように re: で始まる正規表現ルールを使えます。",
-    "e.g. gpt-4o, gemini-2.5-flash": "例: gpt-4o, gemini-2.5-flash"
+    "e.g. gpt-4o, gemini-2.5-flash": "例: gpt-4o, gemini-2.5-flash",
+    "Original Cost": "割引前費用"
   }
 }

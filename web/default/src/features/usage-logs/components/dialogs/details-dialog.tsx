@@ -351,21 +351,36 @@ function BillingBreakdown(props: {
     })
   }
 
-  // 渠道成本（仅管理员可见）：原始花费 × 渠道计费倍率，不影响用户扣费
-  if (
-    isAdmin &&
-    typeof log.channel_ratio === 'number' &&
-    log.channel_ratio > 0 && // 旧日志加列前默认 0 = 未打快照，不展示
-    log.channel_ratio !== 1
-  ) {
-    rows.push({
-      label: t('Channel cost ratio'),
-      value: `${log.channel_ratio}x`,
-    })
-    rows.push({
-      label: t('Channel Cost'),
-      value: formatLogQuota(Math.round(log.quota * log.channel_ratio)),
-    })
+  // 渠道成本（仅管理员可见，不影响用户扣费）。成本倍率（含 sub2api/上游分组
+  // 自动同步）是相对官方原价的折扣，而 log.quota 是乘过分组倍率的用户实付，
+  // 分组倍率≠1 时直接乘实付会错估成本。基数改用原始费用 = 实付 ÷ 生效分组倍率
+  // （折前官方口径）；分组倍率缺失或非法按 1 兜底，等价旧口径。
+  if (isAdmin) {
+    const groupRatioForCost =
+      effectiveGR != null && Number.isFinite(effectiveGR) && effectiveGR > 0
+        ? effectiveGR
+        : 1
+    const rawQuota = log.quota / groupRatioForCost
+    if (groupRatioForCost !== 1) {
+      rows.push({
+        label: t('Original Cost'),
+        value: formatLogQuota(Math.round(rawQuota)),
+      })
+    }
+    if (
+      typeof log.channel_ratio === 'number' &&
+      log.channel_ratio > 0 && // 旧日志加列前默认 0 = 未打快照，不展示
+      log.channel_ratio !== 1
+    ) {
+      rows.push({
+        label: t('Channel cost ratio'),
+        value: `${log.channel_ratio}x`,
+      })
+      rows.push({
+        label: t('Channel Cost'),
+        value: formatLogQuota(Math.round(rawQuota * log.channel_ratio)),
+      })
+    }
   }
 
   if (isAdmin && other.admin_info) {

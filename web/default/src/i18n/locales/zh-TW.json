@@ -5708,6 +5708,7 @@
     "Upstream Response (billing-usage-openai-estimated)": "上游返回（billing-usage-openai-estimated）",
     "Use exact client model names, separated by commas. Prefixes and wildcards are not supported.": "填寫客戶端請求裡的精確 model 名，多個用英文逗號分隔。不支援前綴或萬用字元。",
     "Use exact model names such as gpt-4o, or regex rules prefixed with re: such as re:^gemini-.": "可以填寫 gpt-4o 這類精確模型名，也可以填寫 re:^gemini- 這類以 re: 開頭的正則規則。",
-    "e.g. gpt-4o, gemini-2.5-flash": "例如 gpt-4o, gemini-2.5-flash"
+    "e.g. gpt-4o, gemini-2.5-flash": "例如 gpt-4o, gemini-2.5-flash",
+    "Original Cost": "原始費用"
   }
 }

@@ -5708,6 +5708,7 @@
     "Upstream Response (billing-usage-openai-estimated)": "Upstream Response (billing-usage-openai-estimated)",
     "Use exact client model names, separated by commas. Prefixes and wildcards are not supported.": "Use exact client model names, separated by commas. Prefixes and wildcards are not supported.",
     "Use exact model names such as gpt-4o, or regex rules prefixed with re: such as re:^gemini-.": "Use exact model names such as gpt-4o, or regex rules prefixed with re: such as re:^gemini-.",
-    "e.g. gpt-4o, gemini-2.5-flash": "e.g. gpt-4o, gemini-2.5-flash"
+    "e.g. gpt-4o, gemini-2.5-flash": "e.g. gpt-4o, gemini-2.5-flash",
+    "Original Cost": "Original Cost"
   }
 }
