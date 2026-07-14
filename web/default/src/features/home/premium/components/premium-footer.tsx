@@ -42,6 +42,7 @@ export function PremiumFooter() {
       links: [
         { label: t('Pricing'), to: '/pricing' },
         { label: t('Rankings'), to: '/rankings' },
+        { label: t('Model Detection'), to: '/detector' },
         { label: t('Get Started'), to: '/sign-up' },
       ],
     },
@@ -56,6 +57,7 @@ export function PremiumFooter() {
       title: t('Company'),
       links: [
         { label: t('About'), to: '/about' },
+        { label: t('Partners'), to: '/partners' },
         { label: t('Sign In'), to: '/sign-in' },
       ],
     },

@@ -48,7 +48,7 @@ function resolveSupportContact(): SupportContactInfo {
   const win =
     (typeof window !== 'undefined' && window.__SUPPORT_CONTACT__) || {}
   const contact: SupportContactInfo = {
-    email: win.email ?? env?.PUBLIC_SUPPORT_EMAIL ?? 'support@jzlh99.com',
+    email: win.email ?? env?.PUBLIC_SUPPORT_EMAIL ?? '',
     phone: win.phone ?? env?.PUBLIC_SUPPORT_PHONE ?? '',
     wechat: win.wechat ?? env?.PUBLIC_SUPPORT_WECHAT ?? '',
     wechatQr: win.wechatQr ?? env?.PUBLIC_SUPPORT_WECHAT_QR ?? '',

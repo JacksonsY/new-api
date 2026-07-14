@@ -17,6 +17,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as RankingsIndexRouteImport } from './routes/rankings/index'
 import { Route as PricingIndexRouteImport } from './routes/pricing/index'
+import { Route as PartnersIndexRouteImport } from './routes/partners/index'
+import { Route as DetectorIndexRouteImport } from './routes/detector/index'
 import { Route as AboutIndexRouteImport } from './routes/about/index'
 import { Route as OauthProviderRouteImport } from './routes/oauth/$provider'
 import { Route as ConsoleTopupRouteImport } from './routes/console/topup'
@@ -42,6 +44,7 @@ import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authenticated/usage-logs/index'
 import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_authenticated/system-settings/index'
 import { Route as AuthenticatedSystemInfoIndexRouteImport } from './routes/_authenticated/system-info/index'
+import { Route as AuthenticatedSuppliersIndexRouteImport } from './routes/_authenticated/suppliers/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
 import { Route as AuthenticatedRiskIndexRouteImport } from './routes/_authenticated/risk/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
@@ -66,6 +69,13 @@ import { Route as AuthenticatedSystemSettingsModelsIndexRouteImport } from './ro
 import { Route as AuthenticatedSystemSettingsContentIndexRouteImport } from './routes/_authenticated/system-settings/content/index'
 import { Route as AuthenticatedSystemSettingsBillingIndexRouteImport } from './routes/_authenticated/system-settings/billing/index'
 import { Route as AuthenticatedSystemSettingsAuthIndexRouteImport } from './routes/_authenticated/system-settings/auth/index'
+import { Route as AuthenticatedSuppliersSettlementIndexRouteImport } from './routes/_authenticated/suppliers/settlement/index'
+import { Route as AuthenticatedSuppliersReviewIndexRouteImport } from './routes/_authenticated/suppliers/review/index'
+import { Route as AuthenticatedSuppliersLeaderboardIndexRouteImport } from './routes/_authenticated/suppliers/leaderboard/index'
+import { Route as AuthenticatedSupplierPayoutIndexRouteImport } from './routes/_authenticated/supplier/payout/index'
+import { Route as AuthenticatedSupplierEarningsIndexRouteImport } from './routes/_authenticated/supplier/earnings/index'
+import { Route as AuthenticatedSupplierChannelsIndexRouteImport } from './routes/_authenticated/supplier/channels/index'
+import { Route as AuthenticatedSupplierApplyIndexRouteImport } from './routes/_authenticated/supplier/apply/index'
 import { Route as AuthenticatedAgentWalletIndexRouteImport } from './routes/_authenticated/agent/wallet/index'
 import { Route as AuthenticatedAgentUsersIndexRouteImport } from './routes/_authenticated/agent/users/index'
 import { Route as AuthenticatedSystemSettingsSiteSectionRouteImport } from './routes/_authenticated/system-settings/site/$section'
@@ -112,6 +122,16 @@ const RankingsIndexRoute = RankingsIndexRouteImport.update({
 const PricingIndexRoute = PricingIndexRouteImport.update({
   id: '/pricing/',
   path: '/pricing/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PartnersIndexRoute = PartnersIndexRouteImport.update({
+  id: '/partners/',
+  path: '/partners/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DetectorIndexRoute = DetectorIndexRouteImport.update({
+  id: '/detector/',
+  path: '/detector/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AboutIndexRoute = AboutIndexRouteImport.update({
@@ -243,6 +263,12 @@ const AuthenticatedSystemInfoIndexRoute =
   AuthenticatedSystemInfoIndexRouteImport.update({
     id: '/system-info/',
     path: '/system-info/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSuppliersIndexRoute =
+  AuthenticatedSuppliersIndexRouteImport.update({
+    id: '/suppliers/',
+    path: '/suppliers/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSubscriptionsIndexRoute =
@@ -385,6 +411,48 @@ const AuthenticatedSystemSettingsAuthIndexRoute =
     path: '/auth/',
     getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
   } as any)
+const AuthenticatedSuppliersSettlementIndexRoute =
+  AuthenticatedSuppliersSettlementIndexRouteImport.update({
+    id: '/suppliers/settlement/',
+    path: '/suppliers/settlement/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSuppliersReviewIndexRoute =
+  AuthenticatedSuppliersReviewIndexRouteImport.update({
+    id: '/suppliers/review/',
+    path: '/suppliers/review/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSuppliersLeaderboardIndexRoute =
+  AuthenticatedSuppliersLeaderboardIndexRouteImport.update({
+    id: '/suppliers/leaderboard/',
+    path: '/suppliers/leaderboard/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSupplierPayoutIndexRoute =
+  AuthenticatedSupplierPayoutIndexRouteImport.update({
+    id: '/supplier/payout/',
+    path: '/supplier/payout/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSupplierEarningsIndexRoute =
+  AuthenticatedSupplierEarningsIndexRouteImport.update({
+    id: '/supplier/earnings/',
+    path: '/supplier/earnings/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSupplierChannelsIndexRoute =
+  AuthenticatedSupplierChannelsIndexRouteImport.update({
+    id: '/supplier/channels/',
+    path: '/supplier/channels/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSupplierApplyIndexRoute =
+  AuthenticatedSupplierApplyIndexRouteImport.update({
+    id: '/supplier/apply/',
+    path: '/supplier/apply/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAgentWalletIndexRoute =
   AuthenticatedAgentWalletIndexRouteImport.update({
     id: '/agent/wallet/',
@@ -462,6 +530,8 @@ export interface FileRoutesByFullPath {
   '/console/topup': typeof ConsoleTopupRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
+  '/detector/': typeof DetectorIndexRoute
+  '/partners/': typeof PartnersIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
@@ -482,6 +552,7 @@ export interface FileRoutesByFullPath {
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/risk/': typeof AuthenticatedRiskIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
+  '/suppliers/': typeof AuthenticatedSuppliersIndexRoute
   '/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
   '/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
@@ -498,6 +569,13 @@ export interface FileRoutesByFullPath {
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
   '/agent/users/': typeof AuthenticatedAgentUsersIndexRoute
   '/agent/wallet/': typeof AuthenticatedAgentWalletIndexRoute
+  '/supplier/apply/': typeof AuthenticatedSupplierApplyIndexRoute
+  '/supplier/channels/': typeof AuthenticatedSupplierChannelsIndexRoute
+  '/supplier/earnings/': typeof AuthenticatedSupplierEarningsIndexRoute
+  '/supplier/payout/': typeof AuthenticatedSupplierPayoutIndexRoute
+  '/suppliers/leaderboard/': typeof AuthenticatedSuppliersLeaderboardIndexRoute
+  '/suppliers/review/': typeof AuthenticatedSuppliersReviewIndexRoute
+  '/suppliers/settlement/': typeof AuthenticatedSuppliersSettlementIndexRoute
   '/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/system-settings/billing/': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/system-settings/content/': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -527,6 +605,8 @@ export interface FileRoutesByTo {
   '/console/topup': typeof ConsoleTopupRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about': typeof AboutIndexRoute
+  '/detector': typeof DetectorIndexRoute
+  '/partners': typeof PartnersIndexRoute
   '/pricing': typeof PricingIndexRoute
   '/rankings': typeof RankingsIndexRoute
   '/setup': typeof SetupIndexRoute
@@ -547,6 +627,7 @@ export interface FileRoutesByTo {
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
   '/risk': typeof AuthenticatedRiskIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
+  '/suppliers': typeof AuthenticatedSuppliersIndexRoute
   '/system-info': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings': typeof AuthenticatedSystemSettingsIndexRoute
   '/usage-logs': typeof AuthenticatedUsageLogsIndexRoute
@@ -563,6 +644,13 @@ export interface FileRoutesByTo {
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
   '/agent/users': typeof AuthenticatedAgentUsersIndexRoute
   '/agent/wallet': typeof AuthenticatedAgentWalletIndexRoute
+  '/supplier/apply': typeof AuthenticatedSupplierApplyIndexRoute
+  '/supplier/channels': typeof AuthenticatedSupplierChannelsIndexRoute
+  '/supplier/earnings': typeof AuthenticatedSupplierEarningsIndexRoute
+  '/supplier/payout': typeof AuthenticatedSupplierPayoutIndexRoute
+  '/suppliers/leaderboard': typeof AuthenticatedSuppliersLeaderboardIndexRoute
+  '/suppliers/review': typeof AuthenticatedSuppliersReviewIndexRoute
+  '/suppliers/settlement': typeof AuthenticatedSuppliersSettlementIndexRoute
   '/system-settings/auth': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/system-settings/billing': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/system-settings/content': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -596,6 +684,8 @@ export interface FileRoutesById {
   '/console/topup': typeof ConsoleTopupRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
+  '/detector/': typeof DetectorIndexRoute
+  '/partners/': typeof PartnersIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
@@ -616,6 +706,7 @@ export interface FileRoutesById {
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/_authenticated/risk/': typeof AuthenticatedRiskIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
+  '/_authenticated/suppliers/': typeof AuthenticatedSuppliersIndexRoute
   '/_authenticated/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/_authenticated/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
   '/_authenticated/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
@@ -632,6 +723,13 @@ export interface FileRoutesById {
   '/_authenticated/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
   '/_authenticated/agent/users/': typeof AuthenticatedAgentUsersIndexRoute
   '/_authenticated/agent/wallet/': typeof AuthenticatedAgentWalletIndexRoute
+  '/_authenticated/supplier/apply/': typeof AuthenticatedSupplierApplyIndexRoute
+  '/_authenticated/supplier/channels/': typeof AuthenticatedSupplierChannelsIndexRoute
+  '/_authenticated/supplier/earnings/': typeof AuthenticatedSupplierEarningsIndexRoute
+  '/_authenticated/supplier/payout/': typeof AuthenticatedSupplierPayoutIndexRoute
+  '/_authenticated/suppliers/leaderboard/': typeof AuthenticatedSuppliersLeaderboardIndexRoute
+  '/_authenticated/suppliers/review/': typeof AuthenticatedSuppliersReviewIndexRoute
+  '/_authenticated/suppliers/settlement/': typeof AuthenticatedSuppliersSettlementIndexRoute
   '/_authenticated/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/_authenticated/system-settings/billing/': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/_authenticated/system-settings/content/': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -664,6 +762,8 @@ export interface FileRouteTypes {
     | '/console/topup'
     | '/oauth/$provider'
     | '/about/'
+    | '/detector/'
+    | '/partners/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
@@ -684,6 +784,7 @@ export interface FileRouteTypes {
     | '/redemption-codes/'
     | '/risk/'
     | '/subscriptions/'
+    | '/suppliers/'
     | '/system-info/'
     | '/system-settings/'
     | '/usage-logs/'
@@ -700,6 +801,13 @@ export interface FileRouteTypes {
     | '/system-settings/site/$section'
     | '/agent/users/'
     | '/agent/wallet/'
+    | '/supplier/apply/'
+    | '/supplier/channels/'
+    | '/supplier/earnings/'
+    | '/supplier/payout/'
+    | '/suppliers/leaderboard/'
+    | '/suppliers/review/'
+    | '/suppliers/settlement/'
     | '/system-settings/auth/'
     | '/system-settings/billing/'
     | '/system-settings/content/'
@@ -729,6 +837,8 @@ export interface FileRouteTypes {
     | '/console/topup'
     | '/oauth/$provider'
     | '/about'
+    | '/detector'
+    | '/partners'
     | '/pricing'
     | '/rankings'
     | '/setup'
@@ -749,6 +859,7 @@ export interface FileRouteTypes {
     | '/redemption-codes'
     | '/risk'
     | '/subscriptions'
+    | '/suppliers'
     | '/system-info'
     | '/system-settings'
     | '/usage-logs'
@@ -765,6 +876,13 @@ export interface FileRouteTypes {
     | '/system-settings/site/$section'
     | '/agent/users'
     | '/agent/wallet'
+    | '/supplier/apply'
+    | '/supplier/channels'
+    | '/supplier/earnings'
+    | '/supplier/payout'
+    | '/suppliers/leaderboard'
+    | '/suppliers/review'
+    | '/suppliers/settlement'
     | '/system-settings/auth'
     | '/system-settings/billing'
     | '/system-settings/content'
@@ -797,6 +915,8 @@ export interface FileRouteTypes {
     | '/console/topup'
     | '/oauth/$provider'
     | '/about/'
+    | '/detector/'
+    | '/partners/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
@@ -817,6 +937,7 @@ export interface FileRouteTypes {
     | '/_authenticated/redemption-codes/'
     | '/_authenticated/risk/'
     | '/_authenticated/subscriptions/'
+    | '/_authenticated/suppliers/'
     | '/_authenticated/system-info/'
     | '/_authenticated/system-settings/'
     | '/_authenticated/usage-logs/'
@@ -833,6 +954,13 @@ export interface FileRouteTypes {
     | '/_authenticated/system-settings/site/$section'
     | '/_authenticated/agent/users/'
     | '/_authenticated/agent/wallet/'
+    | '/_authenticated/supplier/apply/'
+    | '/_authenticated/supplier/channels/'
+    | '/_authenticated/supplier/earnings/'
+    | '/_authenticated/supplier/payout/'
+    | '/_authenticated/suppliers/leaderboard/'
+    | '/_authenticated/suppliers/review/'
+    | '/_authenticated/suppliers/settlement/'
     | '/_authenticated/system-settings/auth/'
     | '/_authenticated/system-settings/billing/'
     | '/_authenticated/system-settings/content/'
@@ -857,6 +985,8 @@ export interface RootRouteChildren {
   ConsoleTopupRoute: typeof ConsoleTopupRoute
   OauthProviderRoute: typeof OauthProviderRoute
   AboutIndexRoute: typeof AboutIndexRoute
+  DetectorIndexRoute: typeof DetectorIndexRoute
+  PartnersIndexRoute: typeof PartnersIndexRoute
   PricingIndexRoute: typeof PricingIndexRoute
   RankingsIndexRoute: typeof RankingsIndexRoute
   SetupIndexRoute: typeof SetupIndexRoute
@@ -919,6 +1049,20 @@ declare module '@tanstack/react-router' {
       path: '/pricing'
       fullPath: '/pricing/'
       preLoaderRoute: typeof PricingIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/partners/': {
+      id: '/partners/'
+      path: '/partners'
+      fullPath: '/partners/'
+      preLoaderRoute: typeof PartnersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/detector/': {
+      id: '/detector/'
+      path: '/detector'
+      fullPath: '/detector/'
+      preLoaderRoute: typeof DetectorIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/about/': {
@@ -1096,6 +1240,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSystemInfoIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/suppliers/': {
+      id: '/_authenticated/suppliers/'
+      path: '/suppliers'
+      fullPath: '/suppliers/'
+      preLoaderRoute: typeof AuthenticatedSuppliersIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/subscriptions/': {
       id: '/_authenticated/subscriptions/'
       path: '/subscriptions'
@@ -1263,6 +1414,55 @@ declare module '@tanstack/react-router' {
       fullPath: '/system-settings/auth/'
       preLoaderRoute: typeof AuthenticatedSystemSettingsAuthIndexRouteImport
       parentRoute: typeof AuthenticatedSystemSettingsRouteRoute
+    }
+    '/_authenticated/suppliers/settlement/': {
+      id: '/_authenticated/suppliers/settlement/'
+      path: '/suppliers/settlement'
+      fullPath: '/suppliers/settlement/'
+      preLoaderRoute: typeof AuthenticatedSuppliersSettlementIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/suppliers/review/': {
+      id: '/_authenticated/suppliers/review/'
+      path: '/suppliers/review'
+      fullPath: '/suppliers/review/'
+      preLoaderRoute: typeof AuthenticatedSuppliersReviewIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/suppliers/leaderboard/': {
+      id: '/_authenticated/suppliers/leaderboard/'
+      path: '/suppliers/leaderboard'
+      fullPath: '/suppliers/leaderboard/'
+      preLoaderRoute: typeof AuthenticatedSuppliersLeaderboardIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/supplier/payout/': {
+      id: '/_authenticated/supplier/payout/'
+      path: '/supplier/payout'
+      fullPath: '/supplier/payout/'
+      preLoaderRoute: typeof AuthenticatedSupplierPayoutIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/supplier/earnings/': {
+      id: '/_authenticated/supplier/earnings/'
+      path: '/supplier/earnings'
+      fullPath: '/supplier/earnings/'
+      preLoaderRoute: typeof AuthenticatedSupplierEarningsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/supplier/channels/': {
+      id: '/_authenticated/supplier/channels/'
+      path: '/supplier/channels'
+      fullPath: '/supplier/channels/'
+      preLoaderRoute: typeof AuthenticatedSupplierChannelsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/supplier/apply/': {
+      id: '/_authenticated/supplier/apply/'
+      path: '/supplier/apply'
+      fullPath: '/supplier/apply/'
+      preLoaderRoute: typeof AuthenticatedSupplierApplyIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/agent/wallet/': {
       id: '/_authenticated/agent/wallet/'
@@ -1432,6 +1632,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
   AuthenticatedRiskIndexRoute: typeof AuthenticatedRiskIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
+  AuthenticatedSuppliersIndexRoute: typeof AuthenticatedSuppliersIndexRoute
   AuthenticatedSystemInfoIndexRoute: typeof AuthenticatedSystemInfoIndexRoute
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
@@ -1439,6 +1640,13 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedWithdrawalsIndexRoute: typeof AuthenticatedWithdrawalsIndexRoute
   AuthenticatedAgentUsersIndexRoute: typeof AuthenticatedAgentUsersIndexRoute
   AuthenticatedAgentWalletIndexRoute: typeof AuthenticatedAgentWalletIndexRoute
+  AuthenticatedSupplierApplyIndexRoute: typeof AuthenticatedSupplierApplyIndexRoute
+  AuthenticatedSupplierChannelsIndexRoute: typeof AuthenticatedSupplierChannelsIndexRoute
+  AuthenticatedSupplierEarningsIndexRoute: typeof AuthenticatedSupplierEarningsIndexRoute
+  AuthenticatedSupplierPayoutIndexRoute: typeof AuthenticatedSupplierPayoutIndexRoute
+  AuthenticatedSuppliersLeaderboardIndexRoute: typeof AuthenticatedSuppliersLeaderboardIndexRoute
+  AuthenticatedSuppliersReviewIndexRoute: typeof AuthenticatedSuppliersReviewIndexRoute
+  AuthenticatedSuppliersSettlementIndexRoute: typeof AuthenticatedSuppliersSettlementIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -1462,6 +1670,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedRedemptionCodesIndexRoute,
   AuthenticatedRiskIndexRoute: AuthenticatedRiskIndexRoute,
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,
+  AuthenticatedSuppliersIndexRoute: AuthenticatedSuppliersIndexRoute,
   AuthenticatedSystemInfoIndexRoute: AuthenticatedSystemInfoIndexRoute,
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
@@ -1469,6 +1678,18 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedWithdrawalsIndexRoute: AuthenticatedWithdrawalsIndexRoute,
   AuthenticatedAgentUsersIndexRoute: AuthenticatedAgentUsersIndexRoute,
   AuthenticatedAgentWalletIndexRoute: AuthenticatedAgentWalletIndexRoute,
+  AuthenticatedSupplierApplyIndexRoute: AuthenticatedSupplierApplyIndexRoute,
+  AuthenticatedSupplierChannelsIndexRoute:
+    AuthenticatedSupplierChannelsIndexRoute,
+  AuthenticatedSupplierEarningsIndexRoute:
+    AuthenticatedSupplierEarningsIndexRoute,
+  AuthenticatedSupplierPayoutIndexRoute: AuthenticatedSupplierPayoutIndexRoute,
+  AuthenticatedSuppliersLeaderboardIndexRoute:
+    AuthenticatedSuppliersLeaderboardIndexRoute,
+  AuthenticatedSuppliersReviewIndexRoute:
+    AuthenticatedSuppliersReviewIndexRoute,
+  AuthenticatedSuppliersSettlementIndexRoute:
+    AuthenticatedSuppliersSettlementIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -1489,6 +1710,8 @@ const rootRouteChildren: RootRouteChildren = {
   ConsoleTopupRoute: ConsoleTopupRoute,
   OauthProviderRoute: OauthProviderRoute,
   AboutIndexRoute: AboutIndexRoute,
+  DetectorIndexRoute: DetectorIndexRoute,
+  PartnersIndexRoute: PartnersIndexRoute,
   PricingIndexRoute: PricingIndexRoute,
   RankingsIndexRoute: RankingsIndexRoute,
   SetupIndexRoute: SetupIndexRoute,
