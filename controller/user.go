@@ -473,6 +473,12 @@ func GetSelf(c *gin.Context) {
 	}
 	// Hide admin remarks: set to empty to trigger omitempty tag, ensuring the remark field is not included in JSON returned to regular users
 	user.Remark = ""
+	// 供应商收款/联系方式属敏感财务信息，不随 self 落 localStorage（前端 auth-store 会持久化 user）；
+	// 供应商界面改用 /supplier/profile 拉取。omitempty 令这些字段从 self 响应中消失。
+	user.SupplierPayoutMethod = ""
+	user.SupplierPayoutAccount = ""
+	user.SupplierPayoutName = ""
+	user.SupplierContact = ""
 
 	// 计算用户权限信息
 	permissions := calculateUserPermissions(userRole)

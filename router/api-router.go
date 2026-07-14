@@ -66,6 +66,22 @@ func SetApiRouter(router *gin.Engine) {
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
 
+		// >>> jzlh-veridrop 真伪检测（/api/detector/*）
+		detectorRoute := apiRouter.Group("/detector")
+		{
+			// 公开：检测任意中转站 + 轮询 + 红黑榜（限速；引擎内 SSRF 守卫拦私网/元数据）
+			detectorRoute.POST("/detect", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.DetectPublic)
+			detectorRoute.GET("/status/:jobId", middleware.CriticalRateLimit(), controller.DetectStatus)
+			detectorRoute.GET("/leaderboard", controller.DetectorLeaderboard)
+			// 管理员：渠道验真 + 记录
+			detectorRoute.POST("/channel/:id", middleware.AdminAuth(), controller.DetectChannel)
+			detectorRoute.GET("/channel/:id/latest", middleware.AdminAuth(), controller.ChannelLatestDetection)
+			detectorRoute.GET("/records", middleware.AdminAuth(), controller.DetectorRecords)
+			// 定期复检：运营可 cron 触发（批量对已通过供应商渠道跑 quick）
+			detectorRoute.POST("/recheck", middleware.AdminAuth(), controller.AdminRecheckSupplierChannels)
+		}
+		// <<< jzlh-veridrop
+
 		userRoute := apiRouter.Group("/user")
 		{
 			userRoute.POST("/register", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.Register)
@@ -181,6 +197,35 @@ func SetApiRouter(router *gin.Engine) {
 				agentRoute.POST("/risk/remove", middleware.RootAuth(), controller.AdminRemoveRiskControls)
 			}
 			// <<< jzlh-agent
+
+			// >>> jzlh-supplier 供应商市场（/api/user/supplier/*）
+			supplierRoute := userRoute.Group("/supplier")
+			{
+				// 自助：入驻申请（仅需登录）+ 状态查询
+				supplierRoute.POST("/apply", middleware.UserAuth(), controller.SupplierApply)
+				supplierRoute.GET("/profile", middleware.UserAuth(), controller.SupplierProfile)
+				// 自助：更新收款/联系方式（审核通过后换卡也走这里，仅需登录）
+				supplierRoute.PUT("/payout-info", middleware.UserAuth(), controller.SupplierUpdatePayoutInfo)
+				// 自助：一键获取上游模型（申请页测活，尚非供应商，仅需登录；复用渠道 FetchModels）
+				supplierRoute.POST("/fetch-models", middleware.UserAuth(), controller.FetchModels)
+				// 自助：申请记录（owner scope、任意审核态；pending 申请者也能看，故仅 UserAuth）
+				supplierRoute.GET("/applications", middleware.UserAuth(), controller.SupplierListChannels)
+				// 自助：名下渠道 + 收益（需已通过审核的供应商）
+				supplierRoute.GET("/channels", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierListChannels)
+				supplierRoute.POST("/channel", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierSubmitChannel)
+				supplierRoute.PUT("/channel/:id", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierUpdateChannel)
+				supplierRoute.GET("/earnings", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierEarnings)
+				// 超管：供应商审批 + 渠道审核 + 结算/人工打款（资金处置收紧为 Root）
+				supplierRoute.GET("/admin/list", middleware.RootAuth(), controller.AdminListSuppliers)
+				supplierRoute.POST("/admin/review", middleware.RootAuth(), controller.AdminReviewSupplier)
+				supplierRoute.GET("/admin/channel/pending", middleware.RootAuth(), controller.AdminListPendingChannels)
+				supplierRoute.POST("/admin/channel/approve", middleware.RootAuth(), controller.AdminApproveSupplierChannel)
+				supplierRoute.POST("/admin/channel/reject", middleware.RootAuth(), controller.AdminRejectSupplierChannel)
+				supplierRoute.GET("/admin/settlement", middleware.RootAuth(), controller.AdminSupplierSettlement)
+				supplierRoute.POST("/admin/pay", middleware.RootAuth(), controller.AdminPaySupplier)
+				supplierRoute.POST("/admin/confiscate", middleware.RootAuth(), controller.AdminConfiscateSupplier)
+			}
+			// <<< jzlh-supplier
 		}
 
 		// Subscription billing (plans, purchase, admin management)

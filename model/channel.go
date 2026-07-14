@@ -21,6 +21,18 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// >>> jzlh-supplier / jzlh-veridrop 供应商市场 + 真伪检测
+const (
+	// ChannelAuditApproved 默认态：平台/管理员/存量渠道，直接可路由。
+	// 默认 0=approved 是刻意设计——存量与管理员渠道零回填即可参与路由，
+	// 只有供应商提交的渠道才显式置为 pending。
+	ChannelAuditApproved = 0
+	ChannelAuditPending  = 1 // 供应商提交，待管理员审核
+	ChannelAuditRejected = 2 // 管理员驳回
+)
+
+// <<< jzlh-supplier / jzlh-veridrop
+
 type Channel struct {
 	Id                 int     `json:"id"`
 	Type               int     `json:"type" gorm:"default:0"`
@@ -52,13 +64,25 @@ type Channel struct {
 	// ChannelRatio 渠道计费倍率：仅影响渠道维度统计（used_quota / 数据面板），不影响用户扣费。
 	// >=0，允许 0；nil（旧数据/未配置）或负数按 1.0 处理。默认在 GetChannelRatio 里兜底，
 	// 不用 gorm default 标签，避免三库 AutoMigrate 反复 ALTER。
-	ChannelRatio   *float64 `json:"channel_ratio"`
-	OtherInfo      string   `json:"other_info"`
-	Tag            *string  `json:"tag" gorm:"index"`
-	Setting        *string  `json:"setting" gorm:"type:text"` // 渠道额外设置
-	ParamOverride  *string  `json:"param_override" gorm:"type:text"`
-	HeaderOverride *string  `json:"header_override" gorm:"type:text"`
-	Remark         *string  `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
+	ChannelRatio *float64 `json:"channel_ratio"`
+	// >>> jzlh-supplier 供应商市场：渠道归属 + 审核态（与运营态 Status 正交）
+	// UserId 渠道所属供应商用户 id；0 = 平台自营（存量/管理员渠道默认 0，无需回填）。
+	UserId int `json:"user_id" gorm:"index;default:0;column:user_id"`
+	// AuditStatus 见 ChannelAudit* 常量；默认 0=approved 使存量/管理员渠道零回填即可路由。
+	AuditStatus int `json:"audit_status" gorm:"index;default:0;column:audit_status"`
+	// <<< jzlh-supplier
+	// >>> jzlh-veridrop 真伪检测最近一次结果快照（完整证据存 DetectionRecord）
+	DetectVerdict       string  `json:"detect_verdict" gorm:"type:varchar(16);default:'';column:detect_verdict"`
+	DetectScore         float64 `json:"detect_score" gorm:"default:0;column:detect_score"`
+	DetectCriticalCount int     `json:"detect_critical_count" gorm:"default:0;column:detect_critical_count"`
+	DetectCheckedAt     int64   `json:"detect_checked_at" gorm:"bigint;default:0;column:detect_checked_at"`
+	// <<< jzlh-veridrop
+	OtherInfo      string  `json:"other_info"`
+	Tag            *string `json:"tag" gorm:"index"`
+	Setting        *string `json:"setting" gorm:"type:text"` // 渠道额外设置
+	ParamOverride  *string `json:"param_override" gorm:"type:text"`
+	HeaderOverride *string `json:"header_override" gorm:"type:text"`
+	Remark         *string `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
 	// add after v0.8.5
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
 

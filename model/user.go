@@ -18,6 +18,16 @@ import (
 
 const UserNameMaxLength = 20
 
+// >>> jzlh-supplier 供应商身份状态（User.SupplierStatus）。默认 0=非供应商，零回填。
+const (
+	SupplierStatusNone      = 0 // 非供应商
+	SupplierStatusPending   = 1 // 已申请，待管理员审核
+	SupplierStatusApproved  = 2 // 审核通过，可上架渠道
+	SupplierStatusSuspended = 3 // 被停用（风控/违约）
+)
+
+// <<< jzlh-supplier
+
 var ErrInsufficientUserQuota = errors.New("insufficient user quota")
 
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
@@ -59,6 +69,20 @@ type User struct {
 	RegisterIp             string `json:"-" gorm:"type:varchar(64);default:'';column:register_ip"`                   // 注册 IP(防刷审计用，不下发)
 	DownstreamCount        int64  `json:"downstream_count,omitempty" gorm:"-"`                                       // 名下用户数(代理列表展示用，查询时回填不落库)
 	// <<< jzlh-agent
+	// >>> jzlh-supplier 供应商身份（与 AgentType/Role 正交，同一用户可既是代理又是供应商）
+	SupplierStatus int `json:"supplier_status" gorm:"default:0;column:supplier_status"` // 见 SupplierStatus* 常量，默认 0 非供应商
+	// SupplierPayableQuota 名下可打款供应商收益（查询时聚合回填，不落库）。
+	SupplierPayableQuota int64 `json:"supplier_payable_quota,omitempty" gorm:"-"`
+	// 收款与联系方式：入驻时填写，人工打款依据。omitempty + 仅本人(/self、SupplierProfile)
+	// 与管理端(RootAuth 列表/结算)会读到；代理看下线走列白名单 Select 不含这些列，不外泄。
+	SupplierPayoutMethod  string `json:"supplier_payout_method,omitempty" gorm:"type:varchar(16);default:'';column:supplier_payout_method"`    // alipay/wechat/bank/usdt/other
+	SupplierPayoutAccount string `json:"supplier_payout_account,omitempty" gorm:"type:varchar(128);default:'';column:supplier_payout_account"` // 收款账号
+	SupplierPayoutName    string `json:"supplier_payout_name,omitempty" gorm:"type:varchar(64);default:'';column:supplier_payout_name"`        // 户名/真实姓名
+	SupplierContact       string `json:"supplier_contact,omitempty" gorm:"type:varchar(128);default:'';column:supplier_contact"`               // 联系方式(微信/QQ/Telegram/邮箱)
+	// 商户资料：入驻申请时填写，审核员据此沟通/展示（与收款账户解耦，收款走审核通过后的收款设置）。
+	SupplierName  string `json:"supplier_name,omitempty" gorm:"type:varchar(64);default:'';column:supplier_name"`   // 商户名称/品牌名
+	SupplierIntro string `json:"supplier_intro,omitempty" gorm:"type:varchar(255);default:'';column:supplier_intro"` // 商户简介
+	// <<< jzlh-supplier
 	DeletedAt        gorm.DeletedAt             `gorm:"index"`
 	LinuxDOId        string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting          string                     `json:"setting" gorm:"type:text;column:setting"`

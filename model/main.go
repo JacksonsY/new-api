@@ -286,6 +286,8 @@ func migrateDB() error {
 		&CommissionFraudAlert{}, // jzlh-agent IP 重合告警
 		&CommissionRiskUser{},   // jzlh-agent 风控管制
 		&CommissionRiskEvent{},  // jzlh-agent 风控事件留痕
+		&SupplierLedger{},       // jzlh-supplier 供应商打款/没收台账
+		&DetectionRecord{},      // jzlh-veridrop 真伪检测历史 + 红黑榜数据源
 		&Midjourney{},
 		&TopUp{},
 		&QuotaData{},
@@ -350,6 +352,8 @@ func migrateDBFast() error {
 		{&CommissionFraudAlert{}, "CommissionFraudAlert"}, // jzlh-agent IP 重合告警
 		{&CommissionRiskUser{}, "CommissionRiskUser"},     // jzlh-agent 风控管制
 		{&CommissionRiskEvent{}, "CommissionRiskEvent"},   // jzlh-agent 风控事件留痕
+		{&SupplierLedger{}, "SupplierLedger"},             // jzlh-supplier 供应商打款/没收台账
+		{&DetectionRecord{}, "DetectionRecord"},           // jzlh-veridrop 真伪检测历史 + 红黑榜
 		{&Midjourney{}, "Midjourney"},
 		{&TopUp{}, "TopUp"},
 		{&QuotaData{}, "QuotaData"},
@@ -434,6 +438,7 @@ var clickHouseLogAddColumns = []string{
 	"channel_ratio Float64 DEFAULT 0",
 	"channel_ratio_set UInt8 DEFAULT 0",
 	"channel_quota Int64 DEFAULT 0",
+	"supplier_id Int64 DEFAULT 0", // jzlh-supplier 渠道 owner 快照
 }
 
 func ensureClickHouseLogColumns() error {
@@ -488,6 +493,7 @@ CREATE TABLE IF NOT EXISTS logs (
 	channel_ratio Float64 DEFAULT 0,
 	channel_ratio_set UInt8 DEFAULT 0,
 	channel_quota Int64 DEFAULT 0,
+	supplier_id Int64 DEFAULT 0,
 	token_id Int32 DEFAULT 0,
 	`+"`group`"+` String DEFAULT '',
 	ip String DEFAULT '',

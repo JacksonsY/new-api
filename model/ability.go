@@ -208,7 +208,17 @@ func filterAbilitiesByRequestPathAndModel(abilities []Ability, requestPath strin
 	return filtered
 }
 
+// isRoutable 渠道是否允许进路由池：仅审核通过（含平台/存量默认 0=approved）才建 abilities。
+// jzlh-supplier 审核门：供应商提交但未过审/被驳回的渠道不进池。
+func (channel *Channel) isRoutable() bool {
+	return channel.AuditStatus == ChannelAuditApproved
+}
+
 func (channel *Channel) AddAbilities(tx *gorm.DB) error {
+	// jzlh-supplier 审核门：未过审渠道不建 abilities（等于不进路由池）。
+	if !channel.isRoutable() {
+		return nil
+	}
 	models_ := strings.Split(channel.Models, ",")
 	groups_ := strings.Split(channel.Group, ",")
 	abilitySet := make(map[string]struct{})
@@ -278,6 +288,14 @@ func (channel *Channel) UpdateAbilities(tx *gorm.DB) error {
 			tx.Rollback()
 		}
 		return err
+	}
+
+	// jzlh-supplier 审核门：未过审渠道删除后不重建 abilities（等于摘出路由池）。
+	if !channel.isRoutable() {
+		if isNewTx {
+			return tx.Commit().Error
+		}
+		return nil
 	}
 
 	// Then add new abilities

@@ -86,7 +86,11 @@ type Log struct {
 	// QuotaRound 后落库。物化是必须的——分组倍率埋在 other JSON 里，渠道支出
 	// SQL 聚合取不到。旧行为 0/NULL 时聚合回退 quota×channel_ratio 旧口径。
 	// 同为管理员维度信息：formatUserLogs 对普通用户清零，omitempty 隐藏字段名。
-	ChannelQuota      int    `json:"channel_quota,omitempty" gorm:"default:0"`
+	ChannelQuota int `json:"channel_quota,omitempty" gorm:"default:0"`
+	// SupplierId 渠道所属供应商快照（写日志时从渠道 owner 取，0=平台自营）。
+	// 供应商结算按此聚合；快照语义使渠道日后转手历史收益仍归原供应商。
+	// 同为管理员维度：formatUserLogs 对普通用户清零，omitempty 隐藏字段名。
+	SupplierId        int    `json:"supplier_id,omitempty" gorm:"default:0;index"`
 	TokenId           int    `json:"token_id" gorm:"default:0;index"`
 	Group             string `json:"group" gorm:"index"`
 	Ip                string `json:"ip" gorm:"index;default:''"`
@@ -134,6 +138,7 @@ func formatUserLogs(logs []*Log, startIdx int) {
 		// 渠道计费倍率/成本快照属于管理员维度信息，对普通用户隐藏
 		logs[i].ChannelRatio = 0
 		logs[i].ChannelQuota = 0
+		logs[i].SupplierId = 0
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
 		if otherMap != nil {
@@ -416,8 +421,10 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	// 渠道计费倍率 + 渠道成本快照：用于管理员维度的渠道成本统计，与用户扣费无关。
 	// 成本基数为原始费用（实付 ÷ 生效分组倍率），见 channelCostQuota。
 	channelRatio := 1.0
+	supplierId := 0
 	if channel, err := CacheGetChannel(params.ChannelId); err == nil && channel != nil {
 		channelRatio = channel.GetChannelRatio()
+		supplierId = channel.UserId // 供应商结算快照：渠道 owner，0=平台自营
 	}
 	channelQuota := channelCostQuota(params.Quota, groupRatioFromLogOther(params.Other), channelRatio)
 	// 判断是否需要记录 IP
@@ -442,6 +449,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		ChannelRatio:     channelRatio,
 		ChannelRatioSet:  true,
 		ChannelQuota:     channelQuota,
+		SupplierId:       supplierId,
 		TokenId:          params.TokenId,
 		UseTime:          params.UseTimeSeconds,
 		IsStream:         params.IsStream,
@@ -538,8 +546,10 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	createdAt := common.GetTimestamp()
 	// 渠道计费倍率快照：用于管理员维度的渠道成本统计，与用户扣费无关。
 	channelRatio := 1.0
+	supplierId := 0
 	if channel, err := CacheGetChannel(params.ChannelId); err == nil && channel != nil {
 		channelRatio = channel.GetChannelRatio()
+		supplierId = channel.UserId // 供应商结算快照：渠道 owner，0=平台自营
 	}
 	// 渠道成本快照：基数为原始费用（实付 ÷ 生效分组倍率），见 channelCostQuota。
 	channelQuota := channelCostQuota(params.Quota, groupRatioFromLogOther(params.Other), channelRatio)
@@ -556,6 +566,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		ChannelRatio:    channelRatio,
 		ChannelRatioSet: true,
 		ChannelQuota:    channelQuota,
+		SupplierId:      supplierId,
 		TokenId:         params.TokenId,
 		Group:           params.Group,
 		Other:           common.MapToJsonStr(params.Other),

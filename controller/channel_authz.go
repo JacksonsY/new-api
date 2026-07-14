@@ -89,6 +89,14 @@ var channelReadOnlyFields = map[string]struct{}{
 	"balance_updated_time": {},
 	"balance_snapshot":     {}, // 蓝图A：余额快照仅由 UpdateBalance/手动设余额端点写
 	"used_quota":           {},
+	// jzlh-supplier / jzlh-veridrop：渠道归属/审核态/检测快照由专用端点（供应商提交、
+	// 审核台、真伪检测）托管，通用渠道编辑必须忽略，避免误抹供应商归属或伪造检测结果。
+	"user_id":               {},
+	"audit_status":          {},
+	"detect_verdict":        {},
+	"detect_score":          {},
+	"detect_critical_count": {},
+	"detect_checked_at":     {},
 }
 
 func clearChannelReadOnlyFields(channel *PatchChannel, requestData map[string]any) {
@@ -112,6 +120,26 @@ func clearChannelReadOnlyFields(channel *PatchChannel, requestData map[string]an
 	}
 	if _, ok := requestData["used_quota"]; ok {
 		channel.UsedQuota = 0
+	}
+	// jzlh-supplier / jzlh-veridrop：清零 → GORM 零值跳过 → 保留 origin 的归属/审核/检测快照，
+	// 通用渠道编辑不得改写这些专用端点托管的字段。
+	if _, ok := requestData["user_id"]; ok {
+		channel.UserId = 0
+	}
+	if _, ok := requestData["audit_status"]; ok {
+		channel.AuditStatus = 0
+	}
+	if _, ok := requestData["detect_verdict"]; ok {
+		channel.DetectVerdict = ""
+	}
+	if _, ok := requestData["detect_score"]; ok {
+		channel.DetectScore = 0
+	}
+	if _, ok := requestData["detect_critical_count"]; ok {
+		channel.DetectCriticalCount = 0
+	}
+	if _, ok := requestData["detect_checked_at"]; ok {
+		channel.DetectCheckedAt = 0
 	}
 }
 

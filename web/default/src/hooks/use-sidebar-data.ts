@@ -19,9 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   Box,
+  Boxes,
+  ClipboardCheck,
+  Coins,
   CreditCard,
   FileText,
   FlaskConical,
+  HandCoins,
   HeartPulse,
   Key,
   LayoutDashboard,
@@ -32,7 +36,9 @@ import {
   Settings,
   Share2,
   ShieldAlert,
+  Store,
   Ticket,
+  Trophy,
   User,
   Users,
   Wallet,
@@ -57,6 +63,8 @@ export function useSidebarData(): SidebarData {
   const hasAgentCenterAccess = isAgent || Boolean(user?.agent_grace_access)
   const isAdmin = (user?.role ?? 0) >= ROLE.ADMIN
   const isRoot = hasRootAccess(user?.role)
+  // 供应商中心：supplier_status 2 = 已通过（是与 role 正交的独立维度）。
+  const isSupplier = user?.supplier_status === 2
 
   return {
     navGroups: [
@@ -125,17 +133,23 @@ export function useSidebarData(): SidebarData {
           },
         ],
       },
-      ...(hasAgentCenterAccess
+      // 代理中心：与供应商中心对称——自助项按 isAgent 门控，管理项按 isRoot 门控，
+      // 组整体在「是代理 或 是 root」时显示（root 看得到独立的代理中心菜单）。
+      ...(hasAgentCenterAccess || isRoot
         ? [
             {
               id: 'agent',
               title: t('Agent Center'),
               items: [
-                {
-                  title: t('Agent Wallet'),
-                  url: '/agent/wallet',
-                  icon: Wallet,
-                },
+                ...(hasAgentCenterAccess
+                  ? [
+                      {
+                        title: t('Agent Wallet'),
+                        url: '/agent/wallet',
+                        icon: Wallet,
+                      },
+                    ]
+                  : []),
                 ...(isAgent
                   ? [
                       {
@@ -145,6 +159,95 @@ export function useSidebarData(): SidebarData {
                       },
                     ]
                   : []),
+                ...(isRoot
+                  ? [
+                      {
+                        title: t('Agent Management'),
+                        url: '/agents',
+                        icon: Users,
+                      },
+                      {
+                        title: t('Withdrawal Review'),
+                        url: '/withdrawals',
+                        icon: Wallet,
+                      },
+                      {
+                        title: t('Risk Control'),
+                        url: '/risk',
+                        icon: ShieldAlert,
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          ]
+        : []),
+      {
+        id: 'supplier',
+        title: t('Supplier Center'),
+        items: [
+          // 供应商自助项：管理员不是供应商（裁判/运动员），入驻与自助一律不给管理员看。
+          ...(!isAdmin && isSupplier
+            ? [
+                {
+                  title: t('My Channels'),
+                  url: '/supplier/channels',
+                  icon: Boxes,
+                },
+                {
+                  title: t('My Earnings'),
+                  url: '/supplier/earnings',
+                  icon: Coins,
+                },
+                {
+                  title: t('Payout Settings'),
+                  url: '/supplier/payout',
+                  icon: Wallet,
+                },
+              ]
+            : []),
+          ...(!isAdmin && !isSupplier
+            ? [
+                {
+                  title: t('Onboarding Application'),
+                  url: '/supplier/apply',
+                  icon: Store,
+                },
+              ]
+            : []),
+          ...(isAdmin
+            ? [
+                {
+                  title: t('Supplier Management'),
+                  url: '/suppliers',
+                  icon: Store,
+                },
+                {
+                  title: t('Channel Review'),
+                  url: '/suppliers/review',
+                  icon: ClipboardCheck,
+                },
+                {
+                  title: t('Settlement'),
+                  url: '/suppliers/settlement',
+                  icon: HandCoins,
+                },
+              ]
+            : []),
+        ],
+      },
+      // 检测管理：仅管理端的中转站验真榜单。模型检测走公共 /detector 页，不进侧栏。
+      ...(isAdmin
+        ? [
+            {
+              id: 'detection',
+              title: t('Detection Management'),
+              items: [
+                {
+                  title: t('Relay Leaderboard'),
+                  url: '/suppliers/leaderboard',
+                  icon: Trophy,
+                },
               ],
             },
           ]
@@ -178,25 +281,7 @@ export function useSidebarData(): SidebarData {
             url: '/subscriptions',
             icon: CreditCard,
           },
-          ...(isRoot
-            ? [
-                {
-                  title: t('Agent Management'),
-                  url: '/agents',
-                  icon: Users,
-                },
-                {
-                  title: t('Withdrawal Review'),
-                  url: '/withdrawals',
-                  icon: Wallet,
-                },
-                {
-                  title: t('Risk Control'),
-                  url: '/risk',
-                  icon: ShieldAlert,
-                },
-              ]
-            : []),
+          // 代理管理/提现审核/风控 已移入「代理中心」组（与供应商中心对称）。
         ],
       },
       ...(isAdmin

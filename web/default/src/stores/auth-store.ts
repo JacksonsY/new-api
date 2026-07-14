@@ -48,6 +48,9 @@ export interface AuthUser {
   commission_quota?: number
   commission_history_quota?: number
   agent_grace_access?: boolean
+  // 供应商中心：0=未申请 1=待审核 2=已通过 3=已暂停
+  supplier_status?: number
+  supplier_payable_quota?: number
   github_id?: string
   oidc_id?: string
   wechat_id?: string
