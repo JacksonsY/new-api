@@ -58,6 +58,10 @@ export const channelSchema = z.object({
   priority: z.number().nullish(),
   auto_ban: z.number().nullish(),
   channel_ratio: z.number().nullish(), // 渠道计费倍率（成本统计，仅管理员）
+  // Veridrop 真伪检测：最近一次检测的判定/评分/关键问题数（可选，随渠道行下发）
+  detect_verdict: z.string().nullish(),
+  detect_score: z.number().nullish(),
+  detect_critical_count: z.number().nullish(),
   // 蓝图A：上次余额落库时的 used_quota 快照，实时余额本地推算用
   balance_snapshot: z.number().nullish(),
   // 蓝图A：近期消耗统计（列表接口的 recent_usage map 在前端合并进行，非后端字段）

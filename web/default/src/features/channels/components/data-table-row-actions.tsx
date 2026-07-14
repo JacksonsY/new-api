@@ -30,6 +30,7 @@ import {
   Power,
   PowerOff,
   Key,
+  ShieldCheck,
   Trash2,
   RefreshCw,
   Loader2,
@@ -39,6 +40,9 @@ import { useTranslation } from 'react-i18next'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/design-system/button'
+import { VerdictBadge } from '@/features/detector/detector-report'
+import type { DetectorVerdict } from '@/features/detector/types'
+import { ChannelVerifyDialog } from '@/features/detector/verify-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -87,6 +91,15 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
   const [isTogglingStatus, setIsTogglingStatus] = useState(false)
+  const [verifyOpen, setVerifyOpen] = useState(false)
+
+  const detectVerdict = channel.detect_verdict
+  const knownVerdict: DetectorVerdict | null =
+    detectVerdict === 'passed' ||
+    detectVerdict === 'marginal' ||
+    detectVerdict === 'failed'
+      ? detectVerdict
+      : null
 
   const isEnabled = isChannelEnabled(channel)
   const isMultiKey = isMultiKeyChannel(channel)
@@ -164,6 +177,19 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
 
   return (
     <div className='-ml-1.5 flex items-center gap-1'>
+      {knownVerdict && (
+        <Tooltip>
+          <TooltipTrigger render={<span className='mr-0.5 inline-flex' />}>
+            <VerdictBadge verdict={knownVerdict} />
+          </TooltipTrigger>
+          <TooltipContent>
+            {t('Authenticity')}
+            {typeof channel.detect_score === 'number'
+              ? ` · ${Math.round(channel.detect_score)}/100`
+              : ''}
+          </TooltipContent>
+        </Tooltip>
+      )}
       {layout !== 'card' && (
         <Tooltip>
           <TooltipTrigger
@@ -297,6 +323,14 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             </DropdownMenuShortcut>
           </DropdownMenuItem>
 
+          {/* Verify Authenticity (Veridrop 真伪检测) */}
+          <DropdownMenuItem onClick={() => setVerifyOpen(true)}>
+            {t('Verify Authenticity')}
+            <DropdownMenuShortcut>
+              <ShieldCheck size={16} />
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+
           {/* Detect Upstream Updates (only for fetchable channel types) */}
           {MODEL_FETCHABLE_TYPES.has(channel.type) && (
             <DropdownMenuItem
@@ -397,6 +431,13 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           handleDeleteChannel(channel.id, queryClient)
           setDeleteConfirmOpen(false)
         }}
+      />
+
+      <ChannelVerifyDialog
+        channelId={verifyOpen ? channel.id : null}
+        channelName={channel.name}
+        open={verifyOpen}
+        onOpenChange={setVerifyOpen}
       />
     </div>
   )
