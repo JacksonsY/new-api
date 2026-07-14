@@ -77,6 +77,9 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeCodex
 	case constant.ChannelTypeAdvancedCustom:
 		apiType = constant.APITypeAdvancedCustom
+	case constant.ChannelTypeAiai:
+		// aiai.ac：视频走异步任务适配器（GetTaskAdaptor），图片/对话走 OpenAI 兼容同步接口
+		apiType = constant.APITypeOpenAI
 	}
 	if apiType == -1 {
 		return constant.APITypeOpenAI, false

@@ -57,6 +57,15 @@ export type PricingModel = {
   /** Pricing version returned by backend, useful for cache busting */
   pricing_version?: string
   /**
+   * Per-resolution pricing for video (per-request) models. price = ModelPrice × ratio.
+   * no_ref = 纯生成每秒价; with_ref = 带参考视频(视频编辑)每秒系数(× 计费秒数)。
+   */
+  video_resolution_pricing?: {
+    resolution: string
+    no_ref: number
+    with_ref?: number
+  }[]
+  /**
    * Optional model metadata fields reserved for backend-provided catalog data.
    * Keep them data-driven; do not synthesize display values on the client.
    */

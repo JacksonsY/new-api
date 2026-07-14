@@ -240,6 +240,34 @@ export function formatFixedPrice(
 }
 
 /**
+ * Format an explicit fixed-price value (not model.model_price) using the same
+ * group-ratio + recharge + currency pipeline as formatFixedPrice. Used for
+ * per-resolution video prices where each resolution has its own value.
+ */
+export function formatFixedPriceValue(
+  value: number,
+  group: string,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1,
+  groupRatio: Record<string, number> = {}
+): string {
+  const ratio = getConfiguredGroupRatio(groupRatio, group)
+  let priceInUSD = value * ratio
+  priceInUSD = applyRechargeRate(
+    priceInUSD,
+    showWithRecharge,
+    priceRate,
+    usdExchangeRate
+  )
+  return formatCurrencyFromUSD(priceInUSD, {
+    digitsLarge: 4,
+    digitsSmall: 4,
+    abbreviate: false,
+  })
+}
+
+/**
  * Format fixed price for pay-per-request models (minimum price from all groups)
  */
 export function formatRequestPrice(
