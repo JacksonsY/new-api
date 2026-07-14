@@ -227,6 +227,8 @@ export interface LogOtherData {
   is_task?: boolean
   task_id?: string
   reason?: string
+  // 任务计费倍率（视频 tier/seconds、doubao video_input、ali/gemini size 等），用于计费明细结构化展示
+  task_ratios?: Record<string, number>
   // Subscription billing fields
   subscription_plan_id?: string
   subscription_plan_title?: string
