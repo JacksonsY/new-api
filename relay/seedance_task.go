@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func SeedanceTaskFetch(c *gin.Context) (respBody []byte, taskResp *dto.TaskError) {
@@ -45,23 +46,36 @@ func seedanceFetchTaskList(c *gin.Context) (respBody []byte, taskResp *dto.TaskE
 	pageNum := parseSeedancePositiveInt(c.Query("page_num"), 1, 500)
 	pageSize := parseSeedancePositiveInt(c.Query("page_size"), 20, 500)
 	offset := (pageNum - 1) * pageSize
-
-	query := model.DB.
-		Where("user_id = ?", c.GetInt("id")).
-		Where("platform in ?", seedanceTaskPlatforms()).
-		Where("submit_time >= ?", time.Now().Add(-7*24*time.Hour).Unix()).
-		Order("id desc")
-
-	var tasks []*model.Task
-	if err := query.Find(&tasks).Error; err != nil {
-		taskResp = service.TaskErrorWrapper(err, "get_tasks_failed", http.StatusInternalServerError)
-		return
-	}
+	userID := c.GetInt("id")
 
 	statusFilter := strings.TrimSpace(c.Query("filter.status"))
 	modelFilter := strings.TrimSpace(c.Query("filter.model"))
 	serviceTierFilter := strings.TrimSpace(c.Query("filter.service_tier"))
 	taskIDFilter := seedanceTaskIDFilters(c)
+
+	// 快路径：无过滤条件时，直接在数据库层 COUNT + LIMIT/OFFSET 分页，避免把用户近 7 天的
+	// 全部任务读进内存。model/service_tier 存于 task.Data JSON，跨库无法可靠下推，故仅在
+	// 完全无过滤时启用；带过滤时走下方内存路径以保证过滤+分页语义正确。
+	if statusFilter == "" && modelFilter == "" && serviceTierFilter == "" && len(taskIDFilter) == 0 {
+		var total int64
+		if err := seedanceTaskBaseQuery(userID).Model(&model.Task{}).Count(&total).Error; err != nil {
+			taskResp = service.TaskErrorWrapper(err, "get_tasks_failed", http.StatusInternalServerError)
+			return
+		}
+		var tasks []*model.Task
+		if err := seedanceTaskBaseQuery(userID).Order("id desc").Limit(pageSize).Offset(offset).Find(&tasks).Error; err != nil {
+			taskResp = service.TaskErrorWrapper(err, "get_tasks_failed", http.StatusInternalServerError)
+			return
+		}
+		return seedanceMarshalTaskList(tasks, int(total))
+	}
+
+	var tasks []*model.Task
+	if err := seedanceTaskBaseQuery(userID).Order("id desc").Find(&tasks).Error; err != nil {
+		taskResp = service.TaskErrorWrapper(err, "get_tasks_failed", http.StatusInternalServerError)
+		return
+	}
+
 	filtered := make([]*model.Task, 0, len(tasks))
 	for _, task := range tasks {
 		if len(taskIDFilter) > 0 && !seedanceTaskMatchesID(task, taskIDFilter) {
@@ -90,19 +104,32 @@ func seedanceFetchTaskList(c *gin.Context) (respBody []byte, taskResp *dto.TaskE
 		filtered = filtered[offset:end]
 	}
 
-	items := make([]map[string]any, 0, len(filtered))
-	for _, task := range filtered {
+	return seedanceMarshalTaskList(filtered, total)
+}
+
+// seedanceTaskBaseQuery 构造某用户近 7 天 seedance/火山视频任务的基础查询。每次调用都从
+// model.DB 起链返回独立查询，可安全分别用于 Count 与 Find。
+func seedanceTaskBaseQuery(userID int) *gorm.DB {
+	return model.DB.
+		Where("user_id = ?", userID).
+		Where("platform in ?", seedanceTaskPlatforms()).
+		Where("submit_time >= ?", time.Now().Add(-7*24*time.Hour).Unix())
+}
+
+// seedanceMarshalTaskList 把任务列表与总数序列化为官方 ARK 列表响应。
+func seedanceMarshalTaskList(tasks []*model.Task, total int) (respBody []byte, taskResp *dto.TaskError) {
+	items := make([]map[string]any, 0, len(tasks))
+	for _, task := range tasks {
 		items = append(items, seedanceTaskResponse(task))
 	}
-
 	respBody, err := common.Marshal(map[string]any{
 		"items": items,
 		"total": total,
 	})
 	if err != nil {
-		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
+		return nil, service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
 	}
-	return
+	return respBody, nil
 }
 
 func seedanceGetTaskByID(userID int, taskID string) (*model.Task, bool, error) {
@@ -112,11 +139,7 @@ func seedanceGetTaskByID(userID int, taskID string) (*model.Task, bool, error) {
 	}
 
 	var tasks []*model.Task
-	err = model.DB.
-		Where("user_id = ?", userID).
-		Where("platform in ?", seedanceTaskPlatforms()).
-		Where("submit_time >= ?", time.Now().Add(-7*24*time.Hour).Unix()).
-		Find(&tasks).Error
+	err = seedanceTaskBaseQuery(userID).Find(&tasks).Error
 	if err != nil {
 		return nil, false, err
 	}
