@@ -264,21 +264,29 @@ func SupplierUpdateChannel(c *gin.Context) {
 		return
 	}
 	needReReview := model.MaterialChannelFieldsChanged(channel, req.Key, req.BaseURL, req.Models)
+	// 部分更新语义：空字段表示本次不提交，沿用旧值（与 MaterialChannelFieldsChanged 一致）。
+	// 否则只改名的请求会把 base_url/test_model 抹空、ratio 归零，并误触发复审。
 	if req.Name != "" {
 		channel.Name = req.Name
 	}
 	if req.Key != "" {
 		channel.Key = req.Key
 	}
-	baseURL := req.BaseURL
-	channel.BaseURL = &baseURL
+	if req.BaseURL != "" {
+		baseURL := req.BaseURL
+		channel.BaseURL = &baseURL
+	}
 	if req.Models != "" {
 		channel.Models = req.Models
 	}
-	ratio := req.ChannelRatio
-	channel.ChannelRatio = &ratio
-	testModel := req.TestModel
-	channel.TestModel = &testModel
+	if req.ChannelRatio > 0 {
+		ratio := req.ChannelRatio
+		channel.ChannelRatio = &ratio
+	}
+	if req.TestModel != "" {
+		testModel := req.TestModel
+		channel.TestModel = &testModel
+	}
 	// 关键字段变化 → 已通过的渠道打回待审，Update() 经审核门删 abilities 出池。
 	if needReReview && channel.AuditStatus == model.ChannelAuditApproved {
 		channel.AuditStatus = model.ChannelAuditPending

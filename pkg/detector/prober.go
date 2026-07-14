@@ -269,6 +269,11 @@ func guardDialAddress(address string) error {
 	return nil
 }
 
+// nat64WellKnownPrefix is the NAT64 well-known prefix (RFC6052). Addresses in it
+// embed an IPv4 in the low 32 bits, so a probe could reach an internal/metadata
+// IPv4 through it; block the whole prefix.
+var nat64WellKnownPrefix = netip.MustParsePrefix("64:ff9b::/96")
+
 // isBlockedIP reports whether an IP is in a range that must never be reached
 // from a server-side probe of user-supplied input.
 func isBlockedIP(ip net.IP) bool {
@@ -290,6 +295,17 @@ func isBlockedIP(ip net.IP) bool {
 		return true
 	}
 	if addr.IsLoopback() || addr.IsUnspecified() || addr.IsLinkLocalUnicast() {
+		return true
+	}
+	// CGNAT 100.64.0.0/10 (RFC6598): not covered by IsPrivate, and hosts cloud
+	// metadata such as Alibaba Cloud's 100.100.100.200 — must not be reachable.
+	if addr.Is4() {
+		b := addr.As4()
+		if b[0] == 100 && b[1] >= 64 && b[1] <= 127 {
+			return true
+		}
+	}
+	if nat64WellKnownPrefix.Contains(addr) {
 		return true
 	}
 	return false

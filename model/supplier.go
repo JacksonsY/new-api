@@ -185,11 +185,18 @@ func MaterialChannelFieldsChanged(oldCh *Channel, newKey string, newBaseURL stri
 	if oldCh.BaseURL != nil {
 		oldBase = *oldCh.BaseURL
 	}
-	// 空 Key 表示不改 Key（沿用旧值），不算变化
+	// 空值表示该字段本次不提交（沿用旧值），不算变化——与 SupplierUpdateChannel 的
+	// 部分更新语义一致，避免省略某字段被误判为「清空」从而误触发复审。
 	if newKey != "" && newKey != oldCh.Key {
 		return true
 	}
-	return newBaseURL != oldBase || newModels != oldCh.Models
+	if newBaseURL != "" && newBaseURL != oldBase {
+		return true
+	}
+	if newModels != "" && newModels != oldCh.Models {
+		return true
+	}
+	return false
 }
 
 // AdminApproveChannel 管理员审批通过供应商渠道：定 Group/Priority/Weight、封顶报价率，

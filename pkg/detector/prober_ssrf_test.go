@@ -33,6 +33,16 @@ func TestGuardBaseURL(t *testing.T) {
 		{"link-local", "http://169.254.1.1", true},
 		{"cloud metadata", "http://169.254.169.254", true},
 
+		// CGNAT 100.64.0.0/10 (RFC6598) — Alibaba Cloud metadata lives here.
+		{"cgnat aliyun metadata", "http://100.100.100.200", true},
+		{"cgnat low", "http://100.64.0.1", true},
+		{"cgnat high", "http://100.127.255.254", true},
+		{"public 100.128 (above cgnat)", "http://100.128.0.1", false},
+		{"public 100.63 (below cgnat)", "http://100.63.255.255", false},
+
+		// NAT64 well-known prefix embedding an IPv4.
+		{"nat64 embedded", "http://[64:ff9b::808:808]", true},
+
 		// Unspecified.
 		{"unspecified ipv4", "http://0.0.0.0", true},
 
@@ -74,4 +84,6 @@ func TestGuardDialAddress(t *testing.T) {
 	assert.Error(t, guardDialAddress("127.0.0.1:443"))
 	assert.Error(t, guardDialAddress("169.254.169.254:80"))
 	assert.Error(t, guardDialAddress("10.1.2.3:443"))
+	assert.Error(t, guardDialAddress("100.100.100.200:80")) // CGNAT / Aliyun metadata
+	assert.NoError(t, guardDialAddress("100.128.0.1:443"))  // just above CGNAT, public
 }

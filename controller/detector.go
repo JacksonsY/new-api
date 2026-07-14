@@ -53,12 +53,21 @@ func baseURLDomain(rawURL string) string {
 	return u.Hostname()
 }
 
+// maxLiveDetectJobs 内存 job 注册表容量上限。job 仅在插入时按 1h 清理，故一小时内的
+// 请求量决定常驻内存；对匿名 /detector/detect 加硬顶，满了拒绝而非无限堆积。
+const maxLiveDetectJobs = 256
+
 // startDetectJob 建 job 并后台跑检测；channelId>0 时把结果写回渠道快照。
-func startDetectJob(cfg detector.Config, channelId int, source string) string {
+// 注册表满（超过 maxLiveDetectJobs）时返回 ("", false)，调用方据此拒绝本次请求。
+func startDetectJob(cfg detector.Config, channelId int, source string) (string, bool) {
 	jobId := common.GetUUID()
 	job := &detectJob{ID: jobId, Status: "running", CreatedAt: common.GetTimestamp()}
 	detectJobsMu.Lock()
 	pruneDetectJobsLocked()
+	if len(detectJobs) >= maxLiveDetectJobs {
+		detectJobsMu.Unlock()
+		return "", false
+	}
 	detectJobs[jobId] = job
 	detectJobsMu.Unlock()
 
@@ -82,7 +91,7 @@ func startDetectJob(cfg detector.Config, channelId int, source string) string {
 		}
 		persistDetection(report, channelId, cfg.BaseURL, source)
 	}()
-	return jobId
+	return jobId, true
 }
 
 // persistDetection 落 DetectionRecord + 渠道快照，供应商渠道 critical 时自动摘出池。
@@ -160,7 +169,11 @@ func DetectChannel(c *gin.Context) {
 		Model:   testModel,
 		Mode:    detectModeOrDefault(c.Query("mode")),
 	}
-	jobId := startDetectJob(cfg, channelId, model.DetectionSourceAdmin)
+	jobId, ok := startDetectJob(cfg, channelId, model.DetectionSourceAdmin)
+	if !ok {
+		common.ApiErrorMsg(c, "detection queue is full, please retry later")
+		return
+	}
 	common.ApiSuccess(c, gin.H{"job_id": jobId, "status_url": "/api/detector/status/" + jobId})
 }
 
@@ -228,7 +241,11 @@ func DetectPublic(c *gin.Context) {
 		IncludeLongContext:        req.IncludeLongContext,
 		IncludeLongContextExtreme: req.IncludeLongContextExtreme,
 	}
-	jobId := startDetectJob(cfg, 0, model.DetectionSourcePublic)
+	jobId, ok := startDetectJob(cfg, 0, model.DetectionSourcePublic)
+	if !ok {
+		common.ApiErrorMsg(c, "detection queue is full, please retry later")
+		return
+	}
 	common.ApiSuccess(c, gin.H{"job_id": jobId, "status_url": "/api/detector/status/" + jobId})
 }
 
@@ -237,12 +254,18 @@ func DetectStatus(c *gin.Context) {
 	jobId := c.Param("jobId")
 	detectJobsMu.Lock()
 	job, ok := detectJobs[jobId]
+	// 持锁内拷贝快照：后台 goroutine 在锁内写 Status/Report/Err，读端必须同锁取值，
+	// 否则解锁后序列化 *job 与写入并发 → data race。Report 一经赋值不再变更，拷指针安全。
+	var snapshot detectJob
+	if ok {
+		snapshot = *job
+	}
 	detectJobsMu.Unlock()
 	if !ok {
 		common.ApiErrorMsg(c, "job not found")
 		return
 	}
-	common.ApiSuccess(c, job)
+	common.ApiSuccess(c, &snapshot)
 }
 
 // AdminRecheckSupplierChannels 批量复检所有已通过的供应商渠道（运营可 cron 触发本端点）。
@@ -267,9 +290,12 @@ func AdminRecheckSupplierChannels(c *gin.Context) {
 		if withKey.TestModel != nil && *withKey.TestModel != "" {
 			targetModel = *withKey.TestModel
 		}
-		startDetectJob(detector.Config{
+		_, ok := startDetectJob(detector.Config{
 			BaseURL: baseURL, APIKey: withKey.Key, Model: targetModel, Mode: "quick",
 		}, ch.Id, model.DetectionSourceCron)
+		if !ok {
+			break // 注册表已满，停止再排队，返回已启动数
+		}
 		started++
 	}
 	common.ApiSuccess(c, gin.H{"started": started})

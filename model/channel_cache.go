@@ -63,6 +63,11 @@ func InitChannelCache() {
 		if channel.Status != common.ChannelStatusEnabled {
 			continue // skip disabled channels
 		}
+		// jzlh-supplier 审核门：未过审的供应商渠道不进内存路由池，与 abilities 路径
+		// (ability.go 的 isRoutable) 保持一致，否则开内存缓存时待审渠道会直接 serving。
+		if !channel.isRoutable() {
+			continue
+		}
 		groups := strings.Split(channel.Group, ",")
 		for _, group := range groups {
 			models := strings.Split(channel.Models, ",")

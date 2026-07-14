@@ -207,6 +207,9 @@ func TestMaterialChannelFieldsChanged(t *testing.T) {
 		{"key 变", "k2", "https://a.com", "gpt-4", true},
 		{"base_url 变", "", "https://b.com", "gpt-4", true},
 		{"models 变", "", "https://a.com", "gpt-4,gpt-5", true},
+		{"空 url = 不提交该字段(不变)", "", "", "gpt-4", false},
+		{"空 models = 不提交该字段(不变)", "", "https://a.com", "", false},
+		{"全空 = 不变", "", "", "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
