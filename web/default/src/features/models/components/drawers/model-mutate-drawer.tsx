@@ -675,10 +675,26 @@ export function ModelMutateDrawer({
 
   const handleFillEndpointTemplate = (templateKey: string) => {
     const template = ENDPOINT_TEMPLATES[templateKey]
-    if (template) {
-      const templateJson = JSON.stringify({ [templateKey]: template }, null, 2)
-      form.setValue('endpoints', templateJson)
+    if (!template) return
+    // 合并进已有端点，而不是整体覆盖——支持一个模型同时配置多个端点模板
+    // （如 openai 走对话、image-generation 走图片）。
+    let merged: Record<string, unknown> = {}
+    const current = form.getValues('endpoints')
+    if (current && current.trim()) {
+      try {
+        const parsed = JSON.parse(current)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          merged = parsed as Record<string, unknown>
+        }
+      } catch {
+        // 现有内容不是合法 JSON：不合并，直接以本模板为新内容
+      }
     }
+    merged[templateKey] = template
+    form.setValue('endpoints', JSON.stringify(merged, null, 2), {
+      shouldDirty: true,
+      shouldValidate: true,
+    })
   }
 
   return (

@@ -39,6 +39,11 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	other := make(map[string]interface{})
 	other["is_task"] = true
 	other["request_path"] = c.Request.URL.Path
+	// 把计费倍率（视频的 tier/seconds、doubao 的 video_input、ali/gemini 的 size 等）暴露到 other，
+	// 供日志详情「计费明细」结构化展示——否则这些决定费用的量只出现在 content 文本的「计算参数」里。
+	if otherRatios := info.PriceData.OtherRatios(); len(otherRatios) > 0 {
+		other["task_ratios"] = otherRatios
+	}
 	other["model_price"] = info.PriceData.ModelPrice
 	if info.PriceData.ModelRatio > 0 {
 		other["model_ratio"] = info.PriceData.ModelRatio

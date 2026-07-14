@@ -66,7 +66,11 @@ import {
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
-import { formatFixedPrice, formatGroupPrice } from '../lib/price'
+import {
+  formatFixedPrice,
+  formatFixedPriceValue,
+  formatGroupPrice,
+} from '../lib/price'
 import type {
   ModelCapability,
   PriceType,
@@ -741,6 +745,56 @@ function PriceSection(props: {
             </span>
           </div>
         </div>
+        {props.model.video_resolution_pricing &&
+          props.model.video_resolution_pricing.length > 0 && (
+            <div className='mt-3 overflow-hidden rounded-xl border'>
+              <div className='flex items-baseline justify-between gap-3 border-b px-4 py-3'>
+                <span className='text-sm font-medium'>
+                  {t('Resolution pricing')}
+                </span>
+                <span className='text-muted-foreground text-xs'>
+                  {t('Per second, × duration')}
+                </span>
+              </div>
+              <div className='text-muted-foreground grid grid-cols-3 gap-2 border-b px-4 py-2 text-xs'>
+                <span>{t('Resolution')}</span>
+                <span className='text-right'>{t('No reference')}</span>
+                <span className='text-right'>{t('With reference')}</span>
+              </div>
+              <div className='divide-y'>
+                {props.model.video_resolution_pricing.map((row) => (
+                  <div
+                    key={row.resolution}
+                    className='grid grid-cols-3 gap-2 px-4 py-3 text-sm'
+                  >
+                    <span className='font-mono'>{row.resolution}</span>
+                    <span className='text-right tabular-nums'>
+                      {formatFixedPriceValue(
+                        row.no_ref,
+                        baseGroupKey,
+                        props.showRechargePrice,
+                        props.priceRate,
+                        props.usdExchangeRate,
+                        baseGroupRatioMap
+                      )}
+                    </span>
+                    <span className='text-right tabular-nums'>
+                      {row.with_ref != null
+                        ? formatFixedPriceValue(
+                            row.with_ref,
+                            baseGroupKey,
+                            props.showRechargePrice,
+                            props.priceRate,
+                            props.usdExchangeRate,
+                            baseGroupRatioMap
+                          )
+                        : '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
       </section>
     )
   }

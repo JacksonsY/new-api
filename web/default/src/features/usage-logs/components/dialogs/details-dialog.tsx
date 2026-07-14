@@ -76,6 +76,19 @@ const CHANNEL_FIELD_LABELS: Record<string, string> = {
   key: 'Key',
 }
 
+// 任务计费倍率键 → 展示标签。视频：tier=分档倍率(分辨率/画质)、seconds=计费秒数；
+// 其余任务适配器的倍率同理（doubao video_input、ali/gemini size 等）。
+const TASK_RATIO_LABELS: Record<string, string> = {
+  tier: 'Tier multiplier',
+  seconds: 'Billed seconds',
+  resolution: 'Resolution multiplier',
+  size: 'Size multiplier',
+  video_input: 'Video input multiplier',
+  duration: 'Duration',
+}
+// 这些键是「数量」而非「倍率」，按整数展示（不加 x 后缀）。
+const TASK_RATIO_COUNT_KEYS = new Set(['seconds', 'duration'])
+
 function DetailRow(props: {
   label: React.ReactNode
   value: React.ReactNode
@@ -243,6 +256,21 @@ function BillingBreakdown(props: {
       rows.push({
         label: t('Output'),
         value: `${fmtPrice(baseInputUSD * other.completion_ratio)}/M`,
+      })
+    }
+  }
+
+  // 任务计费倍率（视频 tier/seconds 等）：决定最终费用的量，做成结构化行，
+  // 而非只藏在 content 文本的「计算参数」里，便于审计视频/任务计费口径。
+  const taskRatios = other.task_ratios
+  if (taskRatios) {
+    for (const [key, val] of Object.entries(taskRatios)) {
+      if (typeof val !== 'number' || !Number.isFinite(val)) continue
+      const isCount = TASK_RATIO_COUNT_KEYS.has(key)
+      if (!isCount && val === 1) continue // 1.0 倍率无影响，跳过
+      rows.push({
+        label: t(TASK_RATIO_LABELS[key] ?? key),
+        value: isCount ? String(val) : `${parseFloat(val.toFixed(4))}x`,
       })
     }
   }
