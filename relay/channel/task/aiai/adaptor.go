@@ -181,20 +181,28 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	}
 }
 
+// aiaiEffectiveDuration 计费与转发统一的有效生成时长（秒）：优先 duration，为 0 再看 OpenAI
+// 风格的 seconds 字符串——与 relaycommon.validateTaskDurationBounds 的取值口径一致。返回 0
+// 表示请求未指定时长。
+func aiaiEffectiveDuration(req relaycommon.TaskSubmitReq) int {
+	if req.Duration != 0 {
+		return req.Duration
+	}
+	if s := strings.TrimSpace(req.Seconds); s != "" {
+		if v, err := strconv.Atoi(s); err == nil {
+			return v
+		}
+	}
+	return 0
+}
+
 func (a *TaskAdaptor) readBillingParams(c *gin.Context) billingParams {
 	var bp billingParams
 	_ = common.UnmarshalBodyReusable(c, &bp)
-	// 计费时长/尺寸以框架已解析并已 bound 的 TaskSubmitReq 为准，复刻 validateTaskDurationBounds
-	// 的取值口径（优先 duration，为 0 再看 OpenAI 风格的 seconds 字符串）：修掉「用 seconds 传
-	// 时长」以及 multipart 提交被 JSON-only 的 billingParams 漏掉、从而按 5 秒地板价少收的问题。
+	// 计费时长/尺寸以框架已解析并已 bound 的 TaskSubmitReq 为准：修掉「用 seconds 传时长」
+	// 以及 multipart 提交被 JSON-only 的 billingParams 漏掉、从而按 5 秒地板价少收的问题。
 	if req, err := relaycommon.GetTaskRequest(c); err == nil {
-		d := req.Duration
-		if d == 0 {
-			if s := strings.TrimSpace(req.Seconds); s != "" {
-				d, _ = strconv.Atoi(s)
-			}
-		}
-		if d != 0 {
+		if d := aiaiEffectiveDuration(req); d != 0 {
 			bp.Duration = d
 		}
 		if strings.TrimSpace(bp.Size) == "" {
@@ -236,6 +244,27 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	}
 	bodyMap["model"] = info.UpstreamModelName
 	bodyMap["async"] = true
+	// 通用/Sora 风格请求归一到 aiai 原生字段：仅在原生字段缺失时从通用别名回填，绝不覆盖
+	// 客户端已显式给的 aiai 专有参数（aspect_ratio/watermark/extra_body 等照旧透传）。
+	//   seconds(OpenAI/通用) → duration(aiai 原生)；size("宽x高", Sora) → resolution(档位)。
+	// 这样 aiai 渠道也能吃通用/Sora 风格的 JSON 请求，而不只是 aiai 专有 JSON。
+	// （multipart 文件上传因 aiai 上游只收 URL，仍不支持——见上面的 JSON-only 解析。）
+	if req, err := relaycommon.GetTaskRequest(c); err == nil {
+		if _, ok := bodyMap["duration"]; !ok {
+			if d := aiaiEffectiveDuration(req); d > 0 {
+				bodyMap["duration"] = d
+			}
+		}
+		if _, ok := bodyMap["resolution"]; !ok {
+			size, _ := bodyMap["size"].(string)
+			if strings.TrimSpace(size) == "" {
+				size = req.Size
+			}
+			if res := resolutionFromSize(size); res != "" {
+				bodyMap["resolution"] = res
+			}
+		}
+	}
 	// ref_duration 是我们计费用的自定义字段（非 aiai.ac 文档参数），转发上游前剥掉，
 	// 避免严格的上游因未知参数报错。
 	delete(bodyMap, "ref_duration")

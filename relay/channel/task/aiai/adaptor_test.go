@@ -61,6 +61,49 @@ func TestBuildRequestBody(t *testing.T) {
 	assert.Equal(t, true, eb["real_person_mode"])
 }
 
+// TestBuildRequestBodyNormalizesGenericAliases 校验通用/Sora 风格请求（用 seconds/size、不带
+// aiai 原生的 duration/resolution）转发前被归一到 aiai 原生字段，且不覆盖客户端显式给的原生
+// 参数、保留透传字段。
+func TestBuildRequestBodyNormalizesGenericAliases(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	build := func(body string, req relaycommon.TaskSubmitReq) map[string]any {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader([]byte(body)))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Set("task_request", req)
+		a := &TaskAdaptor{}
+		info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "doubao-seedance-2.0"}}
+		reader, err := a.BuildRequestBody(c, info)
+		require.NoError(t, err)
+		raw, err := io.ReadAll(reader)
+		require.NoError(t, err)
+		var m map[string]any
+		require.NoError(t, json.Unmarshal(raw, &m))
+		return m
+	}
+
+	// Sora 风格：seconds + size，无 duration/resolution → 归一出 duration/resolution。
+	m := build(
+		`{"model":"m","prompt":"x","seconds":"8","size":"1280x720","aspect_ratio":"16:9","async":false}`,
+		relaycommon.TaskSubmitReq{Seconds: "8", Size: "1280x720"},
+	)
+	assert.Equal(t, float64(8), m["duration"], "seconds → duration")
+	assert.Equal(t, "720p", m["resolution"], "size → resolution")
+	assert.Equal(t, "doubao-seedance-2.0", m["model"], "model 覆写为上游名")
+	assert.Equal(t, true, m["async"], "async 强制 true")
+	assert.Equal(t, "16:9", m["aspect_ratio"], "透传字段保留")
+	assert.Equal(t, "1280x720", m["size"], "size 原样保留（上游可能也吃）")
+
+	// 客户端显式给了原生 duration/resolution → 不被通用别名覆盖。
+	m2 := build(
+		`{"model":"m","prompt":"x","duration":5,"resolution":"1080p","seconds":"8","size":"1280x720","async":false}`,
+		relaycommon.TaskSubmitReq{Duration: 5, Seconds: "8", Size: "1280x720"},
+	)
+	assert.Equal(t, float64(5), m2["duration"], "显式 duration 不被 seconds 覆盖")
+	assert.Equal(t, "1080p", m2["resolution"], "显式 resolution 不被 size 覆盖")
+}
+
 // TestEstimateBillingScenarios 用 aiai.ac 文档给的 6 个官方示例请求体,端到端跑 EstimateBilling,
 // 校验哪些触发「编辑档」、以及最终计费(ModelPrice 0.5 基准)。只有传 video 的才进编辑档。
 func TestEstimateBillingScenarios(t *testing.T) {
