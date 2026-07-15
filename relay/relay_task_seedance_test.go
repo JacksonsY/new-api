@@ -147,3 +147,51 @@ func TestSeedanceFetchTaskListPagination(t *testing.T) {
 	items, _ = fetch("filter.status=succeeded&page_num=2&page_size=2")
 	assert.Equal(t, []string{"t1"}, items)
 }
+
+// TestVideoFetchGenerationsPathReturnsOpenAIVideo 护住 fork 修复：查询 /v1/video/generations/{id} 必须
+// 返回裸 OpenAIVideo（与提交侧一致、地址在 metadata.url），而不是通用 {code:"success",data} 信封——
+// 否则 OpenAI 视频客户端（如 infinite-canvas）解析失败报“请求失败”。该前缀判定位于上游 relay_task.go，
+// 合并上游时易被冲回，故用测试钉死。
+func TestVideoFetchGenerationsPathReturnsOpenAIVideo(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.Task{}, &model.Channel{}))
+	model.DB = db
+	t.Cleanup(func() { model.DB = originalDB })
+
+	const userID = 7
+	require.NoError(t, db.Create(&model.Task{
+		TaskID:   "task_openai_fmt",
+		Platform: constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAiai)),
+		UserId:   userID,
+		Status:   model.TaskStatusSuccess,
+		Progress: "100%",
+		Data:     json.RawMessage(`{"task_status":"succeed","video_result":[{"url":"https://cdn.example.com/v.mp4"}]}`),
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/video/generations/task_openai_fmt", nil)
+	ctx.Params = gin.Params{{Key: "task_id", Value: "task_openai_fmt"}}
+	ctx.Set("id", userID)
+
+	respBody, taskErr := videoFetchByIDRespBodyBuilder(ctx)
+	require.Nil(t, taskErr)
+
+	var got map[string]any
+	require.NoError(t, common.Unmarshal(respBody, &got))
+	// 裸 OpenAIVideo：object=video、completed、地址在 metadata.url；且不是通用信封。
+	assert.Equal(t, "video", got["object"])
+	assert.Equal(t, "completed", got["status"])
+	_, isEnvelope := got["code"]
+	assert.False(t, isEnvelope, "不应是 {code:success,data} 通用信封")
+	metadata, ok := got["metadata"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "https://cdn.example.com/v.mp4", metadata["url"])
+}

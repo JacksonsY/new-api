@@ -385,7 +385,11 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
-	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
+	// OpenAI 视频对象格式同时覆盖 Sora 的 /v1/videos/{id} 与通用视频的 /v1/video/generations/{id}——
+	// 二者提交侧都由 adaptor 直接吐 OpenAIVideo，查询侧也需返回同一格式（否则 /v1/video/generations/{id}
+	// 会落到下方通用 {code:"success",data:TaskDto} 信封，与提交格式及官方文档不一致）。
+	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/") ||
+		strings.HasPrefix(c.Request.RequestURI, "/v1/video/generations/")
 
 	// Gemini/Vertex 支持实时查询：用户 fetch 时直接从上游拉取最新状态
 	if realtimeResp := tryRealtimeFetch(originTask, isOpenAIVideoAPI); len(realtimeResp) > 0 {
