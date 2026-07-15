@@ -184,6 +184,23 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 func (a *TaskAdaptor) readBillingParams(c *gin.Context) billingParams {
 	var bp billingParams
 	_ = common.UnmarshalBodyReusable(c, &bp)
+	// 计费时长/尺寸以框架已解析并已 bound 的 TaskSubmitReq 为准，复刻 validateTaskDurationBounds
+	// 的取值口径（优先 duration，为 0 再看 OpenAI 风格的 seconds 字符串）：修掉「用 seconds 传
+	// 时长」以及 multipart 提交被 JSON-only 的 billingParams 漏掉、从而按 5 秒地板价少收的问题。
+	if req, err := relaycommon.GetTaskRequest(c); err == nil {
+		d := req.Duration
+		if d == 0 {
+			if s := strings.TrimSpace(req.Seconds); s != "" {
+				d, _ = strconv.Atoi(s)
+			}
+		}
+		if d != 0 {
+			bp.Duration = d
+		}
+		if strings.TrimSpace(bp.Size) == "" {
+			bp.Size = req.Size
+		}
+	}
 	return bp
 }
 
@@ -213,7 +230,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 
 	var bodyMap map[string]interface{}
 	if err := common.Unmarshal(cachedBody, &bodyMap); err != nil {
-		return bytes.NewReader(cachedBody), nil
+		// body 不是 JSON 对象：无法安全改写 model→UpstreamModelName / 强制 async。
+		// 与其把带本地(可能带路由前缀)模型名的原始 body 透传给上游致其误判模型，不如显式失败。
+		return nil, errors.Wrap(err, "unmarshal_request_body_failed")
 	}
 	bodyMap["model"] = info.UpstreamModelName
 	bodyMap["async"] = true

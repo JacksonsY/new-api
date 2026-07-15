@@ -97,6 +97,28 @@ func TestEstimateBillingScenarios(t *testing.T) {
 	}
 }
 
+// TestEstimateBillingSecondsField 回归：用 OpenAI 风格的 seconds 传时长（不传 duration）时，
+// 计费从框架已校验的 TaskSubmitReq 取时长，而非落到 5 秒地板价（修「少收费」）。
+func TestEstimateBillingSecondsField(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	// 请求体只有 seconds（OpenAI 视频标准字段），没有 duration。
+	body := `{"model":"doubao-seedance-2.0","prompt":"x","seconds":"12","resolution":"720p","async":true}`
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", bytes.NewReader([]byte(body)))
+	c.Request.Header.Set("Content-Type", "application/json")
+	// 框架校验后把已解析(且已 bound)的 req 放进 ctx；seconds 在这里被认到。
+	c.Set("task_request", relaycommon.TaskSubmitReq{Seconds: "12"})
+
+	a := &TaskAdaptor{}
+	info := &relaycommon.RelayInfo{OriginModelName: "doubao-seedance-2.0"}
+	ratios := a.EstimateBilling(c, info)
+
+	assert.InDelta(t, 12.0, ratios["seconds"], 1e-9, "应按 seconds=12 计费，而非 5 秒地板价")
+	// 720p 倍率 2.0 × ModelPrice 0.5 × 12s = 12 元
+	assert.InDelta(t, 12.0, 0.5*ratios["tier"]*ratios["seconds"], 1e-9)
+}
+
 // TestEstimateBillingModelPrefix 校验带路由前缀的本地名（如 "A/doubao-seedance-2.0"）经模型重定向后，
 // 分辨率倍率仍按干净的上游名（ChannelMeta.UpstreamModelName）命中价目表——否则前缀会让
 // 档位查表查不到、720p/1080p/4k 掉回 480p 基准价而少收费。
