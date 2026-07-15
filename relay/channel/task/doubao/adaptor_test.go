@@ -56,6 +56,28 @@ func TestSeedanceOfficialBuildRequestBodyPreservesNativeContent(t *testing.T) {
 	assert.Equal(t, "first_frame", first["role"])
 }
 
+// TestSeedanceOfficialValidateBoundsDuration 回归：ARK 官方入口对超范围 duration 直接 400。
+// 该分支绕过标准 validateTaskDurationBounds，须自行封顶（修「新请求 DTO 未 bound」）。
+func TestSeedanceOfficialValidateBoundsDuration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	newCtx := func(body string) *gin.Context {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Set(common.KeySeedanceOfficialAPI, true)
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/seedance/api/v3/contents/generations/tasks", bytes.NewBufferString(body))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		return ctx
+	}
+	adaptor := &TaskAdaptor{}
+	// TaskRelayInfo 必须初始化：Action 是它的提升字段，生产链路由 GenRelayInfo 建好。
+	info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+
+	// 远超 MaxTaskDurationSeconds(3600) → 400 拒绝，不把无界时长透传给上游/计费。
+	require.NotNil(t, adaptor.ValidateRequestAndSetAction(newCtx(`{"model":"m","content":[],"duration":10000000}`), info))
+	// 合法时长放行。
+	require.Nil(t, adaptor.ValidateRequestAndSetAction(newCtx(`{"model":"m","content":[],"duration":5}`), info))
+}
+
 func TestSeedanceOfficialDoResponseReturnsUpstreamTaskID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

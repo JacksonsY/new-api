@@ -77,6 +77,7 @@ func seedanceFetchTaskList(c *gin.Context) (respBody []byte, taskResp *dto.TaskE
 	}
 
 	filtered := make([]*model.Task, 0, len(tasks))
+	needData := modelFilter != "" || serviceTierFilter != ""
 	for _, task := range tasks {
 		if len(taskIDFilter) > 0 && !seedanceTaskMatchesID(task, taskIDFilter) {
 			continue
@@ -84,10 +85,15 @@ func seedanceFetchTaskList(c *gin.Context) (respBody []byte, taskResp *dto.TaskE
 		if statusFilter != "" && seedanceTaskStatus(task.Status) != statusFilter {
 			continue
 		}
-		if modelFilter != "" && !seedanceTaskMatchesModel(task, modelFilter) {
+		// model/service_tier 存于 task.Data，仅在需要时解析一次并复用，避免每个过滤条件各解析一遍。
+		var data map[string]any
+		if needData {
+			_ = common.Unmarshal(task.Data, &data)
+		}
+		if modelFilter != "" && !seedanceTaskMatchesModel(task, data, modelFilter) {
 			continue
 		}
-		if serviceTierFilter != "" && !seedanceTaskFieldEquals(task, "service_tier", serviceTierFilter) {
+		if serviceTierFilter != "" && !seedanceDataFieldEquals(data, "service_tier", serviceTierFilter) {
 			continue
 		}
 		filtered = append(filtered, task)
@@ -192,18 +198,15 @@ func parseSeedancePositiveInt(raw string, fallback, maxValue int) int {
 	return value
 }
 
-func seedanceTaskMatchesModel(task *model.Task, modelName string) bool {
+func seedanceTaskMatchesModel(task *model.Task, data map[string]any, modelName string) bool {
 	if task.Properties.OriginModelName == modelName || task.Properties.UpstreamModelName == modelName {
 		return true
 	}
-	return seedanceTaskFieldEquals(task, "model", modelName)
+	return seedanceDataFieldEquals(data, "model", modelName)
 }
 
-func seedanceTaskFieldEquals(task *model.Task, field string, value string) bool {
-	var data map[string]any
-	if err := common.Unmarshal(task.Data, &data); err != nil {
-		return false
-	}
+// seedanceDataFieldEquals 在已解析的 task.Data map 上比较字段（nil map 视为不匹配）。
+func seedanceDataFieldEquals(data map[string]any, field string, value string) bool {
 	fieldValue, _ := data[field].(string)
 	return fieldValue == value
 }

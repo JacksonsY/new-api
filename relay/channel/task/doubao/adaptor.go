@@ -131,6 +131,23 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		if _, ok := body["content"]; !ok {
 			return service.TaskErrorWrapperLocal(fmt.Errorf("field content is required"), "missing_content", http.StatusBadRequest)
 		}
+		// 时长封顶（AGENTS.md：新请求 DTO 从第一天就 bound；此分支绕过了标准的
+		// validateTaskDurationBounds）。用 float64 比较避免对无界数值做裸 int 转换；越界即 400，
+		// 不把无界时长透传给上游/计费。
+		if raw, ok := body["duration"]; ok {
+			var secs float64
+			switch v := raw.(type) {
+			case float64:
+				secs = v
+			case string:
+				secs, _ = strconv.ParseFloat(strings.TrimSpace(v), 64)
+			}
+			if secs < 0 || secs > float64(relaycommon.MaxTaskDurationSeconds) {
+				return service.TaskErrorWrapperLocal(
+					fmt.Errorf("duration must be between 1 and %d", relaycommon.MaxTaskDurationSeconds),
+					"invalid_duration", http.StatusBadRequest)
+			}
+		}
 
 		info.Action = constant.TaskActionGenerate
 		c.Set("task_request", relaycommon.TaskSubmitReq{
@@ -216,7 +233,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 
 		var bodyMap map[string]interface{}
 		if err := common.Unmarshal(cachedBody, &bodyMap); err != nil {
-			return bytes.NewReader(cachedBody), nil
+			// body 不是 JSON 对象：无法安全改写 model→UpstreamModelName，与其把带本地
+			// (可能带路由前缀)模型名的原始 body 透传给上游致其误判，不如显式失败。
+			return nil, errors.Wrap(err, "unmarshal_request_body_failed")
 		}
 		if info.UpstreamModelName != "" {
 			bodyMap["model"] = info.UpstreamModelName
