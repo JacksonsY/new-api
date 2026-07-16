@@ -81,13 +81,26 @@ func openaiTokenBilling(ctx context.Context, p *prober, cfg Config) DetectorResu
 		score += 25
 	}
 
-	completionOK := completionSaneBounded(shortUsage, 1, obCompletionMaxOK) && completionSaneBounded(longUsage, 1, obCompletionMaxOK)
+	reasoning := openaiReasoningModel(cfg.Model)
+	completionOK := false
+	completionNote := ""
+	if reasoning && !reasoningBrokenOut(shortUsage) && !reasoningBrokenOut(longUsage) {
+		// Reasoning model whose relay does not break out reasoning_tokens: the
+		// completion count cannot be bounded to the visible answer (hidden
+		// reasoning inflates it, per-call), so it is not treated as anomalous.
+		// The prompt-side checks (delta / arithmetic) carry the anti-fraud weight.
+		completionOK = true
+		completionNote = "推理模型且上游未拆分 reasoning_tokens,completion 数不作可见性上界判定"
+	} else {
+		completionOK = completionSaneBounded(shortUsage, 1, obCompletionMaxOK) && completionSaneBounded(longUsage, 1, obCompletionMaxOK)
+	}
 	sub["completion_tokens"] = map[string]interface{}{
 		"short_completion_tokens": rawUsageField(shortUsage, "completion_tokens"),
 		"long_completion_tokens":  rawUsageField(longUsage, "completion_tokens"),
 		"short_text":              truncate(shortText, 80),
 		"long_text":               truncate(longText, 80),
 		"pass":                    completionOK,
+		"note":                    completionNote,
 	}
 	if completionOK {
 		score += 15
@@ -97,6 +110,16 @@ func openaiTokenBilling(ctx context.Context, p *prober, cfg Config) DetectorResu
 	streamNote := ""
 	if len(streamUsage) == 0 {
 		streamNote = "接口没有返回流式 usage,无法用流式结果交叉验证"
+	} else if reasoning && !reasoningBrokenOut(streamUsage) {
+		// Reasoning models spend a variable number of hidden tokens per call, so
+		// stream vs non-stream completion parity is expected to differ. Verify the
+		// stable signal — prompt-token parity plus a positive completion — instead
+		// of the completion tolerance.
+		lp, lpOK := tokenField(shortUsage, "prompt_tokens")
+		rp, rpOK := tokenField(streamUsage, "prompt_tokens")
+		rc, rcOK := tokenField(streamUsage, "completion_tokens")
+		streamOK = lpOK && rpOK && abs(lp-rp) <= 1 && rcOK && rc > 0
+		streamNote = "推理模型:仅校验 prompt token 一致性(completion 因隐藏推理逐次波动)"
 	} else {
 		streamOK = streamUsageCompatibleOpenAI(shortUsage, streamUsage)
 	}
@@ -166,10 +189,44 @@ func usageArithmeticExact(usage map[string]interface{}) bool {
 	return pOK && cOK && tOK && p+c == t
 }
 
-// completionSaneBounded reports 0<c(or lo<=c)<=hi. lo=1 enforces strictly
-// positive (OpenAI); lo=0 allows zero (Gemini thinking models).
-func completionSaneBounded(usage map[string]interface{}, lo, hi int) bool {
+// visibleCompletion returns completion_tokens minus hidden reasoning tokens
+// (usage.completion_tokens_details.reasoning_tokens). The "short answer"
+// completion bound is meant for user-visible output, so for reasoning models
+// (gpt-5.x, o-series) the reasoning overhead must be excluded — otherwise a
+// legitimate reasoning-model relay is flagged as token-anomalous. This is a
+// deliberate enhancement over Veridrop, which bounds raw completion_tokens and
+// therefore false-positives reasoning models that spend >12 tokens on hidden
+// reasoning for a short answer.
+func visibleCompletion(usage map[string]interface{}) (int, bool) {
 	c, ok := tokenField(usage, "completion_tokens")
+	if !ok {
+		return 0, false
+	}
+	if details := subMap(usage, "completion_tokens_details"); details != nil {
+		if r, rok := tokenField(details, "reasoning_tokens"); rok && r > 0 && r <= c {
+			return c - r, true
+		}
+	}
+	return c, true
+}
+
+// reasoningBrokenOut reports whether a usage object breaks out hidden reasoning
+// tokens (completion_tokens_details.reasoning_tokens). When it does,
+// visibleCompletion can isolate the user-visible completion and the normal bounds
+// apply; when it does not, a reasoning model's completion count is unverifiable.
+func reasoningBrokenOut(usage map[string]interface{}) bool {
+	if d := subMap(usage, "completion_tokens_details"); d != nil {
+		_, ok := tokenField(d, "reasoning_tokens")
+		return ok
+	}
+	return false
+}
+
+// completionSaneBounded reports 0<c(or lo<=c)<=hi over the user-visible
+// completion. lo=1 enforces strictly positive (OpenAI); lo=0 allows zero (Gemini
+// thinking models).
+func completionSaneBounded(usage map[string]interface{}, lo, hi int) bool {
+	c, ok := visibleCompletion(usage)
 	return ok && lo <= c && c <= hi
 }
 
@@ -188,7 +245,10 @@ func streamUsageCompatibleOpenAI(nonStream, stream map[string]interface{}) bool 
 	if !lcOK || !rcOK || rc <= 0 {
 		return false
 	}
-	if rc > obCompletionMaxOK {
+	// Bound the user-visible completion (reasoning tokens excluded) so a
+	// reasoning-model stream is not falsely rejected for exceeding the short-
+	// answer ceiling.
+	if rcVisible, _ := visibleCompletion(stream); rcVisible > obCompletionMaxOK {
 		return false
 	}
 	overTolerance := max(2, int(float64(max(lc, 1))*0.50))

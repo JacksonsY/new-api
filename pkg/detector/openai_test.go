@@ -47,11 +47,34 @@ func TestValidateChatCompletion(t *testing.T) {
 	assert.True(t, hasCritical(issues), "claude_ usage key must be critical")
 	assert.Less(t, score, 100.0)
 
-	// Wrong id prefix + wrong object are each critical.
-	bad := cleanChatResponse()
-	bad["id"] = "resp_xyz"
-	bad["object"] = "text_completion"
-	_, issues = validateChatCompletion(bad, "gpt-5.4-mini")
+	// A resp_ id (Responses-API era; gpt-5.x returns these even as chat.completion)
+	// is a VALID modern OpenAI form, not a critical. Regression guard for the
+	// api.jzlh99.com false positive that vetoed a genuine gpt-5.5 relay to marginal.
+	respID := cleanChatResponse()
+	respID["id"] = "resp_05cec376d156a896016a588defc9cc81"
+	score, issues = validateChatCompletion(respID, "gpt-5.4-mini")
+	assert.Equal(t, 100.0, score)
+	assert.Empty(t, issues)
+
+	// An unrecognized id prefix is a MINOR conformance note, never a verdict-
+	// vetoing critical (swapped-core is caught by the usage adapter fingerprints).
+	foreignID := cleanChatResponse()
+	foreignID["id"] = "weird-xyz-123"
+	_, issues = validateChatCompletion(foreignID, "gpt-5.4-mini")
+	assert.False(t, hasCritical(issues))
+	foundIDMinor := false
+	for _, i := range issues {
+		if i.code == "id_prefix_unrecognized" {
+			assert.Equal(t, "minor", i.severity)
+			foundIDMinor = true
+		}
+	}
+	assert.True(t, foundIDMinor, "unrecognized id prefix must surface as a minor note")
+
+	// A wrong object is still critical on its own.
+	badObj := cleanChatResponse()
+	badObj["object"] = "text_completion"
+	_, issues = validateChatCompletion(badObj, "gpt-5.4-mini")
 	assert.True(t, hasCritical(issues))
 
 	// Model mismatch is a major (not critical).
@@ -68,25 +91,44 @@ func TestValidateChatCompletion(t *testing.T) {
 	assert.True(t, found)
 }
 
-func TestGeminiShapeScoreNoFingerprintScan(t *testing.T) {
-	// Clean → 100.
-	score, issues := geminiShapeScore(cleanChatResponse())
+// cleanGeminiResponse is a well-formed NATIVE generateContent envelope.
+func cleanGeminiResponse() map[string]interface{} {
+	return map[string]interface{}{
+		"candidates": []interface{}{map[string]interface{}{
+			"content":      map[string]interface{}{"role": "model", "parts": []interface{}{map[string]interface{}{"text": "ok"}}},
+			"finishReason": "STOP", "index": float64(0),
+		}},
+		"usageMetadata": map[string]interface{}{
+			"promptTokenCount": float64(5), "candidatesTokenCount": float64(3), "totalTokenCount": float64(8),
+		},
+		"modelVersion": "gemini-2.5-flash",
+		"responseId":   "abc-123",
+	}
+}
+
+func TestGeminiNativeShapeScore(t *testing.T) {
+	// Clean native envelope → 100, no issues.
+	score, issues := geminiNativeShapeScore(cleanGeminiResponse())
 	assert.Equal(t, 100.0, score)
 	assert.Empty(t, issues)
 
-	// A claude_* usage key must NOT make Gemini critical — gemini protocol has
-	// no adapter-fingerprint scan (the Go reuse of openaiProtocol wrongly added
-	// one; this locks the correct gemini behavior).
-	withFP := cleanChatResponse()
-	withFP["usage"].(map[string]interface{})["claude_cache_creation_5m"] = float64(1)
-	score, issues = geminiShapeScore(withFP)
-	assert.Equal(t, 100.0, score)
-	assert.False(t, hasCritical(issues))
+	// Swapped-core leak: an OpenAI-envelope field (choices) on a "gemini"
+	// response is a critical substitution tell.
+	leak := cleanGeminiResponse()
+	leak["choices"] = []interface{}{}
+	_, issues = geminiNativeShapeScore(leak)
+	assert.True(t, hasCritical(issues))
 
-	// Missing id → critical + bad prefix.
-	noID := cleanChatResponse()
-	delete(noID, "id")
-	score, issues = geminiShapeScore(noID)
+	// object=chat.completion is the compat-layer-impersonating-native tell.
+	obj := cleanGeminiResponse()
+	obj["object"] = "chat.completion"
+	_, issues = geminiNativeShapeScore(obj)
+	assert.True(t, hasCritical(issues))
+
+	// Missing candidates → critical + lower score.
+	noCand := cleanGeminiResponse()
+	delete(noCand, "candidates")
+	score, issues = geminiNativeShapeScore(noCand)
 	assert.True(t, hasCritical(issues))
 	assert.Less(t, score, 100.0)
 }
@@ -130,16 +172,22 @@ func TestOpenAIReasoningExhausted(t *testing.T) {
 }
 
 func TestGeminiTokenBudgets(t *testing.T) {
-	// Arithmetic allows ≤5 slack (OpenAI billing requires exact) — Gemini
-	// reasoning summaries add overhead tokens.
-	assert.True(t, geminiArithmeticOK(map[string]interface{}{"prompt_tokens": float64(5), "completion_tokens": float64(3), "total_tokens": float64(9)}))
-	assert.False(t, geminiArithmeticOK(map[string]interface{}{"prompt_tokens": float64(5), "completion_tokens": float64(3), "total_tokens": float64(20)}))
+	// Native arithmetic: totalTokenCount ≈ prompt + candidates + thoughts within
+	// 5. The thinking tokens are part of the total, so a thinking model still
+	// balances.
+	assert.True(t, geminiArithmeticOK(map[string]interface{}{
+		"promptTokenCount": float64(5), "candidatesTokenCount": float64(3),
+		"thoughtsTokenCount": float64(40), "totalTokenCount": float64(48),
+	}))
+	assert.False(t, geminiArithmeticOK(map[string]interface{}{
+		"promptTokenCount": float64(5), "candidatesTokenCount": float64(3), "totalTokenCount": float64(20),
+	}))
 
-	// Completion cap is MAX+5=133 (OpenAI billing caps at 12) — thinking models
-	// fill the whole budget with reasoning tokens on a "say ok" prompt.
-	assert.True(t, geminiCompletionSane(map[string]interface{}{"completion_tokens": float64(128)}))
-	assert.True(t, geminiCompletionSane(map[string]interface{}{"completion_tokens": float64(133)}))
-	assert.False(t, geminiCompletionSane(map[string]interface{}{"completion_tokens": float64(134)}))
+	// Visible-output cap is MAX+5=133; thoughtsTokenCount is separate and
+	// unbounded, so candidatesTokenCount stays within the requested max.
+	assert.True(t, geminiCandidatesSane(map[string]interface{}{"candidatesTokenCount": float64(128)}))
+	assert.True(t, geminiCandidatesSane(map[string]interface{}{"candidatesTokenCount": float64(133)}))
+	assert.False(t, geminiCandidatesSane(map[string]interface{}{"candidatesTokenCount": float64(134)}))
 }
 
 func TestNormalizeChatTextAndUsageClose(t *testing.T) {

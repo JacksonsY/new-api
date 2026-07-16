@@ -18,12 +18,16 @@ func anthropicHeaders(apiKey string) map[string]string {
 }
 
 // anthropicOmitsTemperature reports whether temperature must be dropped for a
-// model. opus-4-7 / opus-4-8 (adaptive) 400 on `temperature`; Veridrop strips it
+// model. The adaptive-thinking flagships — opus-4-7 / opus-4-8 and the Claude 5
+// family (fable-5 / sonnet-5) — 400 on `temperature`; Veridrop strips it
 // centrally in client._sanitize_body. Sending it unconditionally would error
-// every probe against a *genuine* new-Opus upstream.
+// every probe against a *genuine* upstream of these models.
 func anthropicOmitsTemperature(model string) bool {
 	n := normalizeModelID(model)
-	return strings.HasPrefix(n, "claude-opus-4-7") || strings.HasPrefix(n, "claude-opus-4-8")
+	return strings.HasPrefix(n, "claude-opus-4-7") ||
+		strings.HasPrefix(n, "claude-opus-4-8") ||
+		strings.HasPrefix(n, "claude-fable-5") ||
+		strings.HasPrefix(n, "claude-sonnet-5")
 }
 
 // anthropicPayload builds a minimal single-user-turn Messages request. temp=0 is
@@ -60,12 +64,14 @@ func anthropicText(resp map[string]interface{}) string {
 // anthropicStream is the reconstruction of a Messages SSE body: model, text,
 // stop_reason, and the usage counters reported on message_start / message_delta.
 type anthropicStream struct {
-	model       string
-	text        string
-	stopReason  string
-	startInput  *int // message_start.message.usage.input_tokens
-	deltaOutput *int // message_delta.usage.output_tokens (final cumulative)
-	chunkCount  int
+	id           string
+	model        string
+	messageStart map[string]interface{} // the full message_start.message object
+	text         string
+	stopReason   string
+	startInput   *int // message_start.message.usage.input_tokens
+	deltaOutput  *int // message_delta.usage.output_tokens (final cumulative)
+	chunkCount   int
 }
 
 func parseAnthropicStream(objs []map[string]interface{}) anthropicStream {
@@ -75,6 +81,12 @@ func parseAnthropicStream(objs []map[string]interface{}) anthropicStream {
 		switch strField(obj, "type") {
 		case "message_start":
 			if m := subMap(obj, "message"); m != nil {
+				if s.messageStart == nil {
+					s.messageStart = m
+				}
+				if v := strField(m, "id"); v != "" {
+					s.id = v
+				}
 				if v := strField(m, "model"); v != "" {
 					s.model = v
 				}
@@ -104,6 +116,43 @@ func parseAnthropicStream(objs []map[string]interface{}) anthropicStream {
 	return s
 }
 
+// recordAnthropicStreamObservation reconstructs a non-stream Messages envelope
+// from a streamed response and puts it on the passive-observation bus, so
+// protocol/message_id validate streamed traffic too (Veridrop's client
+// synthesizes and broadcasts a message from message_start + message_delta).
+func (p *prober) recordAnthropicStreamObservation(s anthropicStream, res httpResult) {
+	if !res.ok() || s.chunkCount == 0 || s.messageStart == nil {
+		return
+	}
+	// Mirror Python _synthesize_stream_response: start from the REAL
+	// message_start.message (carrying type/role/id/model/content verbatim so a
+	// stream-only wrong type/role is validated), then overlay stop_reason and the
+	// merged usage. Copying the map avoids mutating the parsed stream.
+	env := make(map[string]interface{}, len(s.messageStart)+1)
+	for k, v := range s.messageStart {
+		env[k] = v
+	}
+	if s.stopReason != "" {
+		env["stop_reason"] = s.stopReason
+	}
+	usage := map[string]interface{}{}
+	if base := subMap(s.messageStart, "usage"); base != nil {
+		for k, v := range base {
+			usage[k] = v
+		}
+	}
+	if s.startInput != nil {
+		usage["input_tokens"] = *s.startInput
+	}
+	if s.deltaOutput != nil {
+		usage["output_tokens"] = *s.deltaOutput
+	}
+	if len(usage) > 0 {
+		env["usage"] = usage
+	}
+	p.recordStreamObservation(env, res.statusCode, res.durationMs)
+}
+
 // anthropicUsage returns the usage sub-object of a non-stream response.
 func anthropicUsage(resp map[string]interface{}) map[string]interface{} {
 	return subMap(resp, "usage")
@@ -124,6 +173,58 @@ func anthropicDetectors() []detectorDef {
 		{detectorKnowledge, "知识准确度", 10.0, modeRankStandard, false, anthropicKnowledge},
 		{detectorBehavioral, "行为签名", 15.0, modeRankFull, false, anthropicBehavioral},
 		{detectorPDF, "PDF 文档识别", 8.0, modeRankFull, false, anthropicPDF},
+		// 后端溯源(移植自 cc-proxy-detector, MIT):判定 Claude 真实后端
+		// Anthropic 直连 / Bedrock(Kiro)/ Vertex(Antigravity),并揪出伪装 Anthropic。
+		{detectorBackendOrigin, "后端溯源", 8.0, modeRankStandard, false, anthropicBackendOrigin},
+		// 隐藏系统提示注入(移植自 claude-detector, MIT):不带 system 令复述系统提示,
+		// 揪出静默注入 "you are ChatGPT / translate all" 的中转。
+		{detectorSystemPromptLeak, "隐藏提示注入", 6.0, modeRankStandard, false, anthropicSystemPromptLeak},
+		// 行为探针组(移植自 claude-detector, MIT):full 档深测,单个信号弱、组合有效。
+		{detectorStopSequence, "stop_sequence 语义", 2.0, modeRankFull, false, anthropicStopSequence},
+		{detectorMaxTokensBehav, "max_tokens 截断", 2.0, modeRankFull, false, anthropicMaxTokensHonoring},
+		{detectorErrorShape, "错误对象 Schema", 1.0, modeRankFull, false, anthropicErrorShape},
+		{detectorCacheBehavior, "Prompt Caching", 2.0, modeRankFull, false, anthropicCacheBehavior},
+		{detectorMultiTurn, "多轮记忆", 2.0, modeRankFull, false, anthropicMultiTurn},
+		{detectorHeaderFinger, "响应头指纹", 1.0, modeRankFull, false, anthropicHeaderFingerprint},
+		// 注入抗性(移植自 telagod/llm-probe, Go):埋 sentinel + 直接越权/工具结果注入,
+		// 泄漏即判弱模型(降级/换芯信号)。full 档,多请求。
+		{detectorInjectionResist, "注入抗性", 5.0, modeRankFull, false, anthropicInjectionResistance},
+		// 响应完整性/投毒(移植自 API-Poison-Detector, MIT):良性无工具请求下,
+		// 中转注入 tool_use / 恶意内容 / 隐藏指令即 critical(供应商安全审计)。
+		{detectorResponseIntegrity, "响应投毒检测", 4.0, modeRankFull, false, anthropicResponseIntegrity},
+		// Web3 安全隔离(移植自 api-relay-audit, AGPL):3 探针查中转是否注入钱包助手,
+		// 覆盖了 Claude 对私钥/代签/代转的安全拒绝。
+		{detectorWeb3Safety, "Web3 安全隔离", 3.0, modeRankFull, false, anthropicWeb3Safety},
+		// 错误响应泄漏(移植自 api-relay-audit, AGPL):broken 请求下,错误体/头泄漏
+		// 凭证/上游 URL/路径/堆栈/LiteLLM 内部字段即判泄漏(供应商内部管道暴露)。
+		{detectorErrorLeakage, "错误泄漏扫描", 2.0, modeRankFull, false, anthropicErrorLeakage},
+		// 供应链安装命令篡改(移植自 LLMprobe-engine, AGPL):要模型给规范 install 命令,
+		// 扫到镜像/仓库重定向、VCS/归档源替换、typosquat 或 shell 投毒即 critical。
+		{detectorSupplyChain, "供应链完整性", 3.0, modeRankFull, false, anthropicSupplyChainIntegrity},
+		// 诱饵密钥外泄通道(移植自 LLMprobe-engine, AGPL):system 埋 canary + 良性任务,
+		// 响应里回显 canary 或注入图片/URL 信标/dropper 代码即判外泄。
+		{detectorExfilScan, "外泄通道扫描", 3.0, modeRankFull, false, anthropicExfilScan},
+		// 条件/自适应注入差分(移植自 LLMprobe-engine, AGPL):中性 vs 含敏感 token 的
+		// 配对回显,中性干净而敏感偏移即判条件注入(现有探针无差分维度)。
+		{detectorAdaptiveInjection, "自适应注入差分", 2.0, modeRankFull, false, anthropicAdaptiveInjection},
+		// 隐藏系统提示地板(移植自 LLMprobe-engine, AGPL):极小 "Hi" 请求的 input_tokens
+		// 远超地板即判包装层注入了隐藏提示(token_usage 自洽性的最小输入地板补充)。
+		{detectorHiddenPromptFloor, "隐藏提示地板", 2.0, modeRankFull, false, anthropicHiddenPromptFloor},
+		// Unicode 透传保真(移植自 LLMprobe-engine, AGPL):要模型逐字输出 CJK 角括号文本,
+		// 角括号被折叠/替换即疑似做 NFKC 归一/重编码的转码中转。
+		{detectorUnicodeFidelity, "Unicode 保真", 1.0, modeRankFull, false, anthropicUnicodeFidelity},
+		// 敏感数据泄露(移植自 AITTAK, Apache-2.0):良性探针下,响应命中凭证/PII/
+		// 内网信息规则库(15 条)即判泄漏——中转在响应里带出真实密钥/卡号/内网信息。
+		{detectorSensitiveLeak, "敏感数据泄露", 3.0, modeRankFull, false, anthropicSensitiveLeak},
+		// 包名返回路径替换(移植自 api-relay-audit, AGPL):逐字回显已知安装命令,
+		// token 级对比抓中途改写(typosquat / 包名内插空格)——供应链 MITM。
+		{detectorPkgSubstitution, "包名替换", 3.0, modeRankFull, false, anthropicPkgSubstitution},
+		// 流式完整性(移植自 api-relay-audit, AGPL · Step 10):SSE 事件层篡改——
+		// 未知事件 / usage 非单调-不一致 / 空 thinking 签名 / 非 Claude 流模型名。
+		{detectorStreamIntegrity, "流式完整性", 4.0, modeRankFull, false, anthropicStreamIntegrity},
+		// 速度基准(移植自 lm-speed, MIT):真流式量 TTFT + 输出 TPS + 单次延迟,
+		// 作为证据展示(速度是指标非真伪判定,恒 pass)。
+		{detectorSpeed, "速度基准", 1.0, modeRankFull, false, anthropicSpeed},
 		{detectorLongContext, "长上下文", 15.0, modeRankFull, true, longContextDetector},
 	}
 }
@@ -147,6 +248,9 @@ var anthropicCompetitorPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bqwen\b`),
 	regexp.MustCompile(`(?i)\bllama\b`),
 	regexp.MustCompile(`(?i)\bmistral\b`),
+	// xAI family — fork addition beyond the ported COMPETITOR set.
+	regexp.MustCompile(`(?i)\bgrok\b`),
+	regexp.MustCompile(`(?i)\bxai\b|\bx\.ai\b`),
 }
 
 // anthropicIdentity asks the model who it is and scores Claude/Anthropic markers
@@ -230,29 +334,21 @@ func anthropicConsistency(ctx context.Context, p *prober, cfg Config) DetectorRe
 		nRuns = 1
 	}
 
+	// Any run failing hard errors the whole detector, matching consistency.py
+	// (the N-run loop is inside one try; any raise returns error). Scoring from a
+	// subset of survivors would report determinism over fewer samples than asked.
+	details := map[string]interface{}{"request_model": cfg.Model, "n_runs": nRuns}
 	var responses []map[string]interface{}
-	firstErr := ""
 	for i := 0; i < nRuns; i++ {
 		res := p.postJSON(ctx, anthropicMessagesPath, anthropicHeaders(p.apiKey),
 			anthropicPayload(cfg.Model, anthropicConsistencyPrompt, 100))
 		if res.err != nil {
-			if firstErr == "" {
-				firstErr = res.err.Error()
-			}
-			continue
+			return DetectorResult{Status: "error", Score: 0, Error: res.err.Error(), Details: details}
 		}
 		if !res.ok() {
-			if firstErr == "" {
-				firstErr = upstreamErrorText(res)
-			}
-			continue
+			return DetectorResult{Status: "error", Score: 0, Error: upstreamErrorText(res), Details: details}
 		}
 		responses = append(responses, res.parsed)
-	}
-
-	details := map[string]interface{}{"request_model": cfg.Model, "n_runs": nRuns}
-	if len(responses) == 0 {
-		return DetectorResult{Status: "error", Score: 0, Error: firstErr, Details: details}
 	}
 
 	responseModel := strField(responses[0], "model")
@@ -443,6 +539,7 @@ func anthropicTokenUsage(ctx context.Context, p *prober, cfg Config) DetectorRes
 	streamBody["stream"] = true
 	streamRes := p.postSSE(ctx, anthropicMessagesPath, anthropicHeaders(p.apiKey), streamBody)
 	stream := parseAnthropicStream(sseDataObjects(streamRes.text))
+	p.recordAnthropicStreamObservation(stream, streamRes)
 	countRes := p.countTokens(ctx, anthropicHeaders(p.apiKey), anthropicPayload(cfg.Model, anthropicTokenShortPrompt, anthropicTokenMaxTok))
 
 	shortUsage := anthropicUsage(shortRes.parsed)
@@ -471,18 +568,41 @@ func anthropicTokenUsage(ctx context.Context, p *prober, cfg Config) DetectorRes
 		score += 25
 	}
 
-	outputOK := anthropicOutputSane(shortUsage) && anthropicOutputSane(longUsage)
-	sub["output_tokens"] = map[string]interface{}{"pass": outputOK}
+	adaptive := anthropicAdaptiveThinkingModel(cfg.Model)
+	outputOK := false
+	outputNote := ""
+	if adaptive {
+		// Adaptive-thinking models count hidden thinking in output_tokens without
+		// breaking it out, so a short answer's output is not bounded to the visible
+		// text. Don't treat it as anomalous (the Claude analog of the OpenAI
+		// reasoning-model completion exemption); input-side checks carry the weight.
+		outputOK = true
+		outputNote = "自适应推理模型,output 含隐藏思维且未拆分,不作可见性上界判定"
+	} else {
+		outputOK = anthropicOutputSane(shortUsage) && anthropicOutputSane(longUsage)
+	}
+	sub["output_tokens"] = map[string]interface{}{"pass": outputOK, "note": outputNote}
 	if outputOK {
 		score += 15
 	}
 
-	streamOK := anthropicStreamUsageClose(shortUsage, stream)
+	streamOK := false
+	streamNote := ""
+	if adaptive {
+		// output_tokens varies per call with adaptive thinking, so verify only the
+		// stable signal — input-token parity — plus a present, non-negative stream
+		// output, not the 50% output tolerance.
+		streamOK = anthropicStreamInputStable(shortUsage, stream)
+		streamNote = "自适应推理模型:仅校验 input token 一致性(output 因隐藏思维逐次波动)"
+	} else {
+		streamOK = anthropicStreamUsageClose(shortUsage, stream)
+	}
 	sub["stream_usage"] = map[string]interface{}{
 		"stream_input_tokens":  stream.startInput,
 		"stream_output_tokens": stream.deltaOutput,
 		"stream_chunk_count":   stream.chunkCount,
 		"pass":                 streamOK,
+		"note":                 streamNote,
 	}
 	if streamOK {
 		score += 25
@@ -546,6 +666,20 @@ func anthropicStreamUsageClose(nonStream map[string]interface{}, stream anthropi
 		*stream.deltaOutput >= 0
 }
 
+// anthropicStreamInputStable verifies stream/non-stream INPUT-token parity
+// (deterministic) plus a present, non-negative stream output — used for
+// adaptive-thinking models whose per-call output_tokens legitimately varies
+// (hidden thinking is counted in output and not broken out), so the 50% output
+// tolerance in anthropicStreamUsageClose would false-fire.
+func anthropicStreamInputStable(nonStream map[string]interface{}, stream anthropicStream) bool {
+	nsIn, okNsIn := intField(nonStream, "input_tokens")
+	if !okNsIn || stream.startInput == nil || stream.deltaOutput == nil {
+		return false
+	}
+	inTol := anthropicTolerance(nsIn, 0.20, 4)
+	return abs(nsIn-*stream.startInput) <= inTol && *stream.deltaOutput >= 0
+}
+
 func anthropicTolerance(base int, frac float64, floor int) int {
 	t := int(float64(base) * frac)
 	if t < floor {
@@ -585,6 +719,7 @@ func anthropicIntegrity(ctx context.Context, p *prober, cfg Config) DetectorResu
 	nsInput, _ := intField(nsUsage, "input_tokens")
 	nsOutput, _ := intField(nsUsage, "output_tokens")
 	stream := parseAnthropicStream(sseDataObjects(streamRes.text))
+	p.recordAnthropicStreamObservation(stream, streamRes)
 
 	sub := map[string]interface{}{}
 	score := 0.0
@@ -684,11 +819,13 @@ func anthropicProtocol(_ context.Context, p *prober, _ Config) DetectorResult {
 		if s := strField(r, "id"); s == "" {
 			issues["id_missing_or_not_string"] = true
 		}
-		if strField(r, "type") != "message" {
-			issues["type_invalid"] = true
+		if v := strField(r, "type"); v != "message" {
+			// Value-suffixed so distinct invalid values across the run count
+			// separately (protocol.py appends the offending value via !r).
+			issues["type_invalid:"+v] = true
 		}
-		if strField(r, "role") != "assistant" {
-			issues["role_invalid"] = true
+		if v := strField(r, "role"); v != "assistant" {
+			issues["role_invalid:"+v] = true
 		}
 		if s := strField(r, "model"); s == "" {
 			issues["model_missing_or_not_string"] = true
@@ -706,14 +843,21 @@ func anthropicProtocol(_ context.Context, p *prober, _ Config) DetectorResult {
 				if bt == "" {
 					issues["content_block_missing_type"] = true
 				} else if !knownAnthropicBlockTypes[bt] {
-					issues["content_block_unknown_type"] = true
+					issues["content_block_unknown_type:"+bt] = true
 				}
 			}
 		}
 		if sr, ok := r["stop_reason"]; ok {
 			s, isStr := sr.(string)
 			if sr != nil && (!isStr || !anthropicValidStopReasons[s]) {
-				issues["stop_reason_invalid"] = true
+				// Value-suffixed so distinct invalid stop_reasons (e.g. an
+				// OpenAI-style backend forwarding stop/length/tool_calls) count
+				// separately. Non-string values collapse to one marker.
+				val := s
+				if !isStr {
+					val = "<non-string>"
+				}
+				issues["stop_reason_invalid:"+val] = true
 			}
 		}
 		if ss, ok := r["stop_sequence"]; ok && ss != nil {

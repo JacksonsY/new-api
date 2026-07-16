@@ -23,12 +23,35 @@ const (
 	detectorFunctionCalling   = "function_calling"
 	detectorLongContext       = "long_context"
 	// Tier B / structured-output / token detectors
-	detectorStructuredOutput = "structured_output"
-	detectorKnowledge        = "knowledge"
-	detectorBehavioral       = "behavioral_signature"
-	detectorPDF              = "pdf"
-	detectorTokenBilling     = "token_billing"
-	detectorTokenParity      = "token_parity"
+	detectorStructuredOutput  = "structured_output"
+	detectorKnowledge         = "knowledge"
+	detectorBehavioral        = "behavioral_signature"
+	detectorPDF               = "pdf"
+	detectorTokenBilling      = "token_billing"
+	detectorTokenParity       = "token_parity"
+	detectorBackendOrigin     = "backend_origin"
+	detectorSystemPromptLeak  = "system_prompt_leak"
+	detectorStopSequence      = "stop_sequence"
+	detectorMaxTokensBehav    = "max_tokens"
+	detectorErrorShape        = "error_shape"
+	detectorCacheBehavior     = "cache_behavior"
+	detectorMultiTurn         = "multi_turn"
+	detectorHeaderFinger      = "header_fingerprint"
+	detectorInjectionResist   = "injection_resistance"
+	detectorResponseIntegrity = "response_integrity"
+	detectorWeb3Safety        = "web3_safety"
+	detectorErrorLeakage      = "error_leakage_scan"
+	detectorSupplyChain       = "supply_chain_integrity"
+	detectorExfilScan         = "exfil_channel_scan"
+	detectorAdaptiveInjection = "adaptive_injection"
+	detectorHiddenPromptFloor = "hidden_prompt_floor"
+	detectorUnicodeFidelity   = "unicode_fidelity"
+	detectorSensitiveLeak     = "sensitive_data_leak"
+	detectorPkgSubstitution   = "pkg_substitution"
+	detectorStreamIntegrity   = "stream_integrity"
+	detectorSpeed             = "speed"
+	detectorResponsesAPI      = "responses_api"
+	detectorResponsesFunc     = "responses_function_calling"
 )
 
 // mode ordering: a detector with minMode <= the run's mode is selected.
@@ -46,6 +69,27 @@ func modeRank(mode string) int {
 		return modeRankFull
 	default:
 		return modeRankStandard
+	}
+}
+
+// overallTimeout is the whole-run budget for a mode. quick/standard keep
+// Veridrop's ExecutionConfig.for_mode values (60s/120s). full deviates from
+// Veridrop's 180s: this port roughly tripled the full-mode battery (identity,
+// backend origin, and the LLMprobe/api-relay-audit security suites), and at the
+// default concurrency of 3 a genuine reasoning-model relay (gpt-5.x / grok-4.x /
+// adaptive Claude, 10–30s per call) can legitimately need well beyond 180s.
+// Deadline casualties no longer drag the score down (runOne reclassifies them to
+// skip), so a larger budget here only improves completeness — more of the
+// battery actually finishes — without risking a false verdict. Long-context runs
+// stay exempt and are bounded per-request instead.
+func overallTimeout(mode string) time.Duration {
+	switch mode {
+	case ModeQuick:
+		return 60 * time.Second
+	case ModeFull:
+		return 300 * time.Second
+	default:
+		return 120 * time.Second
 	}
 }
 
@@ -73,6 +117,8 @@ func selectDetectors(cfg Config) []detectorDef {
 	case ProtocolGemini:
 		all = geminiDetectors()
 	default:
+		// openai — and grok, which speaks the same chat surface and shares the
+		// full openai battery (model-aware calibration keys off cfg.Model).
 		all = openaiDetectors()
 	}
 
@@ -109,6 +155,18 @@ func isPassiveDetector(name string) bool {
 // that finalize over those observations. A panic in one detector becomes an
 // "error" result and never aborts the run.
 func runDetectors(ctx context.Context, p *prober, cfg Config, defs []detectorDef) []DetectorResult {
+	// Bound the whole run by the mode's overall timeout. Long-context runs are
+	// exempt: their tiers legitimately take minutes and are bounded per-request
+	// instead. When the budget fires, in-flight and not-yet-started detectors are
+	// cancelled; runOne reclassifies those deadline casualties to skip (excluded
+	// from scoring) rather than error, so a genuine relay that simply ran out of
+	// time is not scored down for detectors that never got to run.
+	if !cfg.IncludeLongContext && !cfg.IncludeLongContextExtreme {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, overallTimeout(cfg.Mode))
+		defer cancel()
+	}
+
 	results := make([]DetectorResult, len(defs))
 
 	limit := cfg.MaxConcurrent
@@ -159,5 +217,17 @@ func runOne(ctx context.Context, p *prober, cfg Config, d detectorDef) (res Dete
 		}
 	}()
 	res = d.fn(ctx, p, cfg)
+	// A detector that errored only because the overall run budget (or an external
+	// cancel) fired is a casualty of the deadline, not evidence about the model.
+	// gctx is derived from the overall-timeout context and is only cancelled by
+	// it (detectors never propagate errors), so ctx.Err() != nil here means the
+	// budget/cancel fired. Reclassify to skip: computeTotal excludes skip, whereas
+	// an "error" would be averaged in at score 0 with full weight and drag a
+	// genuine relay's verdict to marginal/failed whenever the full-mode battery
+	// simply ran out of time. A detector that already errored while the budget was
+	// still alive keeps its error status and its 0 (that is real evidence).
+	if res.Status == "error" && ctx.Err() != nil {
+		res = detectorSkip("超出本次检测时间预算，该检测器未跑完（不计入评分）")
+	}
 	return res
 }

@@ -2,6 +2,8 @@ package detector
 
 import (
 	"context"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -21,33 +23,54 @@ var geminiUsageFingerprintKeys = []string{
 // critical). cache_creation_input_tokens is intentionally NOT flagged.
 var mixedTokenFieldKeys = []string{"input_tokens", "output_tokens", "input_tokens_details"}
 
+// usageFingerprints holds the non-OpenAI residue found in an OpenAI usage
+// object, grouped by category so each maps to its own protocol issue (as the
+// reference emits separate criticals, not one merged issue).
+type usageFingerprints struct {
+	claude []string // claude_* keys (Anthropic backend)
+	gemini []string // gemini_* / *_token_count keys (Gemini backend)
+	source string   // usage_source value when non-empty and != "openai"
+	minor  []string // mixed input/output token fields (mixed-shape adapter)
+}
+
+func (f usageFingerprints) hasCritical() bool {
+	return len(f.claude) > 0 || len(f.gemini) > 0 || f.source != ""
+}
+
 // scanOpenAIUsageFingerprints classifies non-OpenAI residue in an OpenAI usage
 // object per protocol_templates._check_usage_adapter_fingerprints: critical =
 // swapped-core (claude_* keys, gemini_* / *_token_count keys, usage_source
 // non-empty and != "openai"); minor = mixed input/output token fields.
-func scanOpenAIUsageFingerprints(usage map[string]interface{}) (critical []string, minor []string) {
+func scanOpenAIUsageFingerprints(usage map[string]interface{}) usageFingerprints {
+	var fp usageFingerprints
 	if usage == nil {
-		return nil, nil
+		return fp
 	}
 	for k := range usage {
-		if strings.HasPrefix(k, "claude_") || strings.HasPrefix(k, "gemini_") {
-			critical = append(critical, k)
+		if strings.HasPrefix(k, "claude_") {
+			fp.claude = append(fp.claude, k)
+		}
+		if strings.HasPrefix(k, "gemini_") {
+			fp.gemini = append(fp.gemini, k)
 		}
 	}
 	for _, k := range geminiUsageFingerprintKeys {
 		if _, ok := usage[k]; ok {
-			critical = append(critical, k)
+			fp.gemini = append(fp.gemini, k)
 		}
 	}
 	if s := strings.ToLower(asString(usage["usage_source"])); s != "" && s != "openai" {
-		critical = append(critical, "usage_source="+s)
+		fp.source = s
 	}
 	for _, k := range mixedTokenFieldKeys {
 		if _, ok := usage[k]; ok {
-			minor = append(minor, k)
+			fp.minor = append(fp.minor, k)
 		}
 	}
-	return critical, minor
+	sort.Strings(fp.claude)
+	sort.Strings(fp.gemini)
+	sort.Strings(fp.minor)
+	return fp
 }
 
 // protoIssue is one protocol-template validation finding.
@@ -64,6 +87,30 @@ var openaiValidFinishReasons = map[string]bool{
 
 var openaiChatRequiredTopLevel = []string{"id", "object", "created", "model", "choices", "usage"}
 
+// openaiIDPrefixes are the recognized id forms of a modern OpenAI-compatible
+// Chat Completions response: "chatcmpl-"/"chatcmpl_" (classic) and "resp_"
+// (Responses-API era — gpt-5.x returns these even when object is chat.completion).
+// Deviation from the reference (which hard-required "chatcmpl-"): on gpt-5.x a
+// genuine relay legitimately returns a "resp_" id, so an unrecognized prefix is a
+// MINOR conformance note, not a verdict-vetoing critical. Actual swapped-core is
+// caught by the usage adapter fingerprints (claude_*/gemini_*/usage_source),
+// which stay critical — mirroring the existing mixedTokenFieldKeys precedent.
+var openaiIDPrefixes = []string{"chatcmpl-", "chatcmpl_", "resp_"}
+
+func hasOpenAIIDPrefix(id string) bool {
+	for _, p := range openaiIDPrefixes {
+		if strings.HasPrefix(id, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// reUUIDv4ish matches xAI's Chat Completions response-id form (a plain UUID,
+// e.g. "0daf962f-a275-4a3c-839a-047854645532" — docs.x.ai). For a grok target
+// this is the GENUINE id shape, so it must not be flagged even as minor.
+var reUUIDv4ish = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
 // validateChatCompletion ports protocol_templates.validate_chat_completion: a
 // structural validation of a Chat Completions envelope. Returns the 0..100 score
 // (100 − Σ severity penalties, crit 35 / major 15 / minor 5) and the issues.
@@ -76,8 +123,10 @@ func validateChatCompletion(payload map[string]interface{}, requestModel string)
 			add("critical", "top_level_missing", "missing required top-level field "+key)
 		}
 	}
-	if id := strField(payload, "id"); !strings.HasPrefix(id, "chatcmpl-") {
-		add("critical", "id_prefix_invalid", "id must use the chatcmpl- prefix")
+	if id := strField(payload, "id"); !hasOpenAIIDPrefix(id) {
+		if !(grokModel(requestModel) && reUUIDv4ish.MatchString(id)) {
+			add("minor", "id_prefix_unrecognized", "id prefix is not a recognized OpenAI form (chatcmpl- / resp_)")
+		}
 	}
 	if strField(payload, "object") != "chat.completion" {
 		add("critical", "object_invalid", "object is not chat.completion")
@@ -132,13 +181,22 @@ func validateChatUsage(raw interface{}, issues *[]protoIssue) {
 	if okP && okC && okT && tot != p+c {
 		add("minor", "usage_total_mismatch", "total_tokens should equal prompt + completion tokens")
 	}
-	// adapter fingerprints (swapped core / mixed shape)
-	crit, minor := scanOpenAIUsageFingerprints(usage)
-	if len(crit) > 0 {
-		add("critical", "usage_adapter_fingerprint", "usage contains non-OpenAI backend fields: "+strings.Join(crit, ", "))
+	// adapter fingerprints (swapped core / mixed shape). Each category is a
+	// separate critical (matching protocol_templates: usage_contains_claude_fields
+	// / usage_contains_gemini_fields / usage_source_non_openai), so a response
+	// leaking several foreign markers is penalized per category, not once.
+	fp := scanOpenAIUsageFingerprints(usage)
+	if len(fp.claude) > 0 {
+		add("critical", "usage_contains_claude_fields", "usage contains Anthropic backend fields: "+strings.Join(fp.claude, ", "))
 	}
-	if len(minor) > 0 {
-		add("minor", "usage_mixed_token_fields", "usage mixes OpenAI fields with input/output token fields: "+strings.Join(minor, ", "))
+	if len(fp.gemini) > 0 {
+		add("critical", "usage_contains_gemini_fields", "usage contains Gemini backend fields: "+strings.Join(fp.gemini, ", "))
+	}
+	if fp.source != "" {
+		add("critical", "usage_source_non_openai", "usage_source is not openai: "+fp.source)
+	}
+	if len(fp.minor) > 0 {
+		add("minor", "usage_mixed_token_fields", "usage mixes OpenAI fields with input/output token fields: "+strings.Join(fp.minor, ", "))
 	}
 }
 

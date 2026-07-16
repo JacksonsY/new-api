@@ -17,8 +17,14 @@ type modelInfo struct {
 	newTokenizer             bool
 }
 
-// anthropicModels ports config.py MODELS verbatim (DESIGN.md Appendix B).
+// anthropicModels ports config.py MODELS (DESIGN.md Appendix B). The Claude 5
+// family (fable-5 / sonnet-5) post-dates the local veridrop snapshot but is live
+// on veridrop.org; their capabilities are modeled on the immediately preceding
+// adaptive-thinking flagship (opus-4-8): 1M context, adaptive (not extended)
+// thinking, new tokenizer. Refine if the upstream config specifies otherwise.
 var anthropicModels = []modelInfo{
+	{alias: "claude-fable-5", aliases: []string{"claude-fable-5"}, contextTokens: 1_000_000, maxOutputTokens: 128_000, pdfPageMax: 600, supportsExtendedThinking: false, supportsAdaptiveThinking: true, newTokenizer: true},
+	{alias: "claude-sonnet-5", aliases: []string{"claude-sonnet-5"}, contextTokens: 1_000_000, maxOutputTokens: 64_000, pdfPageMax: 600, supportsExtendedThinking: false, supportsAdaptiveThinking: true, newTokenizer: true},
 	{alias: "claude-opus-4-8", aliases: []string{"claude-opus-4-8"}, contextTokens: 1_000_000, maxOutputTokens: 128_000, pdfPageMax: 600, supportsExtendedThinking: false, supportsAdaptiveThinking: true, newTokenizer: true},
 	{alias: "claude-opus-4-7", aliases: []string{"claude-opus-4-7"}, contextTokens: 1_000_000, maxOutputTokens: 128_000, pdfPageMax: 600, supportsExtendedThinking: false, supportsAdaptiveThinking: true, newTokenizer: true},
 	{alias: "claude-sonnet-4-6", aliases: []string{"claude-sonnet-4-6"}, contextTokens: 1_000_000, maxOutputTokens: 64_000, pdfPageMax: 600, supportsExtendedThinking: true, supportsAdaptiveThinking: true},
@@ -56,11 +62,27 @@ func modelSupportsThinking(modelID string) bool {
 	return info.supportsExtendedThinking || info.supportsAdaptiveThinking
 }
 
+// anthropicAdaptiveThinkingModel reports whether a model does adaptive (auto)
+// thinking — opus-4-7/4-8 and the Claude 5 family (fable-5/sonnet-5). These count
+// hidden thinking in output_tokens and vary it per call without breaking it out,
+// so a short answer's output count is neither bounded to the visible text nor
+// stable stream-vs-non-stream (the Claude analog of an OpenAI reasoning model).
+func anthropicAdaptiveThinkingModel(modelID string) bool {
+	info := lookupModel(modelID)
+	return info != nil && info.supportsAdaptiveThinking
+}
+
 // adaptiveEffortForModel mirrors thinking_signature._adaptive_effort_for_model:
-// opus-4-7/4-8 need xhigh for reliable signed-thinking emission on hard prompts.
+// the newest adaptive-thinking flagships (opus-4-7/4-8, and the Claude 5 family
+// fable-5/sonnet-5) need xhigh for reliable signed-thinking emission on hard
+// prompts. Others use high.
 func adaptiveEffortForModel(modelID string) string {
 	n := normalizeModelID(modelID)
-	if strings.HasPrefix(n, "claude-opus-4-7") || strings.HasPrefix(n, "claude-opus-4-8") {
+	switch {
+	case strings.HasPrefix(n, "claude-opus-4-7"),
+		strings.HasPrefix(n, "claude-opus-4-8"),
+		strings.HasPrefix(n, "claude-fable-5"),
+		strings.HasPrefix(n, "claude-sonnet-5"):
 		return "xhigh"
 	}
 	return "high"

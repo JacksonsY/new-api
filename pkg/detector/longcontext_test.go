@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -74,7 +75,7 @@ func TestLongContextExtremeTiers(t *testing.T) {
 	// Extreme opt-in enables long-context even without the standard flag, and
 	// uses the adaptive strategy.
 	cfg := Config{BaseURL: "https://relay.test", Model: "claude-haiku-4-5", Protocol: "anthropic", IncludeLongContextExtreme: true}
-	honest := func(prompt string) (string, bool, string) {
+	honest := func(prompt string, _ time.Duration) (string, bool, string) {
 		return strings.Join(lcAnswerRE.FindAllString(prompt, -1), "\n"), true, ""
 	}
 	res := runLongContext(cfg, "anthropic", honest)
@@ -91,7 +92,7 @@ func TestRunLongContextCatchesTruncation(t *testing.T) {
 
 	// Honest relay: echoes every identifier present in the full prompt → recalls
 	// all 3 needles at every tier → pass.
-	honest := func(prompt string) (string, bool, string) {
+	honest := func(prompt string, _ time.Duration) (string, bool, string) {
 		return strings.Join(lcAnswerRE.FindAllString(prompt, -1), "\n"), true, ""
 	}
 	res := runLongContext(cfg, "anthropic", honest)
@@ -100,7 +101,7 @@ func TestRunLongContextCatchesTruncation(t *testing.T) {
 
 	// Truncating relay: only "sees" the first 5000 chars, so needles at 50%/90%
 	// (and the 10% needle at ~16k chars for the 32k tier) are lost → fail.
-	truncating := func(prompt string) (string, bool, string) {
+	truncating := func(prompt string, _ time.Duration) (string, bool, string) {
 		head := prompt
 		if len(head) > 5000 {
 			head = head[:5000]

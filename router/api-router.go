@@ -70,8 +70,10 @@ func SetApiRouter(router *gin.Engine) {
 		detectorRoute := apiRouter.Group("/detector")
 		{
 			// 公开：检测任意中转站 + 轮询 + 红黑榜（限速；引擎内 SSRF 守卫拦私网/元数据）
+			// 发起检测走 CriticalRateLimit（真实上游请求、昂贵）；状态轮询是廉价的内存查询，
+			// 且前端每 2s 轮询一次，必须走宽松的 Web 限速，否则单次检测就会打爆 20/20min。
 			detectorRoute.POST("/detect", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.DetectPublic)
-			detectorRoute.GET("/status/:jobId", middleware.CriticalRateLimit(), controller.DetectStatus)
+			detectorRoute.GET("/status/:jobId", middleware.GlobalWebRateLimit(), controller.DetectStatus)
 			detectorRoute.GET("/leaderboard", controller.DetectorLeaderboard)
 			// 管理员：渠道验真 + 记录
 			detectorRoute.POST("/channel/:id", middleware.AdminAuth(), controller.DetectChannel)

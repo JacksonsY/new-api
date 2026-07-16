@@ -272,10 +272,8 @@ func openaiStructuredOutput(ctx context.Context, p *prober, cfg Config) Detector
 	return structuredOutputJSONSchema(ctx, p, cfg, "openai-detector", 128)
 }
 
-func geminiStructuredOutput(ctx context.Context, p *prober, cfg Config) DetectorResult {
-	// 384 leaves room for Gemini 3 reasoning tokens plus the JSON output.
-	return structuredOutputJSONSchema(ctx, p, cfg, "gemini-detector", 384)
-}
+// geminiStructuredOutput lives in gemini.go — it uses the native
+// generationConfig.responseSchema, not the OpenAI response_format shim.
 
 // truncate returns s limited to n bytes (rune-safe at the boundary is not
 // required here; details are diagnostic excerpts).

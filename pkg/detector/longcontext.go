@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Long-context needle-in-haystack detection (Veridrop core/long_context.py +
@@ -22,7 +25,41 @@ const (
 	lcQuestionBuffer   = 1500
 	lcPassThreshold    = 3
 	lcPartialThreshold = 2
+	// lcTierTimeoutFloor is the minimum per-tier HTTP timeout; larger tiers scale
+	// up (Veridrop _tier_timeout_s = max(120s, target/4000)). The default probe
+	// timeout is far too short for a 100k–1M token prompt (2–4 min upstream).
+	lcTierTimeoutFloor = 120 * time.Second
 )
+
+// lcTierTimeout scales the per-request timeout with the input size, mirroring
+// Veridrop's max(120s, target_tokens/4000).
+func lcTierTimeout(targetTokens int) time.Duration {
+	scaled := time.Duration(targetTokens/4_000) * time.Second
+	if scaled < lcTierTimeoutFloor {
+		return lcTierTimeoutFloor
+	}
+	return scaled
+}
+
+// lcPromptTooLongRe matches Anthropic's "prompt is too long: N tokens > M
+// maximum" 400. When M equals the model's advertised context limit, our haystack
+// estimate overshot the real ceiling — a detector-side sizing issue, not relay
+// truncation — so the tier is skipped rather than failed
+// (Veridrop _looks_detector_prompt_overflow).
+var lcPromptTooLongRe = regexp.MustCompile(`(?i)prompt is too long:\s*([\d,]+)\s*tokens?\s*>\s*([\d,]+)\s*maximum`)
+
+func looksPromptOverflow(errMsg string, ctxLimit int) bool {
+	m := lcPromptTooLongRe.FindStringSubmatch(errMsg)
+	if m == nil {
+		return false
+	}
+	requested, err1 := strconv.Atoi(strings.ReplaceAll(m[1], ",", ""))
+	maximum, err2 := strconv.Atoi(strings.ReplaceAll(m[2], ",", ""))
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return requested > maximum && maximum == ctxLimit
+}
 
 var lcStandardTiers = []int{32_000, 100_000, 200_000}
 
@@ -78,13 +115,22 @@ var lcModelContextLimits = map[string]int{
 	"gpt-4.1-mini": 1_047_576, "gpt-4.1-nano": 1_047_576, "gpt-4.1": 1_047_576,
 	"gpt-5-nano": 272_000, "gpt-5-mini": 272_000, "gpt-5": 272_000,
 	"o1-mini": 128_000, "o1": 200_000, "o3-mini": 200_000, "o3": 200_000,
+	"claude-fable-5": 1_000_000, "claude-sonnet-5": 1_000_000,
 	"claude-haiku-4-5": 200_000, "claude-sonnet-4-6": 1_000_000,
 	"claude-opus-4-8": 1_000_000, "claude-opus-4-7": 1_000_000, "claude-opus-4-6": 1_000_000,
 	"claude-sonnet-4-5": 200_000, "claude-opus-4-5": 200_000, "claude-opus-4-1": 200_000,
 	"claude-sonnet-4": 200_000, "claude-opus-4": 200_000,
-	"gemini-3.1-pro": 1_048_576, "gemini-3-flash": 1_048_576, "gemini-3-pro": 1_048_576,
+	"gemini-3.5-flash": 1_048_576, "gemini-3.1-pro": 1_048_576, "gemini-3.1-flash-lite": 1_048_576,
+	"gemini-3-flash": 1_048_576, "gemini-3-pro": 1_048_576,
 	"gemini-2.5-flash": 1_048_576, "gemini-2.5-pro": 1_048_576,
 	"gemini-1.5-flash": 1_048_576, "gemini-1.5-pro": 1_048_576,
+	// xAI Grok(docs.x.ai 2026-07):4.5=500k、4.3/4.20=1M、build=256k;
+	// 已退役但中转仍常见转售的旧代按原规格保留。最长前缀优先,"grok-4" 不会
+	// 吃掉 "grok-4.5"/"grok-4.20"/"grok-4.1-fast"。
+	"grok-4.5": 500_000, "grok-4.3": 1_000_000, "grok-4.20": 1_000_000,
+	"grok-4.1-fast": 2_000_000, "grok-4-fast": 2_000_000, "grok-4": 256_000,
+	"grok-code-fast": 256_000, "grok-build": 256_000,
+	"grok-3-mini": 131_072, "grok-3": 131_072, "grok-2": 131_072,
 }
 
 func modelContextLimit(model string) int {
@@ -256,13 +302,17 @@ func looksRateLimited(msg string) bool {
 	return false
 }
 
-// longContextSend probes the relay with the full haystack prompt and returns the
-// recall text. ok=false + errMsg on failure.
-type longContextSend func(prompt string) (text string, ok bool, errMsg string)
+// longContextSend probes the relay with the full haystack prompt under the given
+// per-tier timeout and returns the recall text. ok=false + errMsg on failure.
+type longContextSend func(prompt string, timeout time.Duration) (text string, ok bool, errMsg string)
 
 // runLongContext orchestrates the standard-tier needle probes and aggregates.
 func runLongContext(cfg Config, protocol string, send longContextSend) DetectorResult {
-	seed := cfg.BaseURL + ":" + cfg.Model
+	// A per-run timestamp component randomizes the needles each run so a relay
+	// that memorized one run's identifiers cannot fool the next (Veridrop seeds
+	// with base_url:model:time). Generation and matching share this seed within a
+	// run, so recall stays self-consistent.
+	seed := fmt.Sprintf("%s:%s:%d", cfg.BaseURL, cfg.Model, time.Now().Unix())
 	ctxLimit := modelContextLimit(cfg.Model)
 
 	// 极限档：按模型上限自适应档（~32k/50%/95%）；否则标准档 32k/100k/200k。
@@ -282,11 +332,17 @@ func runLongContext(cfg Config, protocol string, send longContextSend) DetectorR
 		tierSeed := fmt.Sprintf("%s:%d", seed, target)
 		needles := makeNeedles(tierSeed)
 		haystack := assembleHaystack(target-lcQuestionBuffer, needles, tierSeed, protocol)
-		text, ok, errMsg := send(haystack + buildQuestion(needles))
+		text, ok, errMsg := send(haystack+buildQuestion(needles), lcTierTimeout(target))
 		if !ok {
-			if looksRateLimited(errMsg) {
+			switch {
+			case looksPromptOverflow(errMsg, ctxLimit):
+				// Our char/token estimate overshot the model's real ceiling; this
+				// is a detector sizing issue, not relay truncation — skip (not
+				// penalized), and don't probe higher tiers (they are larger still).
+				tiers = append(tiers, lcTier{target, 0, 3, "skip"})
+			case looksRateLimited(errMsg):
 				tiers = append(tiers, lcTier{target, 0, 3, "rate_limited"})
-			} else {
+			default:
 				tiers = append(tiers, lcTier{target, 0, 3, "fail"})
 			}
 			break // stop probing higher tiers
@@ -376,7 +432,7 @@ func longContextDetector(ctx context.Context, p *prober, cfg Config) DetectorRes
 		return detectorSkip("long-context detection is opt-in")
 	}
 	if cfg.Protocol == ProtocolAnthropic {
-		return runLongContext(cfg, ProtocolAnthropic, func(prompt string) (string, bool, string) {
+		return runLongContext(cfg, ProtocolAnthropic, func(prompt string, timeout time.Duration) (string, bool, string) {
 			body := map[string]interface{}{
 				"model": cfg.Model, "max_tokens": lcMaxOutputTokens,
 				"messages": []map[string]interface{}{{"role": "user", "content": prompt}},
@@ -384,7 +440,7 @@ func longContextDetector(ctx context.Context, p *prober, cfg Config) DetectorRes
 			if !anthropicOmitsTemperature(cfg.Model) {
 				body["temperature"] = 0
 			}
-			res := p.postJSON(ctx, anthropicMessagesPath, anthropicHeaders(p.apiKey), body)
+			res := p.postJSONTimeout(ctx, anthropicMessagesPath, anthropicHeaders(p.apiKey), body, timeout)
 			if res.err != nil {
 				return "", false, res.err.Error()
 			}
@@ -394,8 +450,8 @@ func longContextDetector(ctx context.Context, p *prober, cfg Config) DetectorRes
 			return anthropicText(res.parsed), true, ""
 		})
 	}
-	return runLongContext(cfg, cfg.Protocol, func(prompt string) (string, bool, string) {
-		res := p.postJSON(ctx, openaiChatPath, openaiHeaders(p.apiKey), openaiPayload(cfg.Model, prompt, lcMaxOutputTokens))
+	return runLongContext(cfg, cfg.Protocol, func(prompt string, timeout time.Duration) (string, bool, string) {
+		res := p.postJSONTimeout(ctx, openaiChatPath, openaiHeaders(p.apiKey), openaiPayload(cfg.Model, prompt, lcMaxOutputTokens), timeout)
 		if res.err != nil {
 			return "", false, res.err.Error()
 		}

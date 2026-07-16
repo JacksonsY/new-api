@@ -84,6 +84,10 @@ var brandPatterns = []brandPattern{
 	{regexp.MustCompile(`(?i)\bwenxin\b|文心`), "Wenxin"},
 	{regexp.MustCompile(`(?i)\bllama\b`), "LLaMA"},
 	{regexp.MustCompile(`(?i)\bmistral\b`), "Mistral"},
+	// xAI family — fork addition beyond the 17 ported entries: a claude/gpt/
+	// gemini target answering "I am Grok / built by xAI" is a swapped core.
+	{regexp.MustCompile(`(?i)\bgrok\b`), "Grok"},
+	{regexp.MustCompile(`(?i)\bxai\b|\bx\.ai\b`), "xAI"},
 }
 
 // scanBrands returns the distinct non-official brand labels found in text, in

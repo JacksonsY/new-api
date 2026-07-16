@@ -5,8 +5,10 @@ package controller
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +17,24 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/detector"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 )
+
+// detectorHTTPTransport returns the fork's global outbound-proxy transport so
+// detection probes egress through the configured proxy (+ direct fallback),
+// consistent with the rest of the fork's outbound calls. Returns nil when no
+// global proxy is configured, in which case the detector falls back to its own
+// SSRF-guarded direct client. guardBaseURL is the SSRF floor in both cases.
+func detectorHTTPTransport() http.RoundTripper {
+	if strings.TrimSpace(system_setting.GlobalProxyUrl) == "" {
+		return nil
+	}
+	if c := service.GetHttpClient(); c != nil {
+		return c.Transport
+	}
+	return nil
+}
 
 // ---- 异步 job 注册表（内存，短生命周期）----
 
@@ -60,6 +79,8 @@ const maxLiveDetectJobs = 256
 // startDetectJob 建 job 并后台跑检测；channelId>0 时把结果写回渠道快照。
 // 注册表满（超过 maxLiveDetectJobs）时返回 ("", false)，调用方据此拒绝本次请求。
 func startDetectJob(cfg detector.Config, channelId int, source string) (string, bool) {
+	// Route probes through the global outbound proxy when configured.
+	cfg.Transport = detectorHTTPTransport()
 	jobId := common.GetUUID()
 	job := &detectJob{ID: jobId, Status: "running", CreatedAt: common.GetTimestamp()}
 	detectJobsMu.Lock()

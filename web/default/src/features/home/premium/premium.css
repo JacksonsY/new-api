@@ -31,6 +31,8 @@ For commercial licensing, please contact support@quantumnous.com
   --pf-magenta: #c81e9e;
   --pf-ember: #f0452e;
   --pf-gold: #f6b43e;
+  /* single-color fire accent for icons/markers (detector, partners pages) */
+  --pf-fire: #f0452e;
   --pf-grad: linear-gradient(
     115deg,
     #7c3aed 0%,
@@ -242,6 +244,13 @@ html.lenis body {
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.9) inset,
     0 30px 60px -28px rgba(80, 24, 120, 0.34);
+}
+/* Workbench containers (forms, live panels, history lists): keep the pf-card
+   surface but drop the marketing hover lift — interactive tool cards should
+   not float away from the cursor. */
+.pf-card.pf-static,
+.pf-card.pf-static:hover {
+  transform: none;
 }
 /* gradient hairline ring on emphasis cards */
 .pf-card-fire::before {

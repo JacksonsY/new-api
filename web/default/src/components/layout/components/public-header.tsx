@@ -160,7 +160,9 @@ export function PublicHeader(props: PublicHeaderProps) {
         }
         setAuthPromptSecondsLeft(AUTH_PROMPT_SECONDS)
         setAuthPromptTarget({
-          title: t(link.title),
+          // link.title 由 useTopNavLinks 生成时已翻译，二次 t() 会拿译文当 key
+          // 查表（missingKey 刷屏 + 非中文语言反显中文）。
+          title: link.title,
           href: link.href,
         })
         return
@@ -170,7 +172,7 @@ export function PublicHeader(props: PublicHeaderProps) {
         setMobileOpen(false)
       }
     },
-    [t]
+    []
   )
 
   return (
@@ -233,7 +235,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                         link.disabled && 'pointer-events-none opacity-50'
                       )}
                     >
-                      {t(link.title)}
+                      {link.title}
                     </a>
                   )
                 }
@@ -251,7 +253,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                       link.disabled && 'pointer-events-none opacity-50'
                     )}
                   >
-                    {t(link.title)}
+                    {link.title}
                   </Link>
                 )
               })}
@@ -288,6 +290,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                     <Button
                       className='font-medium'
                       render={<Link to='/sign-in' />}
+                      nativeButton={false}
                     >
                       {t('Sign in')}
                     </Button>
@@ -372,7 +375,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                     className={linkClassName}
                     style={transitionStyle}
                   >
-                    {t(link.title)}
+                    {link.title}
                   </a>
                 )
               }
@@ -385,7 +388,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                   className={linkClassName}
                   style={transitionStyle}
                 >
-                  {t(link.title)}
+                  {link.title}
                 </Link>
               )
             })}

@@ -10,35 +10,44 @@ import (
 )
 
 func TestUsageFingerprintClassification(t *testing.T) {
-	// claude_* → critical
-	crit, minor := scanOpenAIUsageFingerprints(map[string]interface{}{"claude_cache_creation_5m": 1})
-	assert.NotEmpty(t, crit)
-	assert.Empty(t, minor)
+	// claude_* → critical (claude category)
+	fp := scanOpenAIUsageFingerprints(map[string]interface{}{"claude_cache_creation_5m": 1})
+	assert.NotEmpty(t, fp.claude)
+	assert.True(t, fp.hasCritical())
+	assert.Empty(t, fp.minor)
 
-	// gemini 令牌计数键 → critical
-	crit, _ = scanOpenAIUsageFingerprints(map[string]interface{}{"candidates_token_count": 3})
-	assert.NotEmpty(t, crit)
+	// gemini 令牌计数键 → critical (gemini category)
+	fp = scanOpenAIUsageFingerprints(map[string]interface{}{"candidates_token_count": 3})
+	assert.NotEmpty(t, fp.gemini)
+	assert.True(t, fp.hasCritical())
 
-	// usage_source 非 openai（任意后端、大小写不敏感）→ critical
-	crit, _ = scanOpenAIUsageFingerprints(map[string]interface{}{"usage_source": "Anthropic"})
-	assert.NotEmpty(t, crit)
-	crit, _ = scanOpenAIUsageFingerprints(map[string]interface{}{"usage_source": "vertex"})
-	assert.NotEmpty(t, crit)
+	// usage_source 非 openai（任意后端、大小写不敏感）→ critical (source)
+	fp = scanOpenAIUsageFingerprints(map[string]interface{}{"usage_source": "Anthropic"})
+	assert.Equal(t, "anthropic", fp.source)
+	fp = scanOpenAIUsageFingerprints(map[string]interface{}{"usage_source": "vertex"})
+	assert.Equal(t, "vertex", fp.source)
+
+	// 多类别共存 → 各自独立 critical（不再合并成一条）
+	fp = scanOpenAIUsageFingerprints(map[string]interface{}{
+		"candidates_token_count": 3, "usage_source": "google",
+	})
+	assert.NotEmpty(t, fp.gemini)
+	assert.Equal(t, "google", fp.source)
 
 	// usage_source == openai → 干净
-	crit, minor = scanOpenAIUsageFingerprints(map[string]interface{}{"usage_source": "openai"})
-	assert.Empty(t, crit)
-	assert.Empty(t, minor)
+	fp = scanOpenAIUsageFingerprints(map[string]interface{}{"usage_source": "openai"})
+	assert.False(t, fp.hasCritical())
+	assert.Empty(t, fp.minor)
 
 	// input/output token 字段 → MINOR（不再误判 critical）
-	crit, minor = scanOpenAIUsageFingerprints(map[string]interface{}{"input_tokens": 5, "output_tokens": 3})
-	assert.Empty(t, crit)
-	assert.NotEmpty(t, minor)
+	fp = scanOpenAIUsageFingerprints(map[string]interface{}{"input_tokens": 5, "output_tokens": 3})
+	assert.False(t, fp.hasCritical())
+	assert.NotEmpty(t, fp.minor)
 
 	// cache_creation_input_tokens → 完全不 flag（对齐真源码）
-	crit, minor = scanOpenAIUsageFingerprints(map[string]interface{}{"cache_creation_input_tokens": 9})
-	assert.Empty(t, crit)
-	assert.Empty(t, minor)
+	fp = scanOpenAIUsageFingerprints(map[string]interface{}{"cache_creation_input_tokens": 9})
+	assert.False(t, fp.hasCritical())
+	assert.Empty(t, fp.minor)
 }
 
 func TestBrandTableCoverage(t *testing.T) {
