@@ -73,6 +73,20 @@ export function isPerCallBilling(modelPrice?: number): boolean {
 }
 
 /**
+ * Check if a per-call log actually billed per second of generated video:
+ * task_ratios carrying a positive billed-seconds count means the charge was
+ * base price × seconds (× tier multipliers), so labels should read per-second.
+ */
+export function isPerSecondTaskBilling(
+  taskRatios?: Record<string, number>
+): boolean {
+  return ['seconds', 'duration'].some((key) => {
+    const value = taskRatios?.[key]
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+  })
+}
+
+/**
  * Get default time range (today 00:00:00 to now + 1 hour)
  */
 export function getDefaultTimeRange(): { start: Date; end: Date } {

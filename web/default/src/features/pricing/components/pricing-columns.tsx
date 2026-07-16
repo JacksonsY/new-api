@@ -32,7 +32,11 @@ import {
   getDynamicPricingSummary,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { isTokenBasedModel } from '../lib/model-helpers'
+import {
+  getBillingTypeLabel,
+  isPerSecondVideoModel,
+  isTokenBasedModel,
+} from '../lib/model-helpers'
 import {
   formatPrice,
   formatRequestPrice,
@@ -147,7 +151,9 @@ function renderPriceCell(
             )
           )}
         </p>
-        <p className='text-muted-foreground mt-0.5 text-xs'>/ {t('request')}</p>
+        <p className='text-muted-foreground mt-0.5 text-xs'>
+          / {isPerSecondVideoModel(props.model) ? t('second') : t('request')}
+        </p>
       </div>
     )
   }
@@ -215,9 +221,7 @@ export function usePricingColumns(
               <p className='text-muted-foreground mt-0.5 line-clamp-1 text-xs'>
                 {model.vendor_name ||
                   model.description ||
-                  (isTokenBasedModel(model)
-                    ? t('Token-based')
-                    : t('Per Request'))}
+                  getBillingTypeLabel(t, model)}
               </p>
             </div>
           </div>

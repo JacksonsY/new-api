@@ -31,7 +31,11 @@ import {
   getDynamicPricingSummary,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { isTokenBasedModel } from '../lib/model-helpers'
+import {
+  getBillingTypeLabel,
+  isPerSecondVideoModel,
+  isTokenBasedModel,
+} from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import type { PricingModel, TokenUnit } from '../types'
 import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
@@ -194,7 +198,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           usdExchangeRate,
           props.selectedGroup
         )}
-        unit={t('request')}
+        unit={isPerSecondVideoModel(props.model) ? t('second') : t('request')}
       />
     )
   }
@@ -226,8 +230,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             </Button>
           </div>
           <p className='text-muted-foreground mt-0.5 text-xs'>
-            {props.model.vendor_name ||
-              (isTokenBased ? t('Token-based') : t('Per Request'))}
+            {props.model.vendor_name || getBillingTypeLabel(t, props.model)}
           </p>
         </div>
 

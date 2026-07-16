@@ -56,6 +56,7 @@ import {
   isTimingLogType,
   getLogTypeConfig,
   isPerCallBilling,
+  isPerSecondTaskBilling,
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
@@ -219,8 +220,11 @@ function buildTypeDetailSegments(
   } else {
     const modelPrice = other.model_price
     if (modelPrice != null && isPerCallBilling(modelPrice)) {
+      const price = formatBillingCurrencyFromUSD(modelPrice, priceOpts)
       segments.push({
-        text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(modelPrice, priceOpts)}`,
+        text: isPerSecondTaskBilling(other.task_ratios)
+          ? `${t('Per Second')} · ${price}/${t('second')}`
+          : `${t('Per-call')} · ${price}`,
       })
     } else if (other.model_ratio != null) {
       const inputPriceUSD = other.model_ratio * 2.0

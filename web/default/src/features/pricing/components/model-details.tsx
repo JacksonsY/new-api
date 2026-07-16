@@ -56,7 +56,7 @@ import {
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
-import { DEFAULT_TOKEN_UNIT, QUOTA_TYPE_VALUES } from '../constants'
+import { DEFAULT_TOKEN_UNIT } from '../constants'
 import { usePricingData } from '../hooks/use-pricing-data'
 import {
   getDynamicPriceEntries,
@@ -65,7 +65,12 @@ import {
   isDynamicPricingModel,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
+import {
+  getAvailableGroups,
+  getBillingTypeLabel,
+  isPerSecondVideoModel,
+  isTokenBasedModel,
+} from '../lib/model-helpers'
 import {
   formatFixedPrice,
   formatFixedPriceValue,
@@ -447,11 +452,7 @@ function ModelBackendProviderSection(props: { model: PricingModel }) {
 
   cells.push(
     <CatalogInfoCell key='type' label={t('Type')}>
-      <CatalogTextValue>
-        {model.quota_type === QUOTA_TYPE_VALUES.TOKEN
-          ? t('Token-based')
-          : t('Per Request')}
-      </CatalogTextValue>
+      <CatalogTextValue>{getBillingTypeLabel(t, model)}</CatalogTextValue>
     </CatalogInfoCell>
   )
 
@@ -565,11 +566,7 @@ function ModelHeader(props: { model: PricingModel }) {
             {model.vendor_name && (
               <span className='text-muted-foreground/40'>·</span>
             )}
-            <span>
-              {model.quota_type === QUOTA_TYPE_VALUES.TOKEN
-                ? t('Token-based')
-                : t('Per Request')}
-            </span>
+            <span>{getBillingTypeLabel(t, model)}</span>
           </div>
         </div>
       </div>
@@ -731,7 +728,9 @@ function PriceSection(props: {
         <div className='overflow-hidden rounded-xl border'>
           <div className='flex items-baseline justify-between gap-4 px-4 py-3'>
             <span className='text-muted-foreground text-sm'>
-              {t('Per request')}
+              {isPerSecondVideoModel(props.model)
+                ? t('Base price per second')
+                : t('Per request')}
             </span>
             <span className='text-sm font-medium tabular-nums'>
               {formatFixedPrice(

@@ -61,6 +61,7 @@ import {
 import {
   getLogTypeConfig,
   isPerCallBilling,
+  isPerSecondTaskBilling,
   isTimingLogType,
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
@@ -206,6 +207,10 @@ function BillingBreakdown(props: {
   const isPerCall = isPerCallBilling(other.model_price)
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const tieredSummary = getTieredBillingSummary(other)
+  // 任务计费倍率（视频 tier/seconds 等）。带计费秒数的任务按
+  // 「每秒基准价 × 秒数(× 档位倍率)」结算，是按秒计费而非按次。
+  const taskRatios = other.task_ratios
+  const isPerSecondTask = isPerSecondTaskBilling(taskRatios)
 
   const rows: Array<{ label: string; value: string }> = []
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
@@ -237,10 +242,13 @@ function BillingBreakdown(props: {
       })
     }
   } else if (isPerCall) {
-    rows.push({ label: t('Billing Mode'), value: t('Per-call') })
+    rows.push({
+      label: t('Billing Mode'),
+      value: isPerSecondTask ? t('Per Second') : t('Per-call'),
+    })
     if (other.model_price != null) {
       rows.push({
-        label: t('Model Price'),
+        label: isPerSecondTask ? t('Base price per second') : t('Model Price'),
         value: fmtPrice(other.model_price),
       })
     }
@@ -260,9 +268,8 @@ function BillingBreakdown(props: {
     }
   }
 
-  // 任务计费倍率（视频 tier/seconds 等）：决定最终费用的量，做成结构化行，
-  // 而非只藏在 content 文本的「计算参数」里，便于审计视频/任务计费口径。
-  const taskRatios = other.task_ratios
+  // 计费倍率行：决定最终费用的量，做成结构化行，而非只藏在
+  // content 文本的「计算参数」里，便于审计视频/任务计费口径。
   if (taskRatios) {
     for (const [key, val] of Object.entries(taskRatios)) {
       if (typeof val !== 'number' || !Number.isFinite(val)) continue

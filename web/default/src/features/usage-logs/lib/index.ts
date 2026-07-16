@@ -40,6 +40,7 @@ export {
   isTimingLogType,
   getLogTypeConfig,
   isPerCallBilling,
+  isPerSecondTaskBilling,
   getDefaultTimeRange,
   buildQueryParams,
   buildBaseParams,

@@ -107,3 +107,32 @@ export function replaceModelInPath(path: string, modelName: string): string {
 export function isTokenBasedModel(model: PricingModel): boolean {
   return model.quota_type === QUOTA_TYPE_VALUES.TOKEN
 }
+
+/**
+ * Check if a fixed-price model actually bills per second of generated video
+ * (its ModelPrice is the base per-second rate scaled by resolution tiers),
+ * so billing-type labels and price units read "per second", not "per request".
+ */
+export function isPerSecondVideoModel(model: PricingModel): boolean {
+  return (
+    model.quota_type === QUOTA_TYPE_VALUES.REQUEST &&
+    (model.video_resolution_pricing?.length ?? 0) > 0
+  )
+}
+
+/**
+ * Human-readable billing-type label for a model. Keys stay literal inside
+ * this function so the i18n sync tooling keeps them registered.
+ */
+export function getBillingTypeLabel(
+  t: (key: string) => string,
+  model: PricingModel
+): string {
+  if (isTokenBasedModel(model)) {
+    return t('Token-based')
+  }
+  if (isPerSecondVideoModel(model)) {
+    return t('Per Second')
+  }
+  return t('Per Request')
+}
