@@ -149,3 +149,74 @@ export interface GroupOption {
   ratio: number
   desc?: string
 }
+
+// Video generation types
+export type VideoTaskStatus = 'queued' | 'in_progress' | 'completed' | 'failed'
+
+export type VideoModelType =
+  | 'text-to-video'
+  | 'image-to-video'
+  | 'reference-to-video'
+  | 'video-edit'
+
+export interface VideoModelConfig {
+  model: string
+  label: string
+  type: VideoModelType
+  requiresImage: boolean
+  requiresVideo: boolean
+  supportedSizes: string[]
+  durationRange: [number, number]
+}
+
+// Only id/name are exposed: the list endpoint returns a masked key, and the
+// real key is fetched on demand right before a submit.
+export interface TokenOption {
+  id: number
+  name: string
+}
+
+export interface VideoGenerationRequest {
+  model: string
+  prompt: string
+  size?: string
+  duration?: number
+  images?: string[]
+  input_reference?: string
+  metadata?: {
+    prompt_extend?: boolean
+    seed?: number
+    watermark?: boolean
+  }
+}
+
+// Upstream task payload. Every field is optional because error responses and
+// non-OpenAI task adaptors return partial bodies.
+export interface VideoTaskResponse {
+  id?: string
+  task_id?: string
+  object?: string
+  model?: string
+  status?: VideoTaskStatus
+  progress?: number
+  created_at?: number
+  completed_at?: number
+  error?: { message?: string; code?: string }
+  metadata?: Record<string, unknown>
+}
+
+export interface VideoTaskItem {
+  id: string
+  model: string
+  prompt: string
+  status: VideoTaskStatus
+  progress: number
+  createdAt: number
+  completedAt?: number
+  videoUrl?: string
+  error?: string
+  size?: string
+  duration?: number
+  type?: VideoModelType
+  tokenId?: number
+}

@@ -18,12 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { API_ENDPOINTS } from './constants'
+import { API_ENDPOINTS, VIDEO_API_ENDPOINTS } from './constants'
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
   ModelOption,
   GroupOption,
+  TokenOption,
+  VideoGenerationRequest,
+  VideoTaskResponse,
 } from './types'
 
 /**
@@ -79,4 +82,67 @@ export async function getUserGroups(): Promise<GroupOption[]> {
     ratio: info.ratio,
     desc: info.desc,
   }))
+}
+
+/**
+ * Get enabled user tokens (for the video API key selector).
+ * The list endpoint only returns masked keys, so the real key must be
+ * fetched separately via fetchTokenKey.
+ */
+export async function getUserTokens(): Promise<TokenOption[]> {
+  const res = await api.get('/api/token/?p=1&size=100')
+  const { success, data } = res.data
+  if (!success || !Array.isArray(data?.items)) return []
+  return data.items
+    .filter((token: { status: number }) => token.status === 1)
+    .map((token: { id: number; name: string }) => ({
+      id: token.id,
+      name: token.name,
+    }))
+}
+
+/**
+ * Fetch the real (unmasked) key for a token
+ */
+export async function fetchTokenKey(id: number): Promise<string | null> {
+  const res = await api.post(`/api/token/${id}/key`, undefined, {
+    skipErrorHandler: true,
+  })
+  const { success, data } = res.data
+  if (!success || !data?.key) return null
+  return data.key as string
+}
+
+/**
+ * Submit a video generation task
+ */
+export async function submitVideoGeneration(
+  payload: VideoGenerationRequest,
+  apiKey: string
+): Promise<VideoTaskResponse> {
+  const res = await api.post(VIDEO_API_ENDPOINTS.SUBMIT, payload, {
+    skipErrorHandler: true,
+    skipBusinessError: true,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  })
+  return res.data
+}
+
+/**
+ * Fetch video task status by task ID
+ */
+export async function fetchVideoTaskStatus(
+  taskId: string,
+  apiKey: string
+): Promise<VideoTaskResponse> {
+  const res = await api.get(VIDEO_API_ENDPOINTS.STATUS(taskId), {
+    skipErrorHandler: true,
+    skipBusinessError: true,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  })
+  return res.data
 }
