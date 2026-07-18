@@ -17,18 +17,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { z } from 'zod'
 
 import { SignUp } from '@/features/auth/sign-up'
 import { useAuthStore } from '@/stores/auth-store'
 
+// redirect 一路透传:未登录访问受保护页 → 登录页(带 redirect)→ 去注册,
+// 注册成功后回到原目的地,否则链路在注册处断裂。
+const signUpSearchSchema = z.object({
+  redirect: z.string().optional(),
+})
+
 export const Route = createFileRoute('/(auth)/sign-up')({
   component: SignUp,
-  beforeLoad: async () => {
+  validateSearch: signUpSearchSchema,
+  beforeLoad: async ({ search }) => {
     const { auth } = useAuthStore.getState()
 
-    // 如果已经有用户信息，说明已登录，注册页对其无意义，跳转到 dashboard
+    // 已登录时注册页无意义:优先回用户原本想去的地方
     if (auth.user) {
-      throw redirect({ to: '/dashboard' })
+      throw redirect({ to: search?.redirect || '/dashboard' })
     }
   },
 })
