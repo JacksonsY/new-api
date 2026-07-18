@@ -7,7 +7,8 @@ upload
 *.db
 build
 *.db-journal
-logs
+# 锚定根目录:裸 `logs` 会误伤 web/**/src/routes/**/logs 等源码目录
+/logs
 web/default/dist
 web/classic/dist
 web/node_modules
