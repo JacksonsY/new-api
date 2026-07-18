@@ -38,6 +38,9 @@ export const channelSchema = z.object({
   id: z.number(),
   type: z.number(),
   key: z.string(),
+  // v2 P2 归属:>0 = 供应商渠道(user_id 为供应商用户 id),0/缺省 = 平台自营。
+  // 供应商渠道的生命周期由审核台托管,渠道页仅标注归属提醒管理员去审核台操作。
+  user_id: z.number().nullish(),
   openai_organization: z.string().nullish(),
   test_model: z.string().nullish(),
   status: z.number(), // 1: enabled, 0: manual disabled, 2: auto disabled

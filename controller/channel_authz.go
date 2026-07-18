@@ -91,8 +91,11 @@ var channelReadOnlyFields = map[string]struct{}{
 	"used_quota":           {},
 	// jzlh-supplier / jzlh-veridrop：渠道归属/审核态/检测快照由专用端点（供应商提交、
 	// 审核台、真伪检测）托管，通用渠道编辑必须忽略，避免误抹供应商归属或伪造检测结果。
-	"user_id":               {},
-	"audit_status":          {},
+	"user_id":      {},
+	"audit_status": {},
+	// v2 §4.2:在途报价率申请由申请流专用端点(供应商提交/管理员 rate/review)托管,
+	// 通用渠道编辑忽略,防绕过审批直改或误清在途申请。
+	"pending_channel_ratio": {},
 	"detect_verdict":        {},
 	"detect_score":          {},
 	"detect_critical_count": {},

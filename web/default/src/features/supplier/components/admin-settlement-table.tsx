@@ -61,7 +61,6 @@ import {
   ledgerTypeLabelKey,
   payoutMethodLabelKey,
   SUPPLIER_LEDGER_TYPE,
-  SUPPLIER_STATUS,
   type SupplierLedger,
   type SupplierSettlement,
   type SupplierUser,
@@ -110,8 +109,10 @@ export function AdminSettlementTable() {
       pagination.pageSize,
     ],
     queryFn: async () => {
+      // 空 status = 列全部非 None 供应商:停用供应商可能仍有未结清应付(需打款)
+      // 或需没收,不能只列 approved,否则这些正是要处理的场景反而进不来。
       const res = await adminListSuppliers(
-        String(SUPPLIER_STATUS.APPROVED),
+        '',
         '',
         pagination.pageIndex + 1,
         pagination.pageSize

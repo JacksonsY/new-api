@@ -20,7 +20,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
 import { AdminSuppliers } from '@/features/supplier'
-import { ROLE } from '@/lib/roles'
+import { hasRootAccess } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 const suppliersSearchSchema = z.object({
@@ -35,8 +35,10 @@ const suppliersSearchSchema = z.object({
 
 export const Route = createFileRoute('/_authenticated/suppliers/')({
   beforeLoad: () => {
+    // 后端供应商管理端点均为 RootAuth,前端须对齐(否则 role-10 管理员看得到菜单
+    // 却每个接口都 403)。与代理管理端一致收紧到超管。
     const { auth } = useAuthStore.getState()
-    if ((auth.user?.role ?? 0) < ROLE.ADMIN) {
+    if (!hasRootAccess(auth.user?.role)) {
       throw redirect({ to: '/403' })
     }
   },

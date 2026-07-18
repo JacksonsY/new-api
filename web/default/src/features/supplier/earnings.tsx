@@ -29,12 +29,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { getSupplierEarnings } from './api'
-import { PayoutAccountCard } from './components/payout-account-card'
+import { getSupplierDailyEarnings, getSupplierEarnings } from './api'
 import { SettlementSummary } from './settlement-summary'
 import {
   ledgerTypeLabelKey,
   SUPPLIER_LEDGER_TYPE,
+  type SupplierDailyEarning,
   type SupplierLedger,
   type SupplierSettlement,
 } from './types'
@@ -83,9 +83,20 @@ export function SupplierEarnings() {
       <SectionPageLayout.Title>{t('My Earnings')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
+          {/* 收款账户的唯一编辑入口在「收款设置」页;收益页只读,不再内嵌重复编辑器 */}
           <SettlementSummary settlement={settlement} loading={loading} />
 
-          <PayoutAccountCard />
+          {/* 结算规则透明化:成熟期/打款方式/没收口径,不让"何时拿到钱"靠猜 */}
+          <div className='text-muted-foreground rounded-lg border px-4 py-3 text-xs leading-relaxed'>
+            {t(
+              'Earnings mature 3 days after the request (refund/risk window), then count toward Payable. Payouts are made manually by the platform after reconciliation — there is no self-service withdrawal. Confiscations reduce Payable and always appear in the ledger with a remark.'
+            )}
+          </div>
+
+          {/* v2 §4.3 经营透明:按渠道×按天明细,口径与结算完全一致——
+              供应商可自行核账,不再只能相信平台报的汇总数。 */}
+          <DailyEarningsCard />
+
 
           <Card data-card-hover='false'>
             <CardHeader>
@@ -190,5 +201,104 @@ export function SupplierEarnings() {
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
+  )
+}
+
+// v2 §4.3:按渠道×按天毛收入明细。口径 = Σ min(channel_quota, quota),
+// 与上方结算汇总同源,供应商可逐日核账。
+function DailyEarningsCard() {
+  const { t } = useTranslation()
+  const [days, setDays] = useState(30)
+  const [rows, setRows] = useState<SupplierDailyEarning[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    void getSupplierDailyEarnings(days)
+      .then((res) => {
+        if (!active) return
+        if (res.success) setRows(res.data?.items || [])
+        else toast.error(res.message || t('Failed to load'))
+      })
+      .catch(() => {
+        if (active) toast.error(t('Failed to load'))
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [days, t])
+
+  return (
+    <Card data-card-hover='false'>
+      <CardHeader className='flex flex-row items-center justify-between'>
+        <CardTitle className='text-base'>
+          {t('Daily Earnings by Channel')}
+        </CardTitle>
+        <div className='flex items-center gap-1'>
+          {[7, 30, 90].map((d) => (
+            <Button
+              key={d}
+              size='sm'
+              variant={days === d ? 'default' : 'outline'}
+              onClick={() => setDays(d)}
+            >
+              {t('{{count}}d', { count: d })}
+            </Button>
+          ))}
+        </div>
+      </CardHeader>
+      <CardContent className='p-0'>
+        {loading ? (
+          <div className='space-y-2 p-4'>
+            {SKELETON_KEYS.map((k) => (
+              <Skeleton key={k} className='h-8 w-full' />
+            ))}
+          </div>
+        ) : (
+          <StaticDataTable
+            data={rows}
+            empty={rows.length === 0}
+            emptyContent={
+              <span className='text-muted-foreground text-sm'>
+                {t('No earnings in this period.')}
+              </span>
+            }
+            columns={[
+              {
+                id: 'day',
+                header: t('Date'),
+                cellClassName: 'text-muted-foreground text-sm',
+                cell: (r: SupplierDailyEarning) =>
+                  new Date(r.day * 1000).toISOString().slice(0, 10),
+              },
+              {
+                id: 'channel',
+                header: t('Channel'),
+                cell: (r: SupplierDailyEarning) =>
+                  r.channel_name || `#${r.channel_id}`,
+              },
+              {
+                id: 'count',
+                header: t('Requests'),
+                className: 'text-right',
+                cellClassName: 'text-right text-muted-foreground tabular-nums',
+                cell: (r: SupplierDailyEarning) => String(r.count),
+              },
+              {
+                id: 'gross',
+                header: t('Gross'),
+                className: 'text-right',
+                cellClassName: 'text-right font-medium tabular-nums',
+                cell: (r: SupplierDailyEarning) => formatQuota(r.gross),
+              },
+            ]}
+          />
+        )}
+      </CardContent>
+    </Card>
   )
 }

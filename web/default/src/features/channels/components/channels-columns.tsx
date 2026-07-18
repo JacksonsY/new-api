@@ -34,6 +34,7 @@ import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { BadgeListCell } from '@/components/data-table'
 import { Button } from '@/components/design-system/button'
+import { Badge } from '@/components/ui/badge'
 import { GroupBadge } from '@/components/group-badge'
 import { ProviderBadge } from '@/components/provider-badge'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
@@ -1100,6 +1101,26 @@ export function useChannelsColumns(
           </span>
         ),
         size: 90,
+        enableSorting: false,
+      },
+
+      // v2 P2 归属列:自营与供应商渠道混在一张表却无从分辨,管理员曾可无感
+      // 绕过审核台直接改删供应商渠道——先让归属可见。
+      {
+        accessorKey: 'user_id',
+        header: t('Ownership'),
+        meta: { mobileHidden: true },
+        cell: ({ row }) =>
+          (row.original.user_id ?? 0) > 0 ? (
+            <Badge variant='secondary'>
+              {t('Supplier')} #{row.original.user_id}
+            </Badge>
+          ) : (
+            <span className='text-muted-foreground text-xs'>
+              {t('Platform')}
+            </span>
+          ),
+        size: 110,
         enableSorting: false,
       },
 

@@ -20,7 +20,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
 import { AdminSettlement } from '@/features/supplier'
-import { ROLE } from '@/lib/roles'
+import { hasRootAccess } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 const settlementSearchSchema = z.object({
@@ -30,8 +30,9 @@ const settlementSearchSchema = z.object({
 
 export const Route = createFileRoute('/_authenticated/suppliers/settlement/')({
   beforeLoad: () => {
+    // 后端 RootAuth,前端对齐超管(见 suppliers/index.tsx 说明)。
     const { auth } = useAuthStore.getState()
-    if ((auth.user?.role ?? 0) < ROLE.ADMIN) {
+    if (!hasRootAccess(auth.user?.role)) {
       throw redirect({ to: '/403' })
     }
   },

@@ -25,6 +25,7 @@ import type {
   SupplierChannel,
   SupplierChannelForm,
   SupplierChannelReviewParams,
+  SupplierDailyEarning,
   SupplierEarningsResult,
   SupplierPayoutInfo,
   SupplierPayParams,
@@ -109,6 +110,16 @@ export async function getSupplierEarnings(
 ): Promise<ApiEnvelope<SupplierEarningsResult>> {
   const res = await api.get('/api/user/supplier/earnings', {
     params: { p: page },
+  })
+  return res.data
+}
+
+// v2 §4.3 经营透明:按渠道×按天毛收入明细(口径与结算一致)。
+export async function getSupplierDailyEarnings(
+  days = 30
+): Promise<ApiEnvelope<{ items: SupplierDailyEarning[] }>> {
+  const res = await api.get('/api/user/supplier/earnings/daily', {
+    params: { days },
   })
   return res.data
 }

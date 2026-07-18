@@ -16,10 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { SupplierApply } from '@/features/supplier'
+import { SUPPLIER_STATUS } from '@/features/supplier/types'
+import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/supplier/apply/')({
+  beforeLoad: () => {
+    // 已入驻供应商的家是「我的渠道」;入驻页只服务未入驻/审核中/被停用者。
+    // 加渠道统一走「我的渠道」,不再从入驻页重复提交(消除死界面 + 重复流程)。
+    const { auth } = useAuthStore.getState()
+    if (auth.user?.supplier_status === SUPPLIER_STATUS.APPROVED) {
+      throw redirect({ to: '/supplier/channels' })
+    }
+  },
   component: SupplierApply,
 })

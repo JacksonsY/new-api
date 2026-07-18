@@ -22,14 +22,8 @@ var (
 	ErrSupplierAdminForbidden = errors.New("administrators cannot be suppliers")
 )
 
-const (
-	// SupplierMatureDays 成熟期天数：收益要够老才可打款，躲开退款/风控窗口。
-	// 人工打款下这是一个报表 WHERE 条件，不需要后台成熟作业。
-	SupplierMatureDays = 3
-	// SupplierMaxRate 供应商报价率硬上限：channel_ratio 是"官方价的百分之几供货"，
-	// > 1 意味比官方价还贵、平台必亏，绝不允许。审批期封顶 + 结算期夹逼双保险。
-	SupplierMaxRate = 1.0
-)
+// 成熟期天数与报价率硬上限已配置化(v2 P2,对齐代理模块先例):
+// common.SupplierMatureDays / common.SupplierMaxRate,系统设置可调。
 
 // --- 供应商身份 ---
 
@@ -202,7 +196,7 @@ func MaterialChannelFieldsChanged(oldCh *Channel, newKey string, newBaseURL stri
 // AdminApproveChannel 管理员审批通过供应商渠道：定 Group/Priority/Weight、封顶报价率，
 // 置 approved 并同步 abilities 进池。
 func AdminApproveChannel(channelId int, group string, priority int64, weight uint, channelRatio float64) error {
-	if channelRatio > SupplierMaxRate {
+	if channelRatio > common.SupplierMaxRate {
 		return ErrSupplierRateTooHigh
 	}
 	var channel Channel
@@ -230,6 +224,51 @@ func AdminRejectChannel(channelId int, remark string) error {
 	channel.AuditStatus = ChannelAuditRejected
 	channel.Remark = &remark
 	return channel.Update() // audit!=approved → UpdateAbilities 删除 abilities 出池
+}
+
+// --- 报价率变更申请流(v2 §4.2):渠道在线跑旧价,新价批准后原子切换 ---
+
+// ListPendingRateChangeChannels 管理端列出有在途价格申请的供应商渠道。
+func ListPendingRateChangeChannels(offset int, limit int) ([]*Channel, int64, error) {
+	var channels []*Channel
+	var total int64
+	query := DB.Model(&Channel{}).Where("user_id > 0 AND pending_channel_ratio IS NOT NULL")
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.Order("id desc").Offset(offset).Limit(limit).Find(&channels).Error
+	return channels, total, err
+}
+
+// ApproveChannelRateChange 批准价格申请:ChannelRatio 切到新价并清空 pending。
+// 不动 AuditStatus——审的是价格,渠道全程在线。返回生效的新价。
+func ApproveChannelRateChange(channelId int) (float64, error) {
+	var channel Channel
+	if err := DB.Where("id = ?", channelId).First(&channel).Error; err != nil {
+		return 0, err
+	}
+	if channel.UserId <= 0 || channel.PendingChannelRatio == nil {
+		return 0, errors.New("该渠道没有待审的价格申请")
+	}
+	newRate := *channel.PendingChannelRatio
+	if newRate > common.SupplierMaxRate {
+		return 0, ErrSupplierRateTooHigh
+	}
+	err := DB.Model(&Channel{}).Where("id = ?", channelId).Updates(map[string]interface{}{
+		"channel_ratio":         newRate,
+		"pending_channel_ratio": nil,
+	}).Error
+	if err != nil {
+		return 0, err
+	}
+	// ratio 不参与 abilities 物化,渠道保持在线,无需重建路由。
+	return newRate, nil
+}
+
+// RejectChannelRateChange 拒绝价格申请:仅清空 pending,现价与在线状态不变。
+func RejectChannelRateChange(channelId int) error {
+	return DB.Model(&Channel{}).Where("id = ?", channelId).
+		Update("pending_channel_ratio", nil).Error
 }
 
 // GetApprovedSupplierChannels 列出所有已通过审核的供应商渠道（定期复检批量用）。
@@ -274,6 +313,43 @@ func supplierGrossExpr() string {
 	return "COALESCE(SUM(CASE WHEN channel_quota < quota THEN channel_quota ELSE quota END),0)"
 }
 
+// SupplierDailyEarning 供应商按渠道×按天的收益明细行(v2 §4.3 经营透明)。
+type SupplierDailyEarning struct {
+	ChannelId   int    `json:"channel_id"`
+	ChannelName string `json:"channel_name" gorm:"-"`
+	Day         int64  `json:"day"`                     // 天桶起点(unix 秒,UTC 对齐)
+	Gross       int64  `json:"gross"`                   // Σ min(channel_quota, quota)
+	Cnt         int64  `json:"count" gorm:"column:cnt"` // 请求数
+}
+
+// GetSupplierDailyEarnings 按渠道×按天聚合近 N 天毛收入。口径与结算完全一致
+// (仅 LogTypeConsume、token_id>0 排除渠道测试、min 夹逼);天桶用整数取模
+// (created_at - created_at % 86400),规避三库+ClickHouse 日期函数方言差。
+func GetSupplierDailyEarnings(supplierId int, days int) ([]SupplierDailyEarning, error) {
+	if days <= 0 || days > 92 {
+		days = 30
+	}
+	since := common.GetTimestamp() - int64(days)*86400
+	rows := make([]SupplierDailyEarning, 0)
+	err := LOG_DB.Model(&Log{}).
+		Select("channel_id, (created_at - created_at % 86400) AS day, "+
+			supplierGrossExpr()+" AS gross, COUNT(*) AS cnt").
+		Where("supplier_id = ? AND type = ? AND token_id > 0 AND created_at >= ?",
+			supplierId, LogTypeConsume, since).
+		Group("channel_id, (created_at - created_at % 86400)").
+		Order("day desc, channel_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		if ch, cerr := CacheGetChannel(rows[i].ChannelId); cerr == nil && ch != nil {
+			rows[i].ChannelName = ch.Name
+		}
+	}
+	return rows, nil
+}
+
 // sumSupplierGross 聚合某供应商的毛收入。
 //
 // 过滤 type=LogTypeConsume AND token_id>0：token_id>0 排除渠道测试（testUserID 无 token，
@@ -295,7 +371,7 @@ func sumSupplierGross(supplierId int, maturedBefore int64) (int64, error) {
 // GetSupplierSettlement 实时聚合某供应商结算（logs 在 LOG_DB、台账在 DB，跨库两查）。
 func GetSupplierSettlement(supplierId int) (*SupplierSettlement, error) {
 	now := common.GetTimestamp()
-	matureCutoff := now - int64(SupplierMatureDays)*86400
+	matureCutoff := now - int64(common.SupplierMatureDays)*86400
 	gross, err := sumSupplierGross(supplierId, 0)
 	if err != nil {
 		return nil, err
@@ -336,7 +412,7 @@ func settleSupplierLedgerLocked(supplierId int, ledgerType int, amount int64, vo
 	}
 	// matured 来自 LOG_DB（慢变、且不受打款/罚没影响），在事务外算：单连接(SQLite
 	// MaxOpenConns=1)下若在事务内再走全局 DB/LOG_DB 会等待事务占住的连接 → 死锁。
-	matured, err := sumSupplierGross(supplierId, common.GetTimestamp()-int64(SupplierMatureDays)*86400)
+	matured, err := sumSupplierGross(supplierId, common.GetTimestamp()-int64(common.SupplierMatureDays)*86400)
 	if err != nil {
 		return err
 	}

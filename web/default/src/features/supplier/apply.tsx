@@ -17,13 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import {
-  CheckCircle2,
-  Clock,
-  PackageOpen,
-  ShieldAlert,
-  ShieldX,
-} from 'lucide-react'
+import { Clock, PackageOpen, ShieldAlert, ShieldX } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -182,15 +176,6 @@ export function SupplierApply() {
             title={t('Your application is under review')}
             description={t(
               'We are reviewing your supplier application. You can submit more channel offers below in the meantime.'
-            )}
-          />
-        )}
-        {status === SUPPLIER_STATUS.APPROVED && (
-          <StateCard
-            icon={<CheckCircle2 className='text-success size-8' />}
-            title={t('You are an approved supplier')}
-            description={t(
-              'You can submit more channel offers below, or manage existing ones in My Channels.'
             )}
           />
         )}

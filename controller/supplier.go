@@ -5,6 +5,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -69,6 +70,11 @@ type supplierApplyRequest struct {
 // 已 Pending/Approved 再调则追加一条渠道要约（多次申请）；Suspended 拒；管理员拒（裁判/运动员）。
 // 渠道进入待审，管理员审核时可跑检测测真伪、并定分组/报价率。收款账户走审核通过后的收款设置。
 func SupplierApply(c *gin.Context) {
+	// v2 P2 模块开关:关闭时停止接收新入驻(存量供应商渠道/结算不受影响)
+	if !common.SupplierEnabled {
+		common.ApiErrorMsg(c, "供应商入驻当前未开放")
+		return
+	}
 	var req supplierApplyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiError(c, err)
@@ -182,7 +188,7 @@ func validateSupplierChannel(req supplierChannelRequest) error {
 	if req.Key == "" || req.Models == "" {
 		return errors.New("key / models required")
 	}
-	if req.ChannelRatio < 0 || req.ChannelRatio > model.SupplierMaxRate {
+	if req.ChannelRatio < 0 || req.ChannelRatio > common.SupplierMaxRate {
 		return errors.New("channel_ratio out of range")
 	}
 	return nil
@@ -195,7 +201,7 @@ func createSupplierChannel(supplierId int, req supplierChannelRequest) (int, err
 	ratio := req.ChannelRatio
 	if ratio <= 0 {
 		// 申请页不收报价率，占位为上限（成本=官方价、平台毛利 0），管理员审批时再定。
-		ratio = model.SupplierMaxRate
+		ratio = common.SupplierMaxRate
 	}
 	testModel := strings.TrimSpace(req.TestModel)
 	if testModel == "" {
@@ -254,7 +260,7 @@ func SupplierUpdateChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if req.ChannelRatio < 0 || req.ChannelRatio > model.SupplierMaxRate {
+	if req.ChannelRatio < 0 || req.ChannelRatio > common.SupplierMaxRate {
 		common.ApiErrorMsg(c, "channel_ratio out of range")
 		return
 	}
@@ -279,9 +285,21 @@ func SupplierUpdateChannel(c *gin.Context) {
 	if req.Models != "" {
 		channel.Models = req.Models
 	}
+	ratePending := false
+	clearPendingRate := false
 	if req.ChannelRatio > 0 {
 		ratio := req.ChannelRatio
-		channel.ChannelRatio = &ratio
+		// v2 §4.2 价格变更申请流:已上线渠道涨价不再直接生效——那是"平台毛利被
+		// 单方面清零"的资损口。新价写入 pending,渠道继续按现价在线运行,管理员
+		// 批准后原子切换;降价对平台单向有利,即时生效并撤销在途涨价申请。
+		// 未上线渠道(待审/驳回)改价自由,审批时管理员定夺。
+		if channel.AuditStatus == model.ChannelAuditApproved && ratio > channel.GetChannelRatio() {
+			channel.PendingChannelRatio = &ratio
+			ratePending = true
+		} else {
+			channel.ChannelRatio = &ratio
+			clearPendingRate = channel.PendingChannelRatio != nil
+		}
 	}
 	if req.TestModel != "" {
 		testModel := req.TestModel
@@ -295,7 +313,82 @@ func SupplierUpdateChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"id": channel.Id, "audit_status": channel.AuditStatus})
+	if clearPendingRate {
+		// Updates(struct) 忽略 nil 指针,撤销在途申请须显式清列。
+		if err := model.RejectChannelRateChange(channel.Id); err != nil {
+			common.SysLog("failed to clear pending channel ratio: " + err.Error())
+		}
+	}
+	if ratePending {
+		model.RecordLog(supplierId, model.LogTypeManage,
+			fmt.Sprintf("渠道 %d 提交报价率变更申请:%.4f -> %.4f(现价继续生效,待平台确认)",
+				channel.Id, channel.GetChannelRatio(), req.ChannelRatio))
+	}
+	common.ApiSuccess(c, gin.H{
+		"id":           channel.Id,
+		"audit_status": channel.AuditStatus,
+		"rate_pending": ratePending,
+	})
+}
+
+// SupplierEarningsDaily 按渠道×按天收益明细(v2 §4.3 经营透明:供应商不再只能
+// 相信平台报的汇总数)。口径与结算一致。
+func SupplierEarningsDaily(c *gin.Context) {
+	supplierId := c.GetInt("id")
+	days, _ := strconv.Atoi(c.Query("days"))
+	rows, err := model.GetSupplierDailyEarnings(supplierId, days)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"items": rows})
+}
+
+// AdminListRateChanges 管理端:在途报价率变更申请列表。
+func AdminListRateChanges(c *gin.Context) {
+	page, pageSize := parseAgentPagination(c)
+	channels, total, err := model.ListPendingRateChangeChannels((page-1)*pageSize, pageSize)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"items": channels, "total": total, "page": page, "page_size": pageSize,
+	})
+}
+
+// AdminReviewRateChange 管理端:批准/拒绝报价率变更。批准=切价+清 pending,
+// 渠道全程在线(不动 AuditStatus);拒绝=仅清 pending。
+func AdminReviewRateChange(c *gin.Context) {
+	var req struct {
+		ChannelId int    `json:"channel_id"`
+		Action    string `json:"action"` // approve | reject
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.ChannelId <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	switch req.Action {
+	case "approve":
+		newRate, err := model.ApproveChannelRateChange(req.ChannelId)
+		if err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+		model.RecordLog(c.GetInt("id"), model.LogTypeManage,
+			fmt.Sprintf("批准渠道 %d 报价率变更,新价 %.4f 生效", req.ChannelId, newRate))
+	case "reject":
+		if err := model.RejectChannelRateChange(req.ChannelId); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		model.RecordLog(c.GetInt("id"), model.LogTypeManage,
+			fmt.Sprintf("拒绝渠道 %d 的报价率变更申请", req.ChannelId))
+	default:
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	common.ApiSuccess(c, nil)
 }
 
 // SupplierEarnings 当前供应商收益 + 打款/没收台账。

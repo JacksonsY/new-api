@@ -16,7 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Clock, HandCoins, TrendingUp, Wallet, type LucideIcon } from 'lucide-react'
+import {
+  Clock,
+  HandCoins,
+  ShieldX,
+  TrendingUp,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
@@ -56,12 +63,20 @@ export function SettlementSummary({
   const gross = settlement?.gross_quota || 0
   const matured = settlement?.matured_quota || 0
   const paid = settlement?.paid_quota || 0
+  const confiscated = settlement?.confiscated_quota || 0
   const payable = settlement?.payable_quota || 0
   const pending = Math.max(0, gross - matured)
+  // 没收会压低应付,但绝大多数供应商为 0——仅在发生没收时才展示该格,避免添堵。
+  const showConfiscated = confiscated > 0
 
   return (
     <div className='overflow-hidden rounded-lg border'>
-      <div className='divide-border/60 grid grid-cols-2 divide-x divide-y sm:grid-cols-4 sm:divide-y-0'>
+      <div
+        className={cn(
+          'divide-border/60 grid grid-cols-2 divide-x divide-y sm:divide-y-0',
+          showConfiscated ? 'sm:grid-cols-5' : 'sm:grid-cols-4'
+        )}
+      >
         <SettlementCell
           icon={Clock}
           label={t('Pending')}
@@ -77,6 +92,13 @@ export function SettlementSummary({
           label={t('Paid')}
           value={formatQuota(paid)}
         />
+        {showConfiscated && (
+          <SettlementCell
+            icon={ShieldX}
+            label={t('Confiscated')}
+            value={formatQuota(confiscated)}
+          />
+        )}
         <SettlementCell
           icon={Wallet}
           label={t('Payable')}

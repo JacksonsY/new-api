@@ -18,15 +18,17 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
+import { TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { DataTablePage, useDataTable } from '@/components/data-table'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 
 import { listSupplierChannels } from '../api'
-import type { SupplierChannel } from '../types'
+import { CHANNEL_AUDIT_STATUS, type SupplierChannel } from '../types'
 import { useMyChannelsColumns } from './my-channels-columns'
 import { ChannelFormDrawer } from './my-channels-form-drawer'
 
@@ -84,8 +86,25 @@ export function MyChannelsTable() {
     ensurePageInRange,
   })
 
+  const offlineCount = (data?.items || []).filter(
+    (ch: { audit_status: number }) =>
+      ch.audit_status !== CHANNEL_AUDIT_STATUS.APPROVED
+  ).length
+
   return (
     <>
+      {/* 渠道回 pending/rejected 期间不参与调度、收益暂停——不能让供应商靠猜 */}
+      {offlineCount > 0 && (
+        <Alert className='mb-4'>
+          <TriangleAlert className='size-4' />
+          <AlertDescription>
+            {t(
+              '{{count}} channel(s) are pending review or rejected. They are out of the routing pool and earn nothing until approved.',
+              { count: offlineCount }
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
       <DataTablePage
         table={table}
         columns={columns}

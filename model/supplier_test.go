@@ -217,3 +217,55 @@ func TestMaterialChannelFieldsChanged(t *testing.T) {
 		})
 	}
 }
+
+// TestChannelRateChangeFlow 报价率变更申请流(v2 §4.2)核心契约:
+// 批准=新价生效+pending 清空(渠道全程在线,AuditStatus 不动);拒绝=仅清 pending;
+// 无在途申请时批准报错;超顶新价被拒。堵"供应商自助改价清零平台毛利"的资损口。
+func TestChannelRateChangeFlow(t *testing.T) {
+	restore := swapToFreshSupplierDB(t, &Channel{}, &Ability{})
+	defer restore()
+
+	cur := 0.5
+	pending := 0.9
+	ch := &Channel{UserId: 42, AuditStatus: ChannelAuditApproved, Name: "rate-flow",
+		Models: "m1", Group: "default", ChannelRatio: &cur, PendingChannelRatio: &pending}
+	require.NoError(t, DB.Create(ch).Error)
+
+	// 在途申请可被列出
+	rows, total, err := ListPendingRateChangeChannels(0, 10)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Equal(t, ch.Id, rows[0].Id)
+
+	// 批准:现价切换为申请价,pending 清空,审核态不动(渠道保持在线)
+	newRate, err := ApproveChannelRateChange(ch.Id)
+	require.NoError(t, err)
+	assert.InDelta(t, 0.9, newRate, 1e-9)
+	var after Channel
+	require.NoError(t, DB.First(&after, "id = ?", ch.Id).Error)
+	assert.InDelta(t, 0.9, after.GetChannelRatio(), 1e-9)
+	assert.Nil(t, after.PendingChannelRatio, "批准后 pending 必须清空")
+	assert.Equal(t, ChannelAuditApproved, after.AuditStatus, "价格审批不得改动渠道审核态")
+
+	// 无在途申请时再批准 → 报错
+	_, err = ApproveChannelRateChange(ch.Id)
+	assert.Error(t, err)
+
+	// 拒绝:仅清 pending,现价不变
+	p2 := 0.95
+	require.NoError(t, DB.Model(&Channel{}).Where("id = ?", ch.Id).
+		Update("pending_channel_ratio", p2).Error)
+	require.NoError(t, RejectChannelRateChange(ch.Id))
+	require.NoError(t, DB.First(&after, "id = ?", ch.Id).Error)
+	assert.Nil(t, after.PendingChannelRatio)
+	assert.InDelta(t, 0.9, after.GetChannelRatio(), 1e-9, "拒绝不得改动现价")
+
+	// 超顶新价(> SupplierMaxRate)被拒,现价不变
+	over := common.SupplierMaxRate + 0.5
+	require.NoError(t, DB.Model(&Channel{}).Where("id = ?", ch.Id).
+		Update("pending_channel_ratio", over).Error)
+	_, err = ApproveChannelRateChange(ch.Id)
+	assert.ErrorIs(t, err, ErrSupplierRateTooHigh)
+	require.NoError(t, DB.First(&after, "id = ?", ch.Id).Error)
+	assert.InDelta(t, 0.9, after.GetChannelRatio(), 1e-9)
+}

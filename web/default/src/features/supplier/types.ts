@@ -239,6 +239,16 @@ export interface SupplierEarningsResult {
   page_size: number
 }
 
+// v2 §4.3:按渠道×按天毛收入明细行(gross = Σ min(channel_quota, quota),
+// 口径与结算一致)。day 为天桶起点 unix 秒。
+export interface SupplierDailyEarning {
+  channel_id: number
+  channel_name: string
+  day: number
+  gross: number
+  count: number
+}
+
 export interface SupplierSettlementResult {
   settlement: SupplierSettlement
   ledger: SupplierLedger[]

@@ -70,6 +70,12 @@ type Channel struct {
 	UserId int `json:"user_id" gorm:"index;default:0;column:user_id"`
 	// AuditStatus 见 ChannelAudit* 常量；默认 0=approved 使存量/管理员渠道零回填即可路由。
 	AuditStatus int `json:"audit_status" gorm:"index;default:0;column:audit_status"`
+	// PendingChannelRatio 在途的报价率变更申请(v2 §4.2 价格变更申请流):非 nil =
+	// 待管理员批准的新报价率,渠道继续按 ChannelRatio 在线运行——审的是价格这一个
+	// 商业条款,不是整个渠道,调价不再导致渠道下线。涨价须审批,降价即时生效。
+	// 注意 Update() 走 Updates(struct) 忽略 nil 指针,清空必须走显式 map 更新
+	// (见 ApproveChannelRateChange / RejectChannelRateChange)。
+	PendingChannelRatio *float64 `json:"pending_channel_ratio,omitempty" gorm:"column:pending_channel_ratio"`
 	// <<< jzlh-supplier
 	// >>> jzlh-veridrop 真伪检测最近一次结果快照（完整证据存 DetectionRecord）
 	DetectVerdict       string  `json:"detect_verdict" gorm:"type:varchar(16);default:'';column:detect_verdict"`
