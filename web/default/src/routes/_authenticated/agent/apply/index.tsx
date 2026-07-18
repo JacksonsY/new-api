@@ -16,11 +16,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export { MyUsers } from './users'
-export { AgentWallet } from './wallet'
-export { AdminAgents } from './admin-agents'
-export { AdminWithdrawals } from './admin-withdrawals'
-export { AdminFraud } from './admin-fraud'
-export { WithdrawalStatusBadge } from './withdrawal-status-badge'
-export { AgentApply } from './apply'
-export { AdminAgentApplications } from './admin-applications'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+
+import { AgentApply } from '@/features/agent'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
+export const Route = createFileRoute('/_authenticated/agent/apply/')({
+  beforeLoad: () => {
+    const { auth } = useAuthStore.getState()
+    // 已是代理:家在代理钱包;管理员:裁判/运动员隔离,不可申请(后端同规)
+    if (auth.user?.agent_type) {
+      throw redirect({ to: '/agent/wallet' })
+    }
+    if ((auth.user?.role ?? 0) >= ROLE.ADMIN) {
+      throw redirect({ to: '/403' })
+    }
+  },
+  component: AgentApply,
+})

@@ -34,6 +34,7 @@ import {
 import { GroupBadge } from '@/components/group-badge'
 import { SectionPageLayout } from '@/components/layout'
 import { LongText } from '@/components/long-text'
+import { StatCard } from '@/components/stat-card'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { Progress } from '@/components/ui/progress'
@@ -52,7 +53,6 @@ import {
 import { cn } from '@/lib/utils'
 
 import { agentListUsers } from './api'
-import { StatCard } from './stat-card'
 import type { AgentUser } from './types'
 
 const route = getRouteApi('/_authenticated/agent/users/')
@@ -70,8 +70,8 @@ function isDisabledRow(u: AgentUser) {
   return u.status !== USER_STATUS.ENABLED
 }
 
-// 「我的用户」— 名下用户总览。表格架构完全对齐超管用户列表:
-// 勾选列 + kebab 行操作 + 状态筛选 + 服务端搜索/分页 + 禁用行置灰 + 批量启停。
+// 「我的用户」— 名下用户只读总览(代理不管理下游用户,治理只读见 model.go 说明):
+// 状态筛选 + 服务端搜索/分页 + 禁用行置灰;无勾选列/行操作/批量。
 export function MyUsers() {
   const { t } = useTranslation()
   const isMobile = useMediaQuery('(max-width: 640px)')
@@ -116,7 +116,12 @@ export function MyUsers() {
       )
       if (!res.success || !res.data) {
         toast.error(res.message || t('Failed to load'))
-        return { items: [], total: 0, total_quota: 0, total_used_quota: 0 }
+        return {
+          items: [],
+          total: 0,
+          total_quota: 0,
+          total_used_quota: 0,
+        }
       }
       return {
         items: res.data.items || [],

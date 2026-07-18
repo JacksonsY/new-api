@@ -5,6 +5,7 @@ package controller
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -201,6 +202,8 @@ func AgentListCommissions(c *gin.Context) {
 		// 提现配置随汇总下发，前端据此展示最低提现额/预估手续费并做前置校验。
 		"withdraw_min_quota": common.AgentWithdrawMinQuota,
 		"withdraw_fee_rate":  common.AgentWithdrawFeeRate,
+		// 成熟窗口(分钟);为 0 时分润即时可提,前端据此隐藏"成熟中"死文案。
+		"commission_mature_minutes": common.AgentCommissionMatureMinutes,
 	})
 }
 
@@ -331,6 +334,122 @@ func CancelAgentWithdrawal(c *gin.Context) {
 	}
 	if err := model.CancelWithdrawal(agentId, req.Id); err != nil {
 		apiErrorAgent(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+// ---- jzlh-agent 代理自助入驻(申请→审核,与供应商入驻对称)----
+
+// AgentApply 提交/重新提交入驻申请:管理员不可申请(裁判/运动员隔离,
+// 与 CreateAgent 同一规则),已是代理无需申请。
+func AgentApply(c *gin.Context) {
+	// v2 P2 模块开关:关闭时停止接收新申请(存量代理分润/提现不受影响)
+	if !common.AgentEnabled {
+		common.ApiErrorMsg(c, "代理入驻当前未开放")
+		return
+	}
+	userId := c.GetInt("id")
+	me, err := model.GetUserById(userId, false)
+	if err != nil || me == nil {
+		common.ApiErrorI18n(c, i18n.MsgAgentUserNotFound)
+		return
+	}
+	if me.Role >= common.RoleAdminUser {
+		common.ApiErrorI18n(c, i18n.MsgAgentCannotSetAdminAsAgent)
+		return
+	}
+	if me.AgentType != "" {
+		common.ApiErrorMsg(c, "你已是代理,无需申请")
+		return
+	}
+	var req struct {
+		Contact string `json:"contact"`
+		Note    string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.SubmitAgentApplication(userId, req.Contact, req.Note); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+// AgentApplicationStatus 查询自己的申请状态(无申请返回 null)。
+func AgentApplicationStatus(c *gin.Context) {
+	app, err := model.GetAgentApplicationByUserId(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, app)
+}
+
+// AdminListAgentApplications 审核队列(root):附申请人用户名。
+func AdminListAgentApplications(c *gin.Context) {
+	status, _ := strconv.Atoi(c.Query("status"))
+	page, pageSize := parseAgentPagination(c)
+	apps, total, err := model.ListAgentApplications(status, (page-1)*pageSize, pageSize)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	rows := make([]gin.H, 0, len(apps))
+	for _, app := range apps {
+		username, _ := model.GetUsernameById(app.UserId, false)
+		// v2 §3.4 审批知情:展示申请人存量下级数——批准即历史下级未来消费开始
+		// 计佣,管理员据此评估费率或拒绝,堵"攒下级再申请"的套利路径。
+		inviteeCount, _ := model.CountUsersByInviter(app.UserId)
+		rows = append(rows, gin.H{
+			"application":   app,
+			"username":      username,
+			"invitee_count": inviteeCount,
+		})
+	}
+	common.ApiSuccess(c, gin.H{
+		"items": rows, "total": total, "page": page, "page_size": pageSize,
+		// v2 P2:审批弹窗预填的默认分润比例(系统设置可配),减少逐单手填
+		"default_profit_rate": common.AgentDefaultProfitRate,
+	})
+}
+
+// AdminReviewAgentApplication 审核(root):approve 需带费率(与 CreateAgent
+// 同界),同一事务内置 approved + 设代理;reject 需原因。
+func AdminReviewAgentApplication(c *gin.Context) {
+	var req struct {
+		Id              int     `json:"id"`
+		Action          string  `json:"action"` // approve | reject
+		UsageProfitRate float64 `json:"usage_profit_rate"`
+		Reason          string  `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Id <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	switch req.Action {
+	case "approve":
+		if req.UsageProfitRate < 0 || req.UsageProfitRate > 1 {
+			common.ApiErrorI18n(c, i18n.MsgAgentInvalidUsageProfitRate)
+			return
+		}
+		if err := model.ReviewAgentApplication(req.Id, true, req.UsageProfitRate, "", c.GetInt("id")); err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+	case "reject":
+		if strings.TrimSpace(req.Reason) == "" {
+			common.ApiErrorMsg(c, "请填写拒绝原因")
+			return
+		}
+		if err := model.ReviewAgentApplication(req.Id, false, 0, req.Reason, c.GetInt("id")); err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+	default:
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	common.ApiSuccess(c, nil)

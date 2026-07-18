@@ -20,7 +20,7 @@ import type { ReactNode } from 'react'
 
 import { Card, CardContent } from '@/components/ui/card'
 
-// 代理中心页面共用的统计卡（图标 + 数值 + 标签）。
+// 各业务中心（代理/团队等）共用的统计卡（图标 + 数值 + 标签）。
 export function StatCard({
   icon,
   label,

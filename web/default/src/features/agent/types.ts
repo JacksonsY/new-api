@@ -19,7 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 
 // jzlh-agent 代理分销前端类型（对齐后端 /api/user/agent/* 契约）。
 
-export type AgentType = 'normal' | 'oem' | 'api'
+// 后端 AgentTypeValid 目前只接受 'normal'(oem/api 未实现,曾是占位)。
+// 收窄到实际有效值,避免类型谎报可选项。
+export type AgentType = 'normal'
 
 export interface AgentUser {
   id: number
@@ -83,6 +85,8 @@ export interface CommissionsResult extends PagedResult<CommissionRecord> {
   // 提现策略(随汇总下发)：最低提现额(quota)与手续费比例(0-1)，用于展示与前置校验。
   withdraw_min_quota?: number
   withdraw_fee_rate?: number
+  // 成熟窗口(分钟);为 0 时分润即时可提,前端据此隐藏"成熟中"相关 UI。
+  commission_mature_minutes?: number
 }
 
 export interface SetAgentRequest {
@@ -184,3 +188,30 @@ export interface ApplyRiskControlsRequest {
   block_invite_code: boolean
   reason: string
 }
+
+// ---- jzlh-agent 代理自助入驻申请 ----
+
+export const AGENT_APPLICATION_STATUS = {
+  PENDING: 1,
+  APPROVED: 2,
+  REJECTED: 3,
+} as const
+
+export interface AgentApplication {
+  id: number
+  user_id: number
+  contact: string
+  note: string
+  status: number
+  reason: string
+  created_time: number
+  updated_time: number
+  reviewed_time: number
+}
+
+export interface AgentApplicationRow {
+  application: AgentApplication
+  username: string
+}
+
+export type AgentApplicationsResult = PagedResult<AgentApplicationRow>

@@ -172,6 +172,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
 			}
 
+
 			// >>> jzlh-agent 代理分销（/api/user/agent/*）
 			agentRoute := userRoute.Group("/agent")
 			{
@@ -179,6 +180,11 @@ func SetApiRouter(router *gin.Engine) {
 				agentRoute.POST("/create", middleware.RootAuth(), controller.CreateAgent)
 				agentRoute.POST("/revoke", middleware.RootAuth(), controller.RevokeAgent)
 				agentRoute.GET("/list", middleware.RootAuth(), controller.ListAgents)
+				// 自助入驻:申请(限速防刷)/查状态;审核队列 root
+				agentRoute.POST("/apply", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.AgentApply)
+				agentRoute.GET("/apply", middleware.UserAuth(), controller.AgentApplicationStatus)
+				agentRoute.GET("/admin/applications", middleware.RootAuth(), controller.AdminListAgentApplications)
+				agentRoute.POST("/admin/applications/review", middleware.RootAuth(), controller.AdminReviewAgentApplication)
 				// 代理自助：名下用户 + 分润流水
 				agentRoute.GET("/users", middleware.UserAuth(), middleware.AgentAuth(), controller.AgentListUsers)
 				agentRoute.GET("/commissions", middleware.UserAuth(), middleware.AgentAuth(), controller.AgentListCommissions)
@@ -217,12 +223,17 @@ func SetApiRouter(router *gin.Engine) {
 				supplierRoute.POST("/channel", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierSubmitChannel)
 				supplierRoute.PUT("/channel/:id", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierUpdateChannel)
 				supplierRoute.GET("/earnings", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierEarnings)
+				// v2 §4.3 经营透明:按渠道×按天收益明细(口径与结算一致)
+				supplierRoute.GET("/earnings/daily", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierEarningsDaily)
 				// 超管：供应商审批 + 渠道审核 + 结算/人工打款（资金处置收紧为 Root）
 				supplierRoute.GET("/admin/list", middleware.RootAuth(), controller.AdminListSuppliers)
 				supplierRoute.POST("/admin/review", middleware.RootAuth(), controller.AdminReviewSupplier)
 				supplierRoute.GET("/admin/channel/pending", middleware.RootAuth(), controller.AdminListPendingChannels)
 				supplierRoute.POST("/admin/channel/approve", middleware.RootAuth(), controller.AdminApproveSupplierChannel)
 				supplierRoute.POST("/admin/channel/reject", middleware.RootAuth(), controller.AdminRejectSupplierChannel)
+				// v2 §4.2 报价率变更申请流:渠道在线跑旧价,批准后原子切换
+				supplierRoute.GET("/admin/rate/pending", middleware.RootAuth(), controller.AdminListRateChanges)
+				supplierRoute.POST("/admin/rate/review", middleware.RootAuth(), controller.AdminReviewRateChange)
 				supplierRoute.GET("/admin/settlement", middleware.RootAuth(), controller.AdminSupplierSettlement)
 				supplierRoute.POST("/admin/pay", middleware.RootAuth(), controller.AdminPaySupplier)
 				supplierRoute.POST("/admin/confiscate", middleware.RootAuth(), controller.AdminConfiscateSupplier)

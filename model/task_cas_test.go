@@ -51,11 +51,13 @@ func TestMain(m *testing.M) {
 		&UserSubscription{},
 		&CommissionRiskUser{},
 		&CommissionRiskEvent{},
+		&AgentApplication{}, // jzlh-agent 代理入驻申请
 		&UserOAuthBinding{},
 		&PerfMetric{},
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
+		&Redemption{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -63,9 +65,11 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// truncateTables 进场即清 + 退场再清:固定主键(如流量报表测试的 Token{Id:11})
+// 不得依赖"其他测试自觉收尾"——不调用本函数的测试留下的行也要在这里被扫掉。
 func truncateTables(t *testing.T) {
 	t.Helper()
-	t.Cleanup(func() {
+	clean := func() {
 		DB.Exec("DELETE FROM tasks")
 		DB.Exec("DELETE FROM passkey_credentials")
 		DB.Exec("DELETE FROM two_fa_backup_codes")
@@ -85,7 +89,9 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM system_instances")
 		DB.Exec("DELETE FROM system_task_locks")
 		DB.Exec("DELETE FROM system_tasks")
-	})
+	}
+	clean()
+	t.Cleanup(clean)
 }
 
 func insertTask(t *testing.T, task *Task) {

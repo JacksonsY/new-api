@@ -18,9 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import { type ColumnDef, type Row } from '@tanstack/react-table'
-import { Check, Copy as CopyIcon, Settings, Undo2, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ColumnDef, Row } from '@tanstack/react-table'
+import { Check, Copy as CopyIcon, Undo2, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -36,9 +36,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/design-system/alert-dialog'
-import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
-import { Dialog } from '@/components/dialog'
 import { SectionPageLayout } from '@/components/layout'
 import { LongText } from '@/components/long-text'
 import { TableId } from '@/components/table-id'
@@ -47,23 +45,14 @@ import { Label } from '@/components/ui/label'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { getCurrencyDisplay } from '@/lib/currency'
-import {
-  formatQuota,
-  formatTimestamp,
-  parseQuotaFromDollars,
-  quotaUnitsToDollars,
-} from '@/lib/format'
-import { ROLE } from '@/lib/roles'
-import { useAuthStore } from '@/stores/auth-store'
+import { formatQuota, formatTimestamp } from '@/lib/format'
 
+import { adminListWithdrawals, reviewWithdrawal } from './api'
 import {
-  adminListWithdrawals,
-  getWithdrawSettings,
-  reviewWithdrawal,
-  updateWithdrawSettings,
-} from './api'
-import { WITHDRAWAL_METHOD_LABELS, WITHDRAWAL_STATUS } from './types'
-import type { Withdrawal } from './types'
+  WITHDRAWAL_METHOD_LABELS,
+  WITHDRAWAL_STATUS,
+  type Withdrawal,
+} from './types'
 import { WithdrawalStatusBadge } from './withdrawal-status-badge'
 
 const route = getRouteApi('/_authenticated/withdrawals/')
@@ -79,11 +68,6 @@ export function AdminWithdrawals() {
   } | null>(null)
   const [adminRemark, setAdminRemark] = useState('')
   const [reviewing, setReviewing] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  // 提现策略配置走 RootAuth 的 option 端点，仅超管可见/可改。
-  const isRoot = useAuthStore(
-    (s) => (s.auth.user?.role ?? 0) >= ROLE.SUPER_ADMIN
-  )
 
   const {
     globalFilter,
@@ -214,14 +198,6 @@ export function AdminWithdrawals() {
       <SectionPageLayout.Title>
         {t('Withdrawal Review')}
       </SectionPageLayout.Title>
-      {isRoot && (
-        <SectionPageLayout.Actions>
-          <Button variant='outline' onClick={() => setSettingsOpen(true)}>
-            <Settings className='size-4' />
-            {t('Withdrawal settings')}
-          </Button>
-        </SectionPageLayout.Actions>
-      )}
       <SectionPageLayout.Content>
         <DataTablePage
           table={table}
@@ -347,170 +323,8 @@ export function AdminWithdrawals() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-
-        {isRoot && (
-          <WithdrawSettingsDialog
-            open={settingsOpen}
-            onOpenChange={setSettingsOpen}
-          />
-        )}
       </SectionPageLayout.Content>
     </SectionPageLayout>
-  )
-}
-
-// 「提现策略」配置弹窗(超管):最低提现额、手续费率、单人未决单上限。
-// 复用 RootAuth 的通用 option 端点，与充值金额一致按显示货币输入、内部转 quota 存储。
-function WithdrawSettingsDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const { t } = useTranslation()
-  const [minAmount, setMinAmount] = useState('')
-  const [feePercent, setFeePercent] = useState('')
-  const [maxPending, setMaxPending] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-
-  const loadSettings = useCallback(() => {
-    setLoading(true)
-    getWithdrawSettings()
-      .then((res) => {
-        if (res.success && res.data) {
-          setMinAmount(String(quotaUnitsToDollars(res.data.minQuota)))
-          // 与 wallet.tsx 的费率展示一致，避免浮点噪声(如 1.4999999999998)。
-          setFeePercent(String(Number((res.data.feeRate * 100).toFixed(1))))
-          setMaxPending(String(res.data.maxPending))
-        } else {
-          toast.error(res.message || t('Failed to load'))
-        }
-      })
-      .catch(() => toast.error(t('Failed to load')))
-      .finally(() => setLoading(false))
-  }, [t])
-
-  useEffect(() => {
-    if (!open) return
-    loadSettings()
-  }, [open, loadSettings])
-
-  async function onSave() {
-    const minVal = parseFloat(minAmount)
-    const feeVal = parseFloat(feePercent)
-    const maxVal = parseInt(maxPending, 10)
-    if (isNaN(minVal) || minVal < 0) {
-      toast.error(t('Please enter a valid amount'))
-      return
-    }
-    if (isNaN(feeVal) || feeVal < 0 || feeVal > 100) {
-      toast.error(t('Fee rate must be between 0 and 100'))
-      return
-    }
-    if (isNaN(maxVal) || maxVal < 0) {
-      toast.error(t('Please enter a valid number'))
-      return
-    }
-    setSaving(true)
-    try {
-      const res = await updateWithdrawSettings({
-        minQuota: parseQuotaFromDollars(minVal),
-        feeRate: feeVal / 100,
-        maxPending: maxVal,
-      })
-      if (res.success) {
-        toast.success(t('Saved'))
-        onOpenChange(false)
-      } else if (res.data && res.data.appliedKeys.length > 0) {
-        // 逐项写入部分成功：指明生效/失败项,并回读实际配置刷新表单。
-        const labelOf: Record<string, string> = {
-          minQuota: t('Minimum withdrawal amount'),
-          feeRate: t('Withdrawal fee rate'),
-          maxPending: t('Max pending requests per agent'),
-        }
-        toast.error(
-          t('Partially saved. Applied: {{applied}}; failed: {{failed}}', {
-            applied: res.data.appliedKeys.map((k) => labelOf[k]).join(', '),
-            failed: res.data.failedKeys.map((k) => labelOf[k]).join(', '),
-          })
-        )
-        loadSettings()
-      } else {
-        toast.error(res.message || t('Failed'))
-      }
-    } catch {
-      toast.error(t('Failed'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={t('Withdrawal settings')}
-      description={t('Applies to all agents. Takes effect immediately.')}
-      contentHeight='auto'
-      footer={
-        <div className='flex justify-end gap-2'>
-          <Button
-            variant='outline'
-            onClick={() => onOpenChange(false)}
-            disabled={saving}
-          >
-            {t('Cancel')}
-          </Button>
-          <Button onClick={onSave} disabled={saving || loading}>
-            {t('Save')}
-          </Button>
-        </div>
-      }
-    >
-      <div className='grid gap-4 py-2'>
-        <div className='grid gap-1.5'>
-          <Label htmlFor='ws-min'>{t('Minimum withdrawal amount')}</Label>
-          <Input
-            id='ws-min'
-            value={minAmount}
-            onChange={(e) => setMinAmount(e.target.value)}
-            inputMode='decimal'
-            disabled={loading}
-          />
-          <p className='text-muted-foreground text-xs'>
-            {t('Agents cannot request less than this per withdrawal.')}
-          </p>
-        </div>
-        <div className='grid gap-1.5'>
-          <Label htmlFor='ws-fee'>{t('Withdrawal fee rate')} (%)</Label>
-          <Input
-            id='ws-fee'
-            value={feePercent}
-            onChange={(e) => setFeePercent(e.target.value)}
-            inputMode='decimal'
-            disabled={loading}
-          />
-          <p className='text-muted-foreground text-xs'>
-            {t('Deducted from the payout as a handling fee. 0 = no fee.')}
-          </p>
-        </div>
-        <div className='grid gap-1.5'>
-          <Label htmlFor='ws-max'>{t('Max pending requests per agent')}</Label>
-          <Input
-            id='ws-max'
-            value={maxPending}
-            onChange={(e) => setMaxPending(e.target.value)}
-            inputMode='numeric'
-            disabled={loading}
-          />
-          <p className='text-muted-foreground text-xs'>
-            {t('Caps unreviewed + in-progress requests. 0 = unlimited.')}
-          </p>
-        </div>
-      </div>
-    </Dialog>
   )
 }
 

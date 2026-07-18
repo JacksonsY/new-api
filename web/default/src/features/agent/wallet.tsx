@@ -25,6 +25,7 @@ import {
   Percent,
   ReceiptText,
   TrendingUp,
+  TriangleAlert,
   Wallet,
   type LucideIcon,
 } from 'lucide-react'
@@ -32,7 +33,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { CopyButton } from '@/components/copy-button'
 import { StaticDataTable } from '@/components/data-table'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,6 +66,8 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { TitledCard } from '@/components/ui/titled-card'
+import { useAffiliate } from '@/features/wallet/hooks/use-affiliate'
 import { getCurrencyDisplay } from '@/lib/currency'
 import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -133,6 +138,8 @@ export function AgentWallet() {
       Boolean(state.auth.user?.agent_grace_access) &&
       !state.auth.user?.agent_type
   )
+  // v2 §3.3:邀请链接进代理工作台首屏(与个人钱包推荐卡同一 aff 关系)
+  const { affiliateLink } = useAffiliate()
   const [summary, setSummary] = useState<CommissionsResult | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(true)
 
@@ -218,6 +225,8 @@ export function AgentWallet() {
   const cmTotalPages = Math.max(1, Math.ceil(cmTotal / CM_PAGE_SIZE))
   const withdrawMinQuota = summary?.withdraw_min_quota || 0
   const withdrawFeeRate = summary?.withdraw_fee_rate || 0
+  // 成熟窗口为 0 时分润即时可提,"成熟中"整套 UI 是死文案——条件隐藏。
+  const showMaturing = (summary?.commission_mature_minutes || 0) > 0
   let payeeAccountPlaceholder = t('Bank card number')
   if (wdMethod === 'alipay') {
     payeeAccountPlaceholder = t('Phone number or email')
@@ -386,6 +395,35 @@ export function AgentWallet() {
       <SectionPageLayout.Title>{t('Agent Wallet')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
+          {/* grace 模式:资格已撤销但有余额——说清楚现状,别让转换 tab 静默消失 */}
+          {graceOnly && (
+            <Alert>
+              <TriangleAlert className='size-4' />
+              <AlertDescription>
+                {t(
+                  'Your agent status has been revoked. You can still withdraw your remaining commission; this page closes once the balance is settled.'
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+          {/* v2 §3.3 推广中心首屏:邀请链接此前只在个人钱包页的推荐计划卡里——
+              代理被要求去别的模块复制自己吃饭的链接。分润与 aff 注册奖励同一条
+              邀请关系,链接在此一屏可得。 */}
+          {!graceOnly && affiliateLink ? (
+            <TitledCard title={t('Your Referral Link')} disableHoverEffect>
+              <div className='space-y-2'>
+                <div className='flex items-center gap-2'>
+                  <Input readOnly value={affiliateLink} className='font-mono' />
+                  <CopyButton value={affiliateLink} />
+                </div>
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'Users who sign up through this link become your downstream. Their consumption earns you commission below; sign-up rewards accrue in your personal wallet.'
+                  )}
+                </p>
+              </div>
+            </TitledCard>
+          ) : null}
           {/* 汇总统计 */}
           <div className='overflow-hidden rounded-lg border'>
             {summaryLoading ? (
@@ -398,21 +436,28 @@ export function AgentWallet() {
                 ))}
               </div>
             ) : (
-              <div className='divide-border/60 grid grid-cols-2 divide-x divide-y sm:grid-cols-4 sm:divide-y-0'>
+              <div
+                className={cn(
+                  'divide-border/60 grid grid-cols-2 divide-x divide-y sm:divide-y-0',
+                  showMaturing ? 'sm:grid-cols-4' : 'sm:grid-cols-3'
+                )}
+              >
                 <StatCell
                   icon={Wallet}
                   label={t('Withdrawable Commission')}
                   value={formatQuota(balance)}
                   emphasize
                 />
-                <StatCell
-                  icon={Clock}
-                  label={t('Maturing')}
-                  value={formatQuota(summary?.commission_pending_quota || 0)}
-                  description={t(
-                    'Held during a short settlement window before becoming withdrawable.'
-                  )}
-                />
+                {showMaturing && (
+                  <StatCell
+                    icon={Clock}
+                    label={t('Maturing')}
+                    value={formatQuota(summary?.commission_pending_quota || 0)}
+                    description={t(
+                      'Held during a short settlement window before becoming withdrawable.'
+                    )}
+                  />
+                )}
                 <StatCell
                   icon={TrendingUp}
                   label={t('Total Earnings')}

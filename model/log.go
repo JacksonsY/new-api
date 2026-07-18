@@ -391,12 +391,15 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		}
 		if sourceKey != "" {
 			quota := params.Quota
+			record := func() {
+				RecordAgentCommission(userId, quota, sourceKey)
+			}
 			if params.CommissionSourceKey != "" {
 				// Persist ownership before billing publishes the task to the poller,
 				// so a fast task failure cannot outrun commission creation.
-				RecordAgentCommission(userId, quota, sourceKey)
+				record()
 			} else {
-				gopool.Go(func() { RecordAgentCommission(userId, quota, sourceKey) })
+				gopool.Go(record)
 			}
 		} else {
 			// request id 缺失时没有幂等键，无幂等入账可被重放刷佣：跳过分润并留审计日志。
@@ -699,7 +702,6 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	} else {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
-
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
 		return nil, 0, err
 	}

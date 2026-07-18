@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import type {
+  AgentApplication,
+  AgentApplicationsResult,
   AgentUser,
   AgentUsersResult,
   ApiEnvelope,
@@ -217,68 +219,40 @@ export async function adminRemoveRiskControls(
   return res.data
 }
 
-// ---- 超管：提现策略配置（复用通用 option 端点，RootAuth）----
+// ---- jzlh-agent 代理自助入驻申请 ----
 
-export interface WithdrawSettings {
-  minQuota: number
-  feeRate: number
-  maxPending: number
+export async function submitAgentApplication(
+  contact: string,
+  note: string
+): Promise<ApiEnvelope<null>> {
+  const res = await api.post('/api/user/agent/apply', { contact, note })
+  return res.data
 }
 
-// 从通用 option 列表里挑出提现相关三项。
-export async function getWithdrawSettings(): Promise<
-  ApiEnvelope<WithdrawSettings>
+export async function getAgentApplication(): Promise<
+  ApiEnvelope<AgentApplication | null>
 > {
-  const res = await api.get('/api/option/')
-  if (!res.data?.success) {
-    return { success: false, message: res.data?.message }
-  }
-  const map: Record<string, string> = {}
-  for (const o of (res.data.data || []) as { key: string; value: string }[]) {
-    map[o.key] = o.value
-  }
-  return {
-    success: true,
-    data: {
-      minQuota: Number(map.AgentWithdrawMinQuota ?? 0),
-      feeRate: Number(map.AgentWithdrawFeeRate ?? 0),
-      maxPending: Number(map.AgentWithdrawMaxPending ?? 0),
-    },
-  }
+  const res = await api.get('/api/user/agent/apply')
+  return res.data
 }
 
-export interface WithdrawSettingsUpdateResult {
-  appliedKeys: (keyof WithdrawSettings)[]
-  failedKeys: (keyof WithdrawSettings)[]
+export async function adminListAgentApplications(
+  status: number,
+  page = 1,
+  pageSize = 50
+): Promise<ApiEnvelope<AgentApplicationsResult>> {
+  const res = await api.get('/api/user/agent/admin/applications', {
+    params: { status, p: page, page_size: pageSize },
+  })
+  return res.data
 }
 
-// option 端点单次只改一个 key，逐项 PUT。不中途短路：每项都尝试写入,
-// 返回已生效/失败的项,便于调用方提示并回读实际配置。
-export async function updateWithdrawSettings(
-  s: WithdrawSettings
-): Promise<ApiEnvelope<WithdrawSettingsUpdateResult>> {
-  const entries: [keyof WithdrawSettings, string, string][] = [
-    ['minQuota', 'AgentWithdrawMinQuota', String(Math.round(s.minQuota))],
-    ['feeRate', 'AgentWithdrawFeeRate', String(s.feeRate)],
-    ['maxPending', 'AgentWithdrawMaxPending', String(Math.round(s.maxPending))],
-  ]
-  const result: WithdrawSettingsUpdateResult = {
-    appliedKeys: [],
-    failedKeys: [],
-  }
-  let message: string | undefined
-  for (const [field, key, value] of entries) {
-    try {
-      const res = await api.put('/api/option/', { key, value })
-      if (res.data?.success) {
-        result.appliedKeys.push(field)
-      } else {
-        result.failedKeys.push(field)
-        message = message || res.data?.message
-      }
-    } catch {
-      result.failedKeys.push(field)
-    }
-  }
-  return { success: result.failedKeys.length === 0, message, data: result }
+export async function adminReviewAgentApplication(params: {
+  id: number
+  action: 'approve' | 'reject'
+  usage_profit_rate?: number
+  reason?: string
+}): Promise<ApiEnvelope<null>> {
+  const res = await api.post('/api/user/agent/admin/applications/review', params)
+  return res.data
 }

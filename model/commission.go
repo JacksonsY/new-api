@@ -540,9 +540,18 @@ func RecordAgentCommissionReversal(fromUserId int, refundedQuota int, sourceKey 
 // SetUserAgent 将用户设为代理并设定分润比例。
 func SetUserAgent(userId int, agentType string, usageProfitRate float64) error {
 	return DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
-		"agent_type":        agentType,
-		"usage_profit_rate": usageProfitRate,
+		"agent_type":          agentType,
+		"usage_profit_rate":   usageProfitRate,
+		"agent_approved_time": common.GetTimestamp(),
 	}).Error
+}
+
+// CountUsersByInviter 统计某用户名下的直接下级数(inviter_id 归属)。
+// 审批代理申请时展示(v2 §3.4 审批知情):批准即存量下级未来消费开始计佣。
+func CountUsersByInviter(inviterId int) (int64, error) {
+	var n int64
+	err := DB.Model(&User{}).Where("inviter_id = ?", inviterId).Count(&n).Error
+	return n, err
 }
 
 // RevokeUserAgent 撤销代理身份（保留已累计分润余额）。

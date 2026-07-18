@@ -62,6 +62,9 @@ type User struct {
 	// >>> jzlh-agent 代理分销：与全局 role 正交的独立维度
 	AgentType       string  `json:"agent_type" gorm:"type:varchar(16);default:'';column:agent_type"` // "" 非代理 / normal / oem / api
 	UsageProfitRate float64 `json:"usage_profit_rate" gorm:"default:0;column:usage_profit_rate"`     // 消费分润比例 0-1
+	// AgentApprovedTime 代理生效时刻(v2 §3.4):审批/任命时落值,0=存量代理(不追溯)。
+	// 审计与未来生效边界的地基;当前计佣仍按"消费时刻代理有效"判定(时间维度天然边界)。
+	AgentApprovedTime int64 `json:"agent_approved_time" gorm:"bigint;default:0;column:agent_approved_time"`
 	// 分润余额/累计不设 type:int：让 GORM 按方言映射(MySQL/PG→BIGINT, SQLite→INTEGER)，
 	// 避免累计分润撞 32 位上限(~$4294)。已有库 AutoMigrate 会自动放宽列宽(SQLite 本就 64 位无操作)。
 	CommissionQuota        int    `json:"commission_quota" gorm:"default:0;column:commission_quota"`                 // 当前可提现分润余额（quota 整数）
@@ -80,7 +83,7 @@ type User struct {
 	SupplierPayoutName    string `json:"supplier_payout_name,omitempty" gorm:"type:varchar(64);default:'';column:supplier_payout_name"`        // 户名/真实姓名
 	SupplierContact       string `json:"supplier_contact,omitempty" gorm:"type:varchar(128);default:'';column:supplier_contact"`               // 联系方式(微信/QQ/Telegram/邮箱)
 	// 商户资料：入驻申请时填写，审核员据此沟通/展示（与收款账户解耦，收款走审核通过后的收款设置）。
-	SupplierName  string `json:"supplier_name,omitempty" gorm:"type:varchar(64);default:'';column:supplier_name"`   // 商户名称/品牌名
+	SupplierName  string `json:"supplier_name,omitempty" gorm:"type:varchar(64);default:'';column:supplier_name"`    // 商户名称/品牌名
 	SupplierIntro string `json:"supplier_intro,omitempty" gorm:"type:varchar(255);default:'';column:supplier_intro"` // 商户简介
 	// <<< jzlh-supplier
 	DeletedAt        gorm.DeletedAt             `gorm:"index"`

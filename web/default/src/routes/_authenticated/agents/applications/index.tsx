@@ -16,11 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export { MyUsers } from './users'
-export { AgentWallet } from './wallet'
-export { AdminAgents } from './admin-agents'
-export { AdminWithdrawals } from './admin-withdrawals'
-export { AdminFraud } from './admin-fraud'
-export { WithdrawalStatusBadge } from './withdrawal-status-badge'
-export { AgentApply } from './apply'
-export { AdminAgentApplications } from './admin-applications'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+
+import { AdminAgentApplications } from '@/features/agent'
+import { hasRootAccess } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
+export const Route = createFileRoute('/_authenticated/agents/applications/')({
+  beforeLoad: () => {
+    const { auth } = useAuthStore.getState()
+    if (!hasRootAccess(auth.user?.role)) {
+      throw redirect({ to: '/403' })
+    }
+  },
+  component: AdminAgentApplications,
+})

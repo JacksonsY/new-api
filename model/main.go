@@ -286,6 +286,7 @@ func migrateDB() error {
 		&CommissionFraudAlert{}, // jzlh-agent IP 重合告警
 		&CommissionRiskUser{},   // jzlh-agent 风控管制
 		&CommissionRiskEvent{},  // jzlh-agent 风控事件留痕
+		&AgentApplication{},     // jzlh-agent 代理入驻申请
 		&SupplierLedger{},       // jzlh-supplier 供应商打款/没收台账
 		&DetectionRecord{},      // jzlh-veridrop 真伪检测历史 + 红黑榜数据源
 		&Midjourney{},
@@ -352,6 +353,7 @@ func migrateDBFast() error {
 		{&CommissionFraudAlert{}, "CommissionFraudAlert"}, // jzlh-agent IP 重合告警
 		{&CommissionRiskUser{}, "CommissionRiskUser"},     // jzlh-agent 风控管制
 		{&CommissionRiskEvent{}, "CommissionRiskEvent"},   // jzlh-agent 风控事件留痕
+		{&AgentApplication{}, "AgentApplication"},         // jzlh-agent 代理入驻申请
 		{&SupplierLedger{}, "SupplierLedger"},             // jzlh-supplier 供应商打款/没收台账
 		{&DetectionRecord{}, "DetectionRecord"},           // jzlh-veridrop 真伪检测历史 + 红黑榜
 		{&Midjourney{}, "Midjourney"},
