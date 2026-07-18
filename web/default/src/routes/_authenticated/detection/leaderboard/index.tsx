@@ -28,10 +28,14 @@ const leaderboardSearchSchema = z.object({
   pageSize: z.number().optional().catch(undefined),
 })
 
-export const Route = createFileRoute('/_authenticated/suppliers/leaderboard/')({
+export const Route = createFileRoute('/_authenticated/detection/leaderboard/')({
   beforeLoad: () => {
+    // v2 P2:榜单对供应商开放——后端本就是公开的按域名聚合红黑榜,此前只有
+    // 前端守卫把供应商挡在外面,看不到自己渠道的公开表现。
     const { auth } = useAuthStore.getState()
-    if ((auth.user?.role ?? 0) < ROLE.ADMIN) {
+    const isAdmin = (auth.user?.role ?? 0) >= ROLE.ADMIN
+    const isSupplier = auth.user?.supplier_status === 2
+    if (!isAdmin && !isSupplier) {
       throw redirect({ to: '/403' })
     }
   },

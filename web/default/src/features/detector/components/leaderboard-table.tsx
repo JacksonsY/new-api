@@ -27,7 +27,7 @@ import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { getLeaderboard } from '../api'
 import { useLeaderboardColumns } from './leaderboard-columns'
 
-const route = getRouteApi('/_authenticated/suppliers/leaderboard/')
+const route = getRouteApi('/_authenticated/detection/leaderboard/')
 
 export function LeaderboardTable() {
   const { t } = useTranslation()
