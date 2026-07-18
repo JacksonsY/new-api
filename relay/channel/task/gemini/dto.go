@@ -1,7 +1,17 @@
 package gemini
 
+// VeoInlineData is the generateContent-style inline image shape. Veo's
+// predictLongRunning endpoint does not accept it, so it is only used when
+// parsing request metadata, never when marshalling the upstream request.
+type VeoInlineData struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"`
+}
+
 // VeoImageInput represents an image input for Veo image-to-video.
-// Used by both Gemini and Vertex adaptors.
+// Used by both Gemini and Vertex adaptors. The field names are fixed by the
+// predictLongRunning wire format, which is shared by generativelanguage and
+// aiplatform: {"bytesBase64Encoded": "...", "mimeType": "image/png"}.
 type VeoImageInput struct {
 	BytesBase64Encoded string `json:"bytesBase64Encoded"`
 	MimeType           string `json:"mimeType"`
@@ -9,10 +19,16 @@ type VeoImageInput struct {
 
 // VeoInstance represents a single instance in the Veo predictLongRunning request.
 type VeoInstance struct {
-	Prompt string         `json:"prompt"`
-	Image  *VeoImageInput `json:"image,omitempty"`
-	// TODO: support referenceImages (style/asset references, up to 3 images)
-	// TODO: support lastFrame (first+last frame interpolation, Veo 3.1)
+	Prompt          string              `json:"prompt"`
+	Image           *VeoImageInput      `json:"image,omitempty"`
+	LastFrame       *VeoImageInput      `json:"lastFrame,omitempty"`
+	ReferenceImages []VeoReferenceImage `json:"referenceImages,omitempty"`
+}
+
+// VeoReferenceImage represents a Veo 3.1 reference image.
+type VeoReferenceImage struct {
+	Image         *VeoImageInput `json:"image,omitempty"`
+	ReferenceType string         `json:"referenceType,omitempty"`
 }
 
 // VeoParameters represents the parameters block for Veo predictLongRunning.
