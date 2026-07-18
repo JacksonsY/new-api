@@ -2,6 +2,7 @@ package dto
 
 import (
 	"encoding/json"
+	"math"
 	"strconv"
 )
 
@@ -30,21 +31,37 @@ func (s StringValue) MarshalJSON() ([]byte, error) {
 type IntValue int
 
 func (i *IntValue) UnmarshalJSON(b []byte) error {
-	var n int
-	if err := json.Unmarshal(b, &n); err == nil {
-		*i = IntValue(n)
+	var f float64
+	if err := json.Unmarshal(b, &f); err == nil {
+		*i = IntValue(truncateFloatToInt(f))
 		return nil
 	}
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
 	}
-	v, err := strconv.Atoi(s)
+	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		return err
 	}
-	*i = IntValue(v)
+	*i = IntValue(truncateFloatToInt(v))
 	return nil
+}
+
+// truncateFloatToInt truncates toward zero and saturates at the int range.
+// Decoding through float64 is what lets IntValue accept fractional upstream
+// usage numbers, but those numbers are upstream-controlled and converting an
+// out-of-range float64 to int is undefined in Go.
+func truncateFloatToInt(f float64) int {
+	switch {
+	case math.IsNaN(f):
+		return 0
+	case f >= math.MaxInt:
+		return math.MaxInt
+	case f <= math.MinInt:
+		return math.MinInt
+	}
+	return int(f)
 }
 
 func (i IntValue) MarshalJSON() ([]byte, error) {
