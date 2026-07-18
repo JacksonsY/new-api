@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -113,6 +114,7 @@ type TaskBillingContext struct {
 	ModelPrice      float64            `json:"model_price,omitempty"`       // 模型单价
 	GroupRatio      float64            `json:"group_ratio,omitempty"`       // 分组倍率
 	ModelRatio      float64            `json:"model_ratio,omitempty"`       // 模型倍率
+	CompletionRatio *float64           `json:"completion_ratio,omitempty"`  // 输出倍率；指针用于兼容未保存该字段的历史任务
 	OtherRatios     map[string]float64 `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
 	OriginModelName string             `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
 	PerCallBilling  bool               `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
@@ -175,7 +177,8 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 	privateData := TaskPrivateData{}
 	if relayInfo != nil && relayInfo.ChannelMeta != nil {
 		if relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeGemini ||
-			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeVertexAi {
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeVertexAi ||
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeXai {
 			privateData.Key = relayInfo.ChannelMeta.ApiKey
 		}
 		if relayInfo.UpstreamModelName != "" {
@@ -535,5 +538,16 @@ func (t *Task) ToOpenAIVideo() *dto.OpenAIVideo {
 	openAIVideo.CreatedAt = t.CreatedAt
 	openAIVideo.CompletedAt = t.UpdatedAt
 	openAIVideo.SetMetadata("url", t.GetResultURL())
+	// 按秒计费的时长（OtherRatios["seconds"]）统一带出，供下游按秒计费。
+	// 历史任务的 OtherRatios 可能写于尚无时长上界校验的版本，先钳制再转
+	// int——超出 int 范围的 float64 转换结果是未定义的。
+	if bc := t.PrivateData.BillingContext; bc != nil {
+		if s, ok := bc.OtherRatios["seconds"]; ok && s > 0 {
+			if s > float64(commonRelay.MaxTaskDurationSeconds) {
+				s = float64(commonRelay.MaxTaskDurationSeconds)
+			}
+			openAIVideo.Seconds = strconv.Itoa(int(s))
+		}
+	}
 	return openAIVideo
 }
