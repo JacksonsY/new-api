@@ -26,6 +26,7 @@ import {
   FileText,
   FlaskConical,
   HandCoins,
+  Handshake,
   HeartPulse,
   Key,
   LayoutDashboard,
@@ -46,6 +47,7 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarData } from '@/components/layout/types'
+import { useStatus } from '@/hooks/use-status'
 import { ROLE, hasRootAccess } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -57,14 +59,17 @@ import { useAuthStore } from '@/stores/auth-store'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
-  // jzlh-agent：代理分销菜单按独立维度 agent_type / role 自条件显示
   const user = useAuthStore((s) => s.auth.user)
+  const { status } = useStatus()
   const isAgent = Boolean(user?.agent_type)
   const hasAgentCenterAccess = isAgent || Boolean(user?.agent_grace_access)
   const isAdmin = (user?.role ?? 0) >= ROLE.ADMIN
   const isRoot = hasRootAccess(user?.role)
-  // 供应商中心：supplier_status 2 = 已通过（是与 role 正交的独立维度）。
   const isSupplier = user?.supplier_status === 2
+  // v2 P2 招商模块开关:关闭时隐藏对应招商入口(存量身份的条目不受影响)。
+  const agentEnabled = status?.agent_enabled !== false
+  const supplierEnabled = status?.supplier_enabled !== false
+
 
   return {
     navGroups: [
@@ -133,14 +138,22 @@ export function useSidebarData(): SidebarData {
           },
         ],
       },
-      // 代理中心：与供应商中心对称——自助项按 isAgent 门控，管理项按 isRoot 门控，
-      // 组整体在「是代理 或 是 root」时显示（root 看得到独立的代理中心菜单）。
-      ...(hasAgentCenterAccess || isRoot
+      // jzlh-agent:自助项按 isAgent 门控、招商入口按开关,管理项按 isRoot。
+      ...(hasAgentCenterAccess || isRoot || (!isAdmin && agentEnabled)
         ? [
             {
               id: 'agent',
               title: t('Agent Center'),
               items: [
+                ...(!isAdmin && !hasAgentCenterAccess && agentEnabled
+                  ? [
+                      {
+                        title: t('Become an Agent'),
+                        url: '/agent/apply',
+                        icon: Handshake,
+                      },
+                    ]
+                  : []),
                 ...(hasAgentCenterAccess
                   ? [
                       {
@@ -167,6 +180,11 @@ export function useSidebarData(): SidebarData {
                         icon: Users,
                       },
                       {
+                        title: t('Agent Applications'),
+                        url: '/agents/applications',
+                        icon: ClipboardCheck,
+                      },
+                      {
                         title: t('Withdrawal Review'),
                         url: '/withdrawals',
                         icon: Wallet,
@@ -182,61 +200,70 @@ export function useSidebarData(): SidebarData {
             },
           ]
         : []),
-      {
-        id: 'supplier',
-        title: t('Supplier Center'),
-        items: [
-          // 供应商自助项：管理员不是供应商（裁判/运动员），入驻与自助一律不给管理员看。
-          ...(!isAdmin && isSupplier
-            ? [
-                {
-                  title: t('My Channels'),
-                  url: '/supplier/channels',
-                  icon: Boxes,
-                },
-                {
-                  title: t('My Earnings'),
-                  url: '/supplier/earnings',
-                  icon: Coins,
-                },
-                {
-                  title: t('Payout Settings'),
-                  url: '/supplier/payout',
-                  icon: Wallet,
-                },
-              ]
-            : []),
-          ...(!isAdmin && !isSupplier
-            ? [
-                {
-                  title: t('Onboarding Application'),
-                  url: '/supplier/apply',
-                  icon: Store,
-                },
-              ]
-            : []),
-          ...(isAdmin
-            ? [
-                {
-                  title: t('Supplier Management'),
-                  url: '/suppliers',
-                  icon: Store,
-                },
-                {
-                  title: t('Channel Review'),
-                  url: '/suppliers/review',
-                  icon: ClipboardCheck,
-                },
-                {
-                  title: t('Settlement'),
-                  url: '/suppliers/settlement',
-                  icon: HandCoins,
-                },
-              ]
-            : []),
-        ],
-      },
-      // 检测管理：仅管理端的中转站验真榜单。模型检测走公共 /detector 页，不进侧栏。
+      // jzlh-supplier:自助项给已过审供应商(含公开榜单),招商入口按开关,管理项 root。
+      ...((!isAdmin && (isSupplier || supplierEnabled)) || isRoot
+        ? [
+            {
+              id: 'supplier',
+              title: t('Supplier Center'),
+              items: [
+                ...(!isAdmin && isSupplier
+                  ? [
+                      {
+                        title: t('My Channels'),
+                        url: '/supplier/channels',
+                        icon: Boxes,
+                      },
+                      {
+                        title: t('My Earnings'),
+                        url: '/supplier/earnings',
+                        icon: Coins,
+                      },
+                      {
+                        title: t('Payout Settings'),
+                        url: '/supplier/payout',
+                        icon: Wallet,
+                      },
+                      {
+                        title: t('Relay Leaderboard'),
+                        url: '/detection/leaderboard',
+                        icon: Trophy,
+                      },
+                    ]
+                  : []),
+                ...(!isAdmin && !isSupplier && supplierEnabled
+                  ? [
+                      {
+                        title: t('Onboarding Application'),
+                        url: '/supplier/apply',
+                        icon: Store,
+                      },
+                    ]
+                  : []),
+                ...(isRoot
+                  ? [
+                      {
+                        title: t('Supplier Management'),
+                        url: '/suppliers',
+                        icon: Store,
+                      },
+                      {
+                        title: t('Channel Review'),
+                        url: '/suppliers/review',
+                        icon: ClipboardCheck,
+                      },
+                      {
+                        title: t('Settlement'),
+                        url: '/suppliers/settlement',
+                        icon: HandCoins,
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          ]
+        : []),
+      // 检测管理：仅管理端的中转站验真榜单(检测 QA,不属供应商——路由归 /detection)。
       ...(isAdmin
         ? [
             {
@@ -245,7 +272,7 @@ export function useSidebarData(): SidebarData {
               items: [
                 {
                   title: t('Relay Leaderboard'),
-                  url: '/suppliers/leaderboard',
+                  url: '/detection/leaderboard',
                   icon: Trophy,
                 },
               ],
@@ -281,7 +308,6 @@ export function useSidebarData(): SidebarData {
             url: '/subscriptions',
             icon: CreditCard,
           },
-          // 代理管理/提现审核/风控 已移入「代理中心」组（与供应商中心对称）。
         ],
       },
       ...(isAdmin

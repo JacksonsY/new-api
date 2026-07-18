@@ -145,6 +145,11 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
+	common.OptionMap["AgentEnabled"] = strconv.FormatBool(common.AgentEnabled)                                       // jzlh v2 P2
+	common.OptionMap["SupplierEnabled"] = strconv.FormatBool(common.SupplierEnabled)                                 // jzlh v2 P2
+	common.OptionMap["AgentDefaultProfitRate"] = strconv.FormatFloat(common.AgentDefaultProfitRate, 'f', -1, 64)     // jzlh v2 P2
+	common.OptionMap["SupplierMatureDays"] = strconv.Itoa(common.SupplierMatureDays)                                 // jzlh v2 P2
+	common.OptionMap["SupplierMaxRate"] = strconv.FormatFloat(common.SupplierMaxRate, 'f', -1, 64)                   // jzlh v2 P2
 	common.OptionMap["AgentCommissionMatureMinutes"] = strconv.Itoa(common.AgentCommissionMatureMinutes)             // jzlh-agent
 	common.OptionMap["AgentWithdrawFeeRate"] = strconv.FormatFloat(common.AgentWithdrawFeeRate, 'f', -1, 64)         // jzlh-agent
 	common.OptionMap["AgentWithdrawMinQuota"] = strconv.Itoa(common.AgentWithdrawMinQuota)                           // jzlh-agent
@@ -355,6 +360,10 @@ func updateOptionMapLocked(key string, value string) (err error) {
 	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" || key == "SMTPInsecureSkipVerify" {
 		boolValue := value == "true"
 		switch key {
+		case "AgentEnabled": // jzlh v2 P2
+			common.AgentEnabled = boolValue
+		case "SupplierEnabled": // jzlh v2 P2
+			common.SupplierEnabled = boolValue
 		case "PasswordRegisterEnabled":
 			common.PasswordRegisterEnabled = boolValue
 		case "PasswordLoginEnabled":
@@ -600,6 +609,18 @@ func updateOptionMapLocked(key string, value string) (err error) {
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":
 		common.PreConsumedQuota, _ = strconv.Atoi(value)
+	case "AgentDefaultProfitRate": // jzlh v2 P2
+		if v, err := strconv.ParseFloat(value, 64); err == nil && v >= 0 && v <= 1 {
+			common.AgentDefaultProfitRate = v
+		}
+	case "SupplierMatureDays": // jzlh v2 P2
+		if v, err := strconv.Atoi(value); err == nil && v >= 0 {
+			common.SupplierMatureDays = v
+		}
+	case "SupplierMaxRate": // jzlh v2 P2
+		if v, err := strconv.ParseFloat(value, 64); err == nil && v > 0 && v <= 1 {
+			common.SupplierMaxRate = v
+		}
 	case "AgentCommissionMatureMinutes": // jzlh-agent
 		common.AgentCommissionMatureMinutes, _ = strconv.Atoi(value)
 	case "AgentWithdrawFeeRate": // jzlh-agent

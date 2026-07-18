@@ -25,6 +25,8 @@ import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { AgentCommissionSection } from './agent-commission-section'
+import { PartnerModulesSection } from './partner-modules-section'
 
 const OPERATIONS_SECTIONS = [
   {
@@ -36,6 +38,36 @@ const OPERATIONS_SECTIONS = [
           DefaultCollapseSidebar: settings.DefaultCollapseSidebar,
           DemoSiteEnabled: settings.DemoSiteEnabled,
           SelfUseModeEnabled: settings.SelfUseModeEnabled,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'partner-modules',
+    titleKey: 'Partner Modules',
+    build: (settings: OperationsSettings) => (
+      <PartnerModulesSection
+        defaultValues={{
+          AgentEnabled: settings.AgentEnabled,
+          SupplierEnabled: settings.SupplierEnabled,
+          AgentDefaultProfitRate: settings.AgentDefaultProfitRate,
+          SupplierMatureDays: settings.SupplierMatureDays,
+          SupplierMaxRate: settings.SupplierMaxRate,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'agent-commission',
+    titleKey: 'Agent Commission & Withdrawal',
+    build: (settings: OperationsSettings) => (
+      <AgentCommissionSection
+        defaultValues={{
+          AgentCommissionMatureMinutes: settings.AgentCommissionMatureMinutes,
+          AgentInviteeMinAgeDays: settings.AgentInviteeMinAgeDays,
+          AgentWithdrawMinQuota: settings.AgentWithdrawMinQuota,
+          AgentWithdrawFeeRate: settings.AgentWithdrawFeeRate,
+          AgentWithdrawMaxPending: settings.AgentWithdrawMaxPending,
         }}
       />
     ),

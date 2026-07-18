@@ -396,6 +396,18 @@ export type OperationsSettings = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'hour' | 'minute' | '5min'
   'perf_metrics_setting.retention_days': number
+  // jzlh-agent 代理分润/提现设置(原散落在提现审核页弹窗 + 无 UI 的隐藏 option)
+  AgentCommissionMatureMinutes: string
+  AgentInviteeMinAgeDays: string
+  AgentWithdrawMinQuota: string
+  AgentWithdrawFeeRate: string
+  AgentWithdrawMaxPending: string
+  // jzlh v2 P2 招商模块运营设置
+  AgentEnabled: boolean
+  SupplierEnabled: boolean
+  AgentDefaultProfitRate: string
+  SupplierMatureDays: string
+  SupplierMaxRate: string
 }
 
 export type SecuritySettings = {

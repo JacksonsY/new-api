@@ -163,6 +163,19 @@ var AutomaticEnableChannelEnabled = true
 var QuotaRemindThreshold = 1000
 var PreConsumedQuota = 500
 
+// jzlh v2 P2 招商模块开关:只拦"入驻申请"的增量入口,存量代理/供应商照常
+// 计费与结算。默认开,向后兼容已上线部署;运营可在系统设置关闭对外招商。
+var AgentEnabled = true
+var SupplierEnabled = true
+
+// jzlh-agent v2 P2 代理审批默认分润比例(0-1):审批弹窗预填,减少逐单手填。
+var AgentDefaultProfitRate float64 = 0
+
+// jzlh-supplier v2 P2 参数配置化(对齐代理模块先例,原为 model 包硬编码常量):
+// 供应商收益成熟期(天)与报价率硬上限(审批+改价申请双封顶,防平台毛利归零)。
+var SupplierMatureDays = 3
+var SupplierMaxRate float64 = 1.0
+
 // jzlh-agent 代理分润成熟期（分钟）。0 = 即时到账；>0 时新分润先进入
 // 待成熟状态，超过该时长后才计入可提现余额（兜住退款/撤销窗口，防刷）。
 var AgentCommissionMatureMinutes = 0

@@ -58,6 +58,16 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.flush_interval': 5,
   'perf_metrics_setting.bucket_time': 'hour',
   'perf_metrics_setting.retention_days': 0,
+  AgentCommissionMatureMinutes: '0',
+  AgentInviteeMinAgeDays: '0',
+  AgentWithdrawMinQuota: '0',
+  AgentWithdrawFeeRate: '0',
+  AgentWithdrawMaxPending: '0',
+  AgentEnabled: true,
+  SupplierEnabled: true,
+  AgentDefaultProfitRate: '0',
+  SupplierMatureDays: '3',
+  SupplierMaxRate: '1',
 }
 
 export function OperationsSettings() {

@@ -29,6 +29,10 @@ const STATUS_RELATED_KEYS = [
   'HeaderNavModules',
   'SidebarModulesAdmin',
   'Notice',
+  // jzlh v2 P2 三边模块开关:切换器"＋"项按 /api/status 显隐,改完即刷
+  'TeamEnabled',
+  'AgentEnabled',
+  'SupplierEnabled',
   'LogConsumeEnabled',
   'QuotaPerUnit',
   'USDExchangeRate',
