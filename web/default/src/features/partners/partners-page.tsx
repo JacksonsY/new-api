@@ -39,8 +39,10 @@ import { useTranslation } from 'react-i18next'
 import { PremiumPublicLayout } from '@/components/layout'
 import { cn } from '@/lib/utils'
 
+// v2 §3.5:代理已支持自助申请(b61f94ad9),CTA 直指申请页;两个入口都在
+// _authenticated 下,匿名访客点击会经登录/注册守卫回跳,不再断链。
 const SUPPLIER_CTA = '/supplier/apply'
-const AGENT_CTA = '/register'
+const AGENT_CTA = '/agent/apply'
 
 function HeroCtas({ t }: { t: (k: string) => string }) {
   return (
@@ -303,7 +305,7 @@ export function PartnersPage() {
     {
       q: t('How do I become an agent?'),
       a: t(
-        'Sign up for an account first, then contact us to activate agent status. You then invite users through your referral link.'
+        'Sign up, submit an agent application in the console, and start inviting users through your referral link once approved.'
       ),
     },
     {

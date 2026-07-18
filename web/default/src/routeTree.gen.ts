@@ -71,13 +71,15 @@ import { Route as AuthenticatedSystemSettingsBillingIndexRouteImport } from './r
 import { Route as AuthenticatedSystemSettingsAuthIndexRouteImport } from './routes/_authenticated/system-settings/auth/index'
 import { Route as AuthenticatedSuppliersSettlementIndexRouteImport } from './routes/_authenticated/suppliers/settlement/index'
 import { Route as AuthenticatedSuppliersReviewIndexRouteImport } from './routes/_authenticated/suppliers/review/index'
-import { Route as AuthenticatedSuppliersLeaderboardIndexRouteImport } from './routes/_authenticated/suppliers/leaderboard/index'
 import { Route as AuthenticatedSupplierPayoutIndexRouteImport } from './routes/_authenticated/supplier/payout/index'
 import { Route as AuthenticatedSupplierEarningsIndexRouteImport } from './routes/_authenticated/supplier/earnings/index'
 import { Route as AuthenticatedSupplierChannelsIndexRouteImport } from './routes/_authenticated/supplier/channels/index'
 import { Route as AuthenticatedSupplierApplyIndexRouteImport } from './routes/_authenticated/supplier/apply/index'
+import { Route as AuthenticatedDetectionLeaderboardIndexRouteImport } from './routes/_authenticated/detection/leaderboard/index'
+import { Route as AuthenticatedAgentsApplicationsIndexRouteImport } from './routes/_authenticated/agents/applications/index'
 import { Route as AuthenticatedAgentWalletIndexRouteImport } from './routes/_authenticated/agent/wallet/index'
 import { Route as AuthenticatedAgentUsersIndexRouteImport } from './routes/_authenticated/agent/users/index'
+import { Route as AuthenticatedAgentApplyIndexRouteImport } from './routes/_authenticated/agent/apply/index'
 import { Route as AuthenticatedSystemSettingsSiteSectionRouteImport } from './routes/_authenticated/system-settings/site/$section'
 import { Route as AuthenticatedSystemSettingsSecuritySectionRouteImport } from './routes/_authenticated/system-settings/security/$section'
 import { Route as AuthenticatedSystemSettingsOperationsSectionRouteImport } from './routes/_authenticated/system-settings/operations/$section'
@@ -423,12 +425,6 @@ const AuthenticatedSuppliersReviewIndexRoute =
     path: '/suppliers/review/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedSuppliersLeaderboardIndexRoute =
-  AuthenticatedSuppliersLeaderboardIndexRouteImport.update({
-    id: '/suppliers/leaderboard/',
-    path: '/suppliers/leaderboard/',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
 const AuthenticatedSupplierPayoutIndexRoute =
   AuthenticatedSupplierPayoutIndexRouteImport.update({
     id: '/supplier/payout/',
@@ -453,6 +449,18 @@ const AuthenticatedSupplierApplyIndexRoute =
     path: '/supplier/apply/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedDetectionLeaderboardIndexRoute =
+  AuthenticatedDetectionLeaderboardIndexRouteImport.update({
+    id: '/detection/leaderboard/',
+    path: '/detection/leaderboard/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAgentsApplicationsIndexRoute =
+  AuthenticatedAgentsApplicationsIndexRouteImport.update({
+    id: '/agents/applications/',
+    path: '/agents/applications/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAgentWalletIndexRoute =
   AuthenticatedAgentWalletIndexRouteImport.update({
     id: '/agent/wallet/',
@@ -463,6 +471,12 @@ const AuthenticatedAgentUsersIndexRoute =
   AuthenticatedAgentUsersIndexRouteImport.update({
     id: '/agent/users/',
     path: '/agent/users/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAgentApplyIndexRoute =
+  AuthenticatedAgentApplyIndexRouteImport.update({
+    id: '/agent/apply/',
+    path: '/agent/apply/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSystemSettingsSiteSectionRoute =
@@ -567,13 +581,15 @@ export interface FileRoutesByFullPath {
   '/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
+  '/agent/apply/': typeof AuthenticatedAgentApplyIndexRoute
   '/agent/users/': typeof AuthenticatedAgentUsersIndexRoute
   '/agent/wallet/': typeof AuthenticatedAgentWalletIndexRoute
+  '/agents/applications/': typeof AuthenticatedAgentsApplicationsIndexRoute
+  '/detection/leaderboard/': typeof AuthenticatedDetectionLeaderboardIndexRoute
   '/supplier/apply/': typeof AuthenticatedSupplierApplyIndexRoute
   '/supplier/channels/': typeof AuthenticatedSupplierChannelsIndexRoute
   '/supplier/earnings/': typeof AuthenticatedSupplierEarningsIndexRoute
   '/supplier/payout/': typeof AuthenticatedSupplierPayoutIndexRoute
-  '/suppliers/leaderboard/': typeof AuthenticatedSuppliersLeaderboardIndexRoute
   '/suppliers/review/': typeof AuthenticatedSuppliersReviewIndexRoute
   '/suppliers/settlement/': typeof AuthenticatedSuppliersSettlementIndexRoute
   '/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
@@ -642,13 +658,15 @@ export interface FileRoutesByTo {
   '/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
+  '/agent/apply': typeof AuthenticatedAgentApplyIndexRoute
   '/agent/users': typeof AuthenticatedAgentUsersIndexRoute
   '/agent/wallet': typeof AuthenticatedAgentWalletIndexRoute
+  '/agents/applications': typeof AuthenticatedAgentsApplicationsIndexRoute
+  '/detection/leaderboard': typeof AuthenticatedDetectionLeaderboardIndexRoute
   '/supplier/apply': typeof AuthenticatedSupplierApplyIndexRoute
   '/supplier/channels': typeof AuthenticatedSupplierChannelsIndexRoute
   '/supplier/earnings': typeof AuthenticatedSupplierEarningsIndexRoute
   '/supplier/payout': typeof AuthenticatedSupplierPayoutIndexRoute
-  '/suppliers/leaderboard': typeof AuthenticatedSuppliersLeaderboardIndexRoute
   '/suppliers/review': typeof AuthenticatedSuppliersReviewIndexRoute
   '/suppliers/settlement': typeof AuthenticatedSuppliersSettlementIndexRoute
   '/system-settings/auth': typeof AuthenticatedSystemSettingsAuthIndexRoute
@@ -721,13 +739,15 @@ export interface FileRoutesById {
   '/_authenticated/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/_authenticated/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/_authenticated/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
+  '/_authenticated/agent/apply/': typeof AuthenticatedAgentApplyIndexRoute
   '/_authenticated/agent/users/': typeof AuthenticatedAgentUsersIndexRoute
   '/_authenticated/agent/wallet/': typeof AuthenticatedAgentWalletIndexRoute
+  '/_authenticated/agents/applications/': typeof AuthenticatedAgentsApplicationsIndexRoute
+  '/_authenticated/detection/leaderboard/': typeof AuthenticatedDetectionLeaderboardIndexRoute
   '/_authenticated/supplier/apply/': typeof AuthenticatedSupplierApplyIndexRoute
   '/_authenticated/supplier/channels/': typeof AuthenticatedSupplierChannelsIndexRoute
   '/_authenticated/supplier/earnings/': typeof AuthenticatedSupplierEarningsIndexRoute
   '/_authenticated/supplier/payout/': typeof AuthenticatedSupplierPayoutIndexRoute
-  '/_authenticated/suppliers/leaderboard/': typeof AuthenticatedSuppliersLeaderboardIndexRoute
   '/_authenticated/suppliers/review/': typeof AuthenticatedSuppliersReviewIndexRoute
   '/_authenticated/suppliers/settlement/': typeof AuthenticatedSuppliersSettlementIndexRoute
   '/_authenticated/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
@@ -799,13 +819,15 @@ export interface FileRouteTypes {
     | '/system-settings/operations/$section'
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
+    | '/agent/apply/'
     | '/agent/users/'
     | '/agent/wallet/'
+    | '/agents/applications/'
+    | '/detection/leaderboard/'
     | '/supplier/apply/'
     | '/supplier/channels/'
     | '/supplier/earnings/'
     | '/supplier/payout/'
-    | '/suppliers/leaderboard/'
     | '/suppliers/review/'
     | '/suppliers/settlement/'
     | '/system-settings/auth/'
@@ -874,13 +896,15 @@ export interface FileRouteTypes {
     | '/system-settings/operations/$section'
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
+    | '/agent/apply'
     | '/agent/users'
     | '/agent/wallet'
+    | '/agents/applications'
+    | '/detection/leaderboard'
     | '/supplier/apply'
     | '/supplier/channels'
     | '/supplier/earnings'
     | '/supplier/payout'
-    | '/suppliers/leaderboard'
     | '/suppliers/review'
     | '/suppliers/settlement'
     | '/system-settings/auth'
@@ -952,13 +976,15 @@ export interface FileRouteTypes {
     | '/_authenticated/system-settings/operations/$section'
     | '/_authenticated/system-settings/security/$section'
     | '/_authenticated/system-settings/site/$section'
+    | '/_authenticated/agent/apply/'
     | '/_authenticated/agent/users/'
     | '/_authenticated/agent/wallet/'
+    | '/_authenticated/agents/applications/'
+    | '/_authenticated/detection/leaderboard/'
     | '/_authenticated/supplier/apply/'
     | '/_authenticated/supplier/channels/'
     | '/_authenticated/supplier/earnings/'
     | '/_authenticated/supplier/payout/'
-    | '/_authenticated/suppliers/leaderboard/'
     | '/_authenticated/suppliers/review/'
     | '/_authenticated/suppliers/settlement/'
     | '/_authenticated/system-settings/auth/'
@@ -1429,13 +1455,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSuppliersReviewIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/suppliers/leaderboard/': {
-      id: '/_authenticated/suppliers/leaderboard/'
-      path: '/suppliers/leaderboard'
-      fullPath: '/suppliers/leaderboard/'
-      preLoaderRoute: typeof AuthenticatedSuppliersLeaderboardIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/supplier/payout/': {
       id: '/_authenticated/supplier/payout/'
       path: '/supplier/payout'
@@ -1464,6 +1483,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSupplierApplyIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/detection/leaderboard/': {
+      id: '/_authenticated/detection/leaderboard/'
+      path: '/detection/leaderboard'
+      fullPath: '/detection/leaderboard/'
+      preLoaderRoute: typeof AuthenticatedDetectionLeaderboardIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/agents/applications/': {
+      id: '/_authenticated/agents/applications/'
+      path: '/agents/applications'
+      fullPath: '/agents/applications/'
+      preLoaderRoute: typeof AuthenticatedAgentsApplicationsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/agent/wallet/': {
       id: '/_authenticated/agent/wallet/'
       path: '/agent/wallet'
@@ -1476,6 +1509,13 @@ declare module '@tanstack/react-router' {
       path: '/agent/users'
       fullPath: '/agent/users/'
       preLoaderRoute: typeof AuthenticatedAgentUsersIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/agent/apply/': {
+      id: '/_authenticated/agent/apply/'
+      path: '/agent/apply'
+      fullPath: '/agent/apply/'
+      preLoaderRoute: typeof AuthenticatedAgentApplyIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/system-settings/site/$section': {
@@ -1638,13 +1678,15 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
   AuthenticatedWithdrawalsIndexRoute: typeof AuthenticatedWithdrawalsIndexRoute
+  AuthenticatedAgentApplyIndexRoute: typeof AuthenticatedAgentApplyIndexRoute
   AuthenticatedAgentUsersIndexRoute: typeof AuthenticatedAgentUsersIndexRoute
   AuthenticatedAgentWalletIndexRoute: typeof AuthenticatedAgentWalletIndexRoute
+  AuthenticatedAgentsApplicationsIndexRoute: typeof AuthenticatedAgentsApplicationsIndexRoute
+  AuthenticatedDetectionLeaderboardIndexRoute: typeof AuthenticatedDetectionLeaderboardIndexRoute
   AuthenticatedSupplierApplyIndexRoute: typeof AuthenticatedSupplierApplyIndexRoute
   AuthenticatedSupplierChannelsIndexRoute: typeof AuthenticatedSupplierChannelsIndexRoute
   AuthenticatedSupplierEarningsIndexRoute: typeof AuthenticatedSupplierEarningsIndexRoute
   AuthenticatedSupplierPayoutIndexRoute: typeof AuthenticatedSupplierPayoutIndexRoute
-  AuthenticatedSuppliersLeaderboardIndexRoute: typeof AuthenticatedSuppliersLeaderboardIndexRoute
   AuthenticatedSuppliersReviewIndexRoute: typeof AuthenticatedSuppliersReviewIndexRoute
   AuthenticatedSuppliersSettlementIndexRoute: typeof AuthenticatedSuppliersSettlementIndexRoute
 }
@@ -1676,16 +1718,19 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
   AuthenticatedWithdrawalsIndexRoute: AuthenticatedWithdrawalsIndexRoute,
+  AuthenticatedAgentApplyIndexRoute: AuthenticatedAgentApplyIndexRoute,
   AuthenticatedAgentUsersIndexRoute: AuthenticatedAgentUsersIndexRoute,
   AuthenticatedAgentWalletIndexRoute: AuthenticatedAgentWalletIndexRoute,
+  AuthenticatedAgentsApplicationsIndexRoute:
+    AuthenticatedAgentsApplicationsIndexRoute,
+  AuthenticatedDetectionLeaderboardIndexRoute:
+    AuthenticatedDetectionLeaderboardIndexRoute,
   AuthenticatedSupplierApplyIndexRoute: AuthenticatedSupplierApplyIndexRoute,
   AuthenticatedSupplierChannelsIndexRoute:
     AuthenticatedSupplierChannelsIndexRoute,
   AuthenticatedSupplierEarningsIndexRoute:
     AuthenticatedSupplierEarningsIndexRoute,
   AuthenticatedSupplierPayoutIndexRoute: AuthenticatedSupplierPayoutIndexRoute,
-  AuthenticatedSuppliersLeaderboardIndexRoute:
-    AuthenticatedSuppliersLeaderboardIndexRoute,
   AuthenticatedSuppliersReviewIndexRoute:
     AuthenticatedSuppliersReviewIndexRoute,
   AuthenticatedSuppliersSettlementIndexRoute:
