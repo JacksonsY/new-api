@@ -19,7 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { getSuccessRateDotClass } from '@/features/performance-metrics/lib/format'
+import {
+  getSuccessRateDotClass,
+  getSuccessRateTextClass,
+} from '@/features/performance-metrics/lib/format'
 import { cn } from '@/lib/utils'
 
 export type ModelPerfBadgeData = {
@@ -27,10 +30,6 @@ export type ModelPerfBadgeData = {
   success_rate: number
   avg_tps: number
   recent_success_rates?: number[]
-}
-
-export interface ModelPerfBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
-  perf: ModelPerfBadgeData | undefined
 }
 
 function formatCompactNumber(value: number): string {
@@ -50,76 +49,58 @@ function formatCompactThroughput(tps: number): string {
   return `${formatCompactNumber(tps)}t`
 }
 
-export const ModelPerfBadge = memo(function ModelPerfBadge(
-  props: ModelPerfBadgeProps
-) {
+
+/** 定价表「可用率」列的段条数；与后端汇总带回的逐桶成功率个数一致(24 桶≈一天)。 */
+const AVAILABILITY_BAR_COUNT = 24
+
+/**
+ * Uptime 风格的可用率单元格:逐桶成功率画成一排竖条,右侧带总成功率。
+ * 数据不足 24 桶时左侧以哑色占位,保证条带总宽稳定、新旧模型对齐。
+ */
+export const AvailabilityBars = memo(function AvailabilityBars(props: {
+  perf: ModelPerfBadgeData | undefined
+}) {
   const { t } = useTranslation()
 
   if (!props.perf) {
     return null
   }
 
-  const { avg_latency_ms, avg_tps, success_rate } = props.perf
-
-  const recentRates =
-    props.perf.recent_success_rates?.filter((rate) => Number.isFinite(rate)) ??
-    []
-  const statusRates =
-    recentRates.length > 0 ? recentRates.slice(-3) : [success_rate]
-  const statusBars = [
-    ...Array(Math.max(0, 3 - statusRates.length)).fill(null),
-    ...statusRates,
-  ].slice(-3)
+  const rates = (props.perf.recent_success_rates ?? []).filter((rate) =>
+    Number.isFinite(rate)
+  )
+  // slot 即桶在固定 24 格时间轴上的位置，天然就是每根竖条的身份。
+  const bars = [
+    ...Array(Math.max(0, AVAILABILITY_BAR_COUNT - rates.length)).fill(null),
+    ...rates.slice(-AVAILABILITY_BAR_COUNT),
+  ].map((rate: number | null, slot) => ({ slot, rate }))
 
   return (
     <div
-      className={cn(
-        'hidden w-[132px] grid-cols-[38px_48px_30px] gap-x-2 text-right tabular-nums min-[460px]:grid',
-        props.className
-      )}
+      className='flex items-center gap-2'
+      title={`${t('Average latency')}: ${formatCompactLatency(props.perf.avg_latency_ms)} · ${t('Throughput')}: ${formatCompactThroughput(props.perf.avg_tps)}`}
     >
-      <div title={t('Average latency')} className='min-w-0'>
-        <div className='text-muted-foreground/55 text-xs leading-4'>
-          {t('Latency short')}
-        </div>
-        <div className='text-muted-foreground/80 font-mono text-xs leading-4 whitespace-nowrap'>
-          {formatCompactLatency(avg_latency_ms)}
-        </div>
+      <div className='flex items-center gap-[2px]'>
+        {bars.map((bar) => (
+          <span
+            key={bar.slot}
+            className={cn(
+              'h-3 w-[3px] rounded-full',
+              bar.rate == null
+                ? 'bg-muted-foreground/15'
+                : getSuccessRateDotClass(bar.rate)
+            )}
+          />
+        ))}
       </div>
-      <div title={t('Throughput')} className='min-w-0'>
-        <div className='text-muted-foreground/55 truncate text-xs leading-4'>
-          {t('Throughput short')}
-        </div>
-        <div className='text-muted-foreground/80 font-mono text-xs leading-4 whitespace-nowrap'>
-          {formatCompactThroughput(avg_tps)}
-        </div>
-      </div>
-      <div
-        title={`${t('Success rate')}: ${success_rate.toFixed(1)}%`}
-        className='min-w-0'
+      <span
+        className={cn(
+          'text-xs font-medium tabular-nums',
+          getSuccessRateTextClass(props.perf.success_rate)
+        )}
       >
-        <div className='text-muted-foreground/55 truncate text-xs leading-4'>
-          {t('Status short')}
-        </div>
-        <div className='flex h-4 items-center justify-end gap-0.5'>
-          {statusBars.map((rate, index) => (
-            <span
-              key={`${index}-${rate ?? 'empty'}`}
-              className={cn(
-                'w-1 rounded-full',
-                index === 0 && 'h-2',
-                index === 1 && 'h-2.5',
-                index === 2 && 'h-3',
-                rate == null
-                  ? index === 0
-                    ? 'bg-muted-foreground/10'
-                    : 'bg-muted-foreground/15'
-                  : getSuccessRateDotClass(rate)
-              )}
-            />
-          ))}
-        </div>
-      </div>
+        {props.perf.success_rate.toFixed(1)}%
+      </span>
     </div>
   )
 })

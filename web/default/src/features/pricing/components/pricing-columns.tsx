@@ -44,7 +44,7 @@ import {
   stripTrailingZeros,
 } from '../lib/price'
 import type { PriceType, PricingModel, TokenUnit } from '../types'
-import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
+import { AvailabilityBars, type ModelPerfBadgeData } from './model-perf-badge'
 
 export interface PricingColumnsOptions {
   tokenUnit?: TokenUnit
@@ -294,9 +294,9 @@ export function usePricingColumns(
         if (!perf) {
           return renderEmptyCell()
         }
-        return <ModelPerfBadge perf={perf} className='grid' />
+        return <AvailabilityBars perf={perf} />
       },
-      size: 160,
+      size: 190,
       enableSorting: false,
     },
     {

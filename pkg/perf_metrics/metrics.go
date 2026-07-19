@@ -187,7 +187,7 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 			AvgLatencyMs:       avgLatency,
 			SuccessRate:        math.Round(successRate*100) / 100,
 			AvgTps:             math.Round(avgTps*100) / 100,
-			RecentSuccessRates: recentSuccessRates(modelBuckets[name], 3),
+			RecentSuccessRates: recentSuccessRates(modelBuckets[name], recentAvailabilityBuckets),
 			RequestCount:       total.requestCount,
 		})
 	}
@@ -230,6 +230,11 @@ func mergeModelBucket(modelBuckets map[string]map[int64]counters, modelName stri
 	current.generationMs += value.generationMs
 	modelBuckets[modelName][bucketTs] = current
 }
+
+// recentAvailabilityBuckets 是汇总接口带回的逐桶成功率个数。定价页可用率列
+// 按桶画分段条(默认 1 桶 = 1 小时,24 桶即最近一天),消费端各自截取所需长度
+// (如卡片徽章只取最后 3 个),放大该值不改变它们的显示。
+const recentAvailabilityBuckets = 24
 
 func recentSuccessRates(buckets map[int64]counters, limit int) []float64 {
 	if len(buckets) == 0 || limit <= 0 {
