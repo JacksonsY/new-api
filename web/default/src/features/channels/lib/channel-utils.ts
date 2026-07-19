@@ -61,6 +61,7 @@ export function getChannelTypeIcon(type: number): string {
     7: 'OpenAI', // OhMyGPT
     8: 'OpenAI', // Custom
     58: 'NewAPI', // Advanced Custom
+    57: 'OpenAI', // Codex
     3: 'Azure', // Azure
 
     // Anthropic
@@ -80,7 +81,7 @@ export function getChannelTypeIcon(type: number): string {
     46: 'Baidu', // Baidu V2
     16: 'Zhipu', // Zhipu
     26: 'Zhipu', // Zhipu V4
-    17: 'Qwen', // Ali
+    17: 'Bailian', // Ali（阿里百炼，用正牌百炼 logo 而非通义千问）
     18: 'Spark', // Xunfei
     23: 'Hunyuan', // Tencent
     19: 'Ai360', // 360
@@ -111,6 +112,7 @@ export function getChannelTypeIcon(type: number): string {
     55: 'OpenAI', // Sora
     54: 'Doubao', // DoubaoVideo
     56: 'Replicate', // Replicate
+    59: 'HappyHorse', // AIAI（happyhorse 视频，自定义图标）
 
     // Tools & Platforms
     37: 'Dify', // Dify

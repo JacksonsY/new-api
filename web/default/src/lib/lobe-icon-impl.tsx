@@ -25,6 +25,7 @@ For commercial licensing, please contact support@quantumnous.com
  */
 import * as LobeIcons from '@lobehub/icons'
 
+import { CUSTOM_PROVIDER_ICONS } from './custom-provider-icons'
 import { LobeIconFallback } from './lobe-icon-fallback'
 
 /**
@@ -70,6 +71,14 @@ function parseValue(raw: string | undefined | null): string | number | boolean {
 export function LobeIconImpl(props: { name: string; size: number }) {
   const segments = props.name.split('.')
   const baseKey = segments[0]
+
+  // 自定义图标（@lobehub 未收录的品牌，如 HappyHorse）：按 baseKey 命中即渲染，
+  // 忽略 .Color/.Avatar 等变体后缀。
+  const CustomIcon = CUSTOM_PROVIDER_ICONS[baseKey]
+  if (CustomIcon) {
+    return <CustomIcon size={props.size} />
+  }
+
   const BaseIcon = (LobeIcons as Record<string, unknown>)[baseKey] as
     | Record<string, unknown>
     | undefined

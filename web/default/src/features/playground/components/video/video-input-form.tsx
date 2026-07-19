@@ -45,6 +45,7 @@ import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { getLobeIcon } from '@/lib/lobe-icon'
 
 import { fetchTokenKey, getUserTokens } from '../../api'
 import { HAPPYHORSE_MODELS, VIDEO_MODEL_TYPE_LABELS } from '../../constants'
@@ -296,7 +297,11 @@ export function VideoInputForm({
             <SelectContent>
               {modelsForActiveType.map((m) => (
                 <SelectItem key={m.model} value={m.model}>
-                  {m.model}
+                  <span className='flex items-center gap-2'>
+                    {m.model.startsWith('happyhorse-') &&
+                      getLobeIcon('HappyHorse.Color', 16)}
+                    {m.model}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
