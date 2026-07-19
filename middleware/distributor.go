@@ -177,16 +177,26 @@ func Distribute() func(c *gin.Context) {
 }
 
 // modelUnavailableStatus picks the HTTP status for a "no channel for this model"
-// failure: 404 when the model is served by no enabled channel at all (a client
-// error — the model is not offered here, so clients/SDKs must not retry), and 503
-// when the model exists but its channels are currently unavailable (a transient
-// condition worth retrying). new-api historically returned 503 for both, which
-// made SDKs retry permanently-unsupported models.
+// failure: 404 when the model is offered by no channel at all (a client error —
+// the model is not served here, so clients/SDKs must not retry), and 503 when the
+// model exists but its channels are currently unavailable (a transient condition
+// worth retrying). new-api historically returned 503 for both, which made SDKs
+// retry permanently-unsupported models.
+//
+// 关键：不能只看有启用能力（GetModelSupportEndpointTypes 仅含 enabled 渠道）。
+// 某模型的渠道被上游抖动 auto-ban 后 abilities.enabled 全置 false、模型从
+// endpoint 缓存消失，这恰是最该 503 可重试+告警的时刻，若判 404 会让客户端
+// 停止重试且不进 5xx 告警。因此 endpoint 缓存为空时再查 abilities 全表（含
+// disabled）：仍有记录说明是暂时性故障→503；确实无任何记录才 404。查询/缓存
+// 异常时 fail-open 到 503，宁可让客户端重试也不误报"模型不存在"。
 func modelUnavailableStatus(modelName string) int {
-	if len(model.GetModelSupportEndpointTypes(modelName)) == 0 {
-		return http.StatusNotFound
+	if len(model.GetModelSupportEndpointTypes(modelName)) > 0 {
+		return http.StatusServiceUnavailable
 	}
-	return http.StatusServiceUnavailable
+	if known, err := model.ModelExistsInAbilities(modelName); err != nil || known {
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusNotFound
 }
 
 // channelSupportsRequestPath reports whether a channel can serve the request path.

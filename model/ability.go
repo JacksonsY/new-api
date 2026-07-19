@@ -54,6 +54,22 @@ func GetEnabledModels() []string {
 	return models
 }
 
+// ModelExistsInAbilities 判断模型在 abilities 表是否有任何记录（含 disabled）。
+// 用于区分「本站根本不提供该模型」（全无记录 → 404）与「模型存在但渠道
+// 暂时全部被禁用/auto-ban」（有记录 → 503 可重试），避免上游抖动期把在售
+// 模型误报成"不存在"而让客户端停止重试。model 列非保留字，直接比较即可。
+func ModelExistsInAbilities(modelName string) (bool, error) {
+	if modelName == "" {
+		return false, nil
+	}
+	var count int64
+	err := DB.Table("abilities").Where("model = ?", modelName).Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func GetAllEnableAbilities() []Ability {
 	var abilities []Ability
 	DB.Find(&abilities, "enabled = ?", true)
