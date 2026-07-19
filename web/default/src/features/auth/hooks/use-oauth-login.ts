@@ -25,6 +25,7 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getOAuthState } from '../api'
+import { OAUTH_REDIRECT_STORAGE_KEY } from '../constants'
 import {
   buildGitHubOAuthUrl,
   buildDiscordOAuthUrl,
@@ -35,6 +36,19 @@ import type { SystemStatus, CustomOAuthProviderInfo } from '../types'
 
 type LogoutRequestConfig = AxiosRequestConfig & {
   skipErrorHandler?: boolean
+}
+
+// 离开本站前记住登录后的去向。OAuth 回调只会带回 code 与 state，当前页 URL 上
+// 的 redirect 到那时已经丢失，不存的话第三方登录用户永远只落到 /dashboard。
+function leaveForOAuth(url: string) {
+  const redirect = new URLSearchParams(window.location.search).get('redirect')
+  // 只接受站内绝对路径：'//host' 会被浏览器解析成协议相对的跨站地址。
+  if (redirect?.startsWith('/') && !redirect.startsWith('//')) {
+    sessionStorage.setItem(OAUTH_REDIRECT_STORAGE_KEY, redirect)
+  } else {
+    sessionStorage.removeItem(OAUTH_REDIRECT_STORAGE_KEY)
+  }
+  window.open(url, '_self')
 }
 
 /**
@@ -108,7 +122,7 @@ export function useOAuthLogin(status: SystemStatus | null) {
       }
 
       const url = buildGitHubOAuthUrl(status.github_client_id, state)
-      window.open(url, '_self')
+      leaveForOAuth(url)
     } catch (_error) {
       toast.error(t('Failed to start GitHub login'))
       if (githubTimeoutRef.current) {
@@ -133,7 +147,7 @@ export function useOAuthLogin(status: SystemStatus | null) {
       }
 
       const url = buildDiscordOAuthUrl(status.discord_client_id, state)
-      window.open(url, '_self')
+      leaveForOAuth(url)
     } catch (_error) {
       toast.error(t('Failed to start Discord login'))
     } finally {
@@ -158,7 +172,7 @@ export function useOAuthLogin(status: SystemStatus | null) {
         status.oidc_client_id,
         state
       )
-      window.open(url, '_self')
+      leaveForOAuth(url)
     } catch (_error) {
       toast.error(t('Failed to start OIDC login'))
     } finally {
@@ -179,7 +193,7 @@ export function useOAuthLogin(status: SystemStatus | null) {
       }
 
       const url = buildLinuxDOOAuthUrl(status.linuxdo_client_id, state)
-      window.open(url, '_self')
+      leaveForOAuth(url)
     } catch (_error) {
       toast.error(t('Failed to start LinuxDO login'))
     } finally {
@@ -213,7 +227,7 @@ export function useOAuthLogin(status: SystemStatus | null) {
         url.searchParams.set('scope', provider.scopes)
       }
 
-      window.open(url.toString(), '_self')
+      leaveForOAuth(url.toString())
     } catch (_error) {
       toast.error(
         t('Failed to start {{provider}} login', { provider: provider.name })

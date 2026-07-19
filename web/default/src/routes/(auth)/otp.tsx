@@ -17,9 +17,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute } from '@tanstack/react-router'
+import { z } from 'zod'
 
 import { Otp } from '@/features/auth/otp'
 
+// 与 sign-in 同一形状：两步验证是登录流程的中转站，用户原本想去的页面必须
+// 穿过这一步，否则开启了 2FA 的用户永远只会落到 /dashboard。
+const searchSchema = z.object({
+  redirect: z.string().optional(),
+})
+
 export const Route = createFileRoute('/(auth)/otp')({
   component: Otp,
+  validateSearch: searchSchema,
 })

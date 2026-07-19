@@ -59,9 +59,12 @@ import type { User } from '@/features/users/types'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
-type OtpFormProps = React.HTMLAttributes<HTMLFormElement>
+type OtpFormProps = React.HTMLAttributes<HTMLFormElement> & {
+  /** Where the user was headed before 2FA interrupted the login. */
+  redirectTo?: string
+}
 
-export function OtpForm({ className, ...props }: OtpFormProps) {
+export function OtpForm({ className, redirectTo, ...props }: OtpFormProps) {
   const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
   const [useBackupCode, setUseBackupCode] = useState(false)
@@ -116,7 +119,9 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
       }
 
       toast.success(t('Signed in'))
-      redirectToLogin() // This will redirect to dashboard via the redirect logic
+      // 用户此时已登录，sign-in 的 beforeLoad 会把带过来的 redirect 转发到位；
+      // 不传的话就只会落到 /dashboard，2FA 用户永远回不到原本想去的页面。
+      redirectToLogin(redirectTo)
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('2FA verification error:', error)
@@ -134,7 +139,8 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
   }
 
   function handleBackToLogin() {
-    redirectToLogin()
+    // 保留意图：重新登录成功后仍回到原本想去的页面。
+    redirectToLogin(redirectTo)
   }
 
   const isFormValid = useBackupCode

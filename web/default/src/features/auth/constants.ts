@@ -76,3 +76,7 @@ export const PASSWORD_RESET_COUNTDOWN = 30 // seconds
 // ============================================================================
 
 export const OAUTH_BIND_STORAGE_KEY = 'oauth:binding:result'
+
+// OAuth 要经过外部服务商往返，登录后的目标页不能挂在 redirect_uri 上——多数
+// 服务商要求它与注册值精确匹配。改为发起前暂存、回调页取出后立即清除。
+export const OAUTH_REDIRECT_STORAGE_KEY = 'oauth:redirect:after-login'

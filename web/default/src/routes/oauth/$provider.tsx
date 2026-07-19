@@ -28,7 +28,10 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { OAuthCallbackScreen } from '@/features/auth/components/oauth-callback-screen'
-import { OAUTH_BIND_STORAGE_KEY } from '@/features/auth/constants'
+import {
+  OAUTH_BIND_STORAGE_KEY,
+  OAUTH_REDIRECT_STORAGE_KEY,
+} from '@/features/auth/constants'
 import { api, getSelf } from '@/lib/api'
 import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 
@@ -144,7 +147,11 @@ function OAuthCallback() {
       }
 
       const redirectAfterLogin = (target?: string) => {
-        const to = target || search?.redirect || '/dashboard'
+        // 发起 OAuth 前暂存的目标页：回调 URL 只带 code 与 state，原始
+        // redirect 到这里已经丢失。取出即清除，避免影响下一次登录。
+        const remembered = sessionStorage.getItem(OAUTH_REDIRECT_STORAGE_KEY)
+        sessionStorage.removeItem(OAUTH_REDIRECT_STORAGE_KEY)
+        const to = target || search?.redirect || remembered || '/dashboard'
         safeNavigate(to)
         toast.success(i18next.t('Signed in successfully!'))
       }

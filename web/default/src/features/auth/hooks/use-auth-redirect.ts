@@ -93,10 +93,15 @@ export function useAuthRedirect() {
   }
 
   /**
-   * Redirect to 2FA page
+   * Redirect to 2FA page, carrying the intended destination through the step
+   * so it survives to handleLoginSuccess on the other side.
    */
-  const redirectTo2FA = () => {
-    navigate({ to: '/otp', replace: true })
+  const redirectTo2FA = (redirectTo?: string) => {
+    navigate({
+      to: '/otp',
+      search: redirectTo ? { redirect: redirectTo } : undefined,
+      replace: true,
+    })
   }
 
   /**
