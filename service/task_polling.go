@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -68,6 +69,9 @@ func sweepTimedOutTasks(ctx context.Context) {
 		} else {
 			task.FailReason = reason
 		}
+		// 同步 Data JSON 内嵌的 status：否则原样回吐 task.Data 的客户端
+		// (如 ARK 原生格式)对超时任务永远看到"进行中"。
+		task.Data = patchDataStatus(task.Data, string(model.TaskStatusFailure))
 
 		won, err := task.UpdateWithStatus(oldStatus)
 		if err != nil {
@@ -632,6 +636,35 @@ func truncateBase64(s string) string {
 		return s
 	}
 	return s[:maxKeep] + "..."
+}
+
+// patchDataStatus 覆盖任务 Data JSON 顶层的 "status" 字段。
+// Data 为空/非 JSON 对象/无 status 字段时原样返回，不新增字段。
+// 用 map[string]json.RawMessage 保留其余字段的原始字节，避免 float64
+// 往返丢精度；marshal/unmarshal 均走 common.* 包装。
+// 注意：seedance 等平台回吐时按 task.Status 重新映射 status，不受此影响；
+// 本函数只让"直接原样回吐 task.Data"的路径的内嵌 status 与终态一致。
+func patchDataStatus(data json.RawMessage, status string) json.RawMessage {
+	if len(data) == 0 {
+		return data
+	}
+	var m map[string]json.RawMessage
+	if err := common.Unmarshal(data, &m); err != nil {
+		return data
+	}
+	if _, exists := m["status"]; !exists {
+		return data
+	}
+	statusBytes, err := common.Marshal(status)
+	if err != nil {
+		return data
+	}
+	m["status"] = json.RawMessage(statusBytes)
+	b, err := common.Marshal(m)
+	if err != nil {
+		return data
+	}
+	return b
 }
 
 // settleTaskBillingOnComplete 任务完成时的统一计费调整。

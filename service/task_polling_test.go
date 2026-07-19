@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/tidwall/gjson"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/stretchr/testify/assert"
@@ -333,4 +334,24 @@ func TestUpdateVideoTasksMixedChannelSleepSettings(t *testing.T) {
 
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.ElementsMatch(t, []string{"upstream_sleepy_1", "upstream_fast_1", "upstream_fast_2"}, adaptor.fetchedTaskIDs())
+}
+
+func TestPatchDataStatus(t *testing.T) {
+	// 有 status 字段：改写为目标状态，其余字段(含高精度数字)原样保留。
+	in := `{"status":"processing","id":"t1","seconds":"4","big":1783476848259800000}`
+	out := patchDataStatus([]byte(in), "FAILURE")
+	require.Equal(t, "FAILURE", gjson.GetBytes(out, "status").String())
+	require.Equal(t, "t1", gjson.GetBytes(out, "id").String())
+	require.Equal(t, "4", gjson.GetBytes(out, "seconds").String())
+	require.Equal(t, "1783476848259800000", gjson.GetBytes(out, "big").Raw)
+
+	// 无 status 字段：原样返回，不新增。
+	noStatus := `{"id":"t2"}`
+	require.Equal(t, noStatus, string(patchDataStatus([]byte(noStatus), "FAILURE")))
+
+	// 空/非对象：原样返回。
+	require.Empty(t, patchDataStatus([]byte(""), "FAILURE"))
+	require.Nil(t, patchDataStatus(nil, "FAILURE"))
+	arr := `[1,2,3]`
+	require.Equal(t, arr, string(patchDataStatus([]byte(arr), "FAILURE")))
 }
