@@ -123,10 +123,15 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
 		case "response.completed":
-			// 收到成功收口：此前攒的非致命 error 事件作废，否则非规范上游先发
-			// 一个非终止 error 再正常 completed 时会被误判失败并 0 计费(漏费)。
-			pendingStreamErr = nil
+			// 仅当 completed 真正带回产出（token 用量或图像生成调用）时，才作废
+			// 此前攒下的非致命 error 事件。否则违规兼容上游在真实 error 后补一个
+			// 空的 {"type":"response.completed"} 就能把失败洗成成功、撤销预扣计费。
+			// 合规 OpenAI 的 error 是终止事件、其后不会再有 completed，此约束对其
+			// 无影响；也不影响 554441cf8 想堵的“孤立 error 应按失败计费”。
 			if streamResponse.Response != nil {
+				if streamResponse.Response.Usage != nil || streamResponse.Response.HasImageGenerationCall() {
+					pendingStreamErr = nil
+				}
 				if streamResponse.Response.Usage != nil {
 					if streamResponse.Response.Usage.InputTokens != 0 {
 						usage.PromptTokens = streamResponse.Response.Usage.InputTokens

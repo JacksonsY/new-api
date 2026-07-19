@@ -99,6 +99,35 @@ func TestOaiResponsesStreamHandlerReturnsPendingTopLevelErrorWithoutFailedEvent(
 	require.Contains(t, recorder.Body.String(), `context_length_exceeded`)
 }
 
+func TestOaiResponsesStreamHandlerKeepsErrorWhenCompletedCarriesNoOutput(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	// 关键回归：违规兼容上游在真实 error 之后补一个空的 response.completed。
+	// 空 completed（无 usage、无图像生成调用）不得作废真实错误、把失败洗成成功
+	// 计费。官方规范里 error 是终止事件、其后不会再有 completed。
+	body := strings.Join([]string{
+		`event: error`,
+		`data: {"type":"error","code":"server_error","message":"upstream exploded","param":null}`,
+		``,
+		`event: response.completed`,
+		`data: {"type":"response.completed"}`,
+		``,
+	}, "\n")
+
+	c, _, resp, info := newResponsesStreamTestContext(t, body)
+
+	usage, err := OaiResponsesStreamHandler(c, info, resp)
+	require.Nil(t, usage)
+	require.NotNil(t, err)
+	require.Contains(t, err.Error(), "upstream exploded")
+}
+
 func TestOaiResponsesStreamHandlerExtractsUsageFromCompletedEvent(t *testing.T) {
 	oldMode := gin.Mode()
 	gin.SetMode(gin.TestMode)
