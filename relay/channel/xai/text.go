@@ -29,7 +29,15 @@ func normalizeXAIUsage(usage *dto.Usage) {
 	if usage.TotalTokens > usage.PromptTokens {
 		usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
 	}
-	usage.CompletionTokenDetails.TextTokens = usage.CompletionTokens - usage.CompletionTokenDetails.ReasoningTokens
+	// grok reasoning 模型偶发返回 reasoning_tokens 超过有效输出的异常 usage
+	// （见 grok-4-fast-reasoning 负 text_output_tokens 报告），钳 0 避免 text 明细
+	// 变负：对齐项目「TextTokens 非负」的既有不变量（calculateAudioQuota 亦 max(_,0)），
+	// 并防止日志详情 text_output 展示负数。计费按 CompletionTokens（非负）不受影响。
+	textTokens := usage.CompletionTokens - usage.CompletionTokenDetails.ReasoningTokens
+	if textTokens < 0 {
+		textTokens = 0
+	}
+	usage.CompletionTokenDetails.TextTokens = textTokens
 }
 
 func streamResponseXAI2OpenAI(xAIResp *dto.ChatCompletionsStreamResponse, usage *dto.Usage) *dto.ChatCompletionsStreamResponse {

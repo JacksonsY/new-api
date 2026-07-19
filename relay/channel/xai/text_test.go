@@ -59,6 +59,21 @@ func TestNormalizeXAIUsageFoldsReasoningIntoCompletion(t *testing.T) {
 			wantCompletion: 7,
 			wantText:       7,
 		},
+		{
+			// grok-4-fast-reasoning 偶发 reasoning_tokens 超过 total-prompt 的异常
+			// usage（vercel/ai#11487），text 明细必须钳 0，不得变负。
+			name: "malformed reasoning exceeds output: text clamps to zero",
+			usage: dto.Usage{
+				PromptTokens:     32,
+				CompletionTokens: 9,
+				TotalTokens:      100, // total-prompt=68 < reasoning=94
+				CompletionTokenDetails: dto.OutputTokenDetails{
+					ReasoningTokens: 94,
+				},
+			},
+			wantCompletion: 68, // total-prompt，reasoning 仍计入 completion 计费
+			wantText:       0,  // 68-94=-26 → 钳 0
+		},
 	}
 
 	for _, tc := range cases {
