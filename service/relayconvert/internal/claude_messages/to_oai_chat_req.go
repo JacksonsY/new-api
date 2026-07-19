@@ -67,20 +67,17 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info *re
 			openAIRequest.Reasoning = reasoningJSON
 		}
 	} else if info != nil {
-		// 把 Claude 客户端的 effort 透传给 OpenAI 上游(issue #5922)，但必须收敛：
-		// (1) 仅对 OpenAI 推理模型(O 系列/GPT-5)设置——gpt-4o 等非推理模型带
-		//     reasoning_effort 会被上游 400；(2) 把 Claude 专有档(xhigh/max/minimal)
-		//     收敛到目标模型接受的取值——否则同样 400。GetEfforts 取 output_config.effort。
-		// 无法安全映射时不设，退回不透传行为，绝不产生 400。
+		// 把 Claude 客户端的 effort 透传给 OpenAI 上游(issue #5922)，仅对 OpenAI 推理
+		// 模型(O 系列/GPT-5)设置——gpt-4o 等非推理模型带 reasoning_effort 会被上游 400。
+		// 不按模型硬编码降级 effort：OpenAI 合法值(none/minimal/low/medium/high/xhigh/max)
+		// 与 Claude 同名，但各模型具体支持哪些档是模型相关、难以可靠核实；硬降级会静默
+		// 篡改客户端的明确选择(如把 xhigh 悄悄变成 high)。宁可原样透传、让目标模型自身
+		// 校验(不支持则返回明确 400)，也不静默改写。GetEfforts 取 output_config.effort。
+		// 安全访问器：UpstreamModelName 由 *ChannelMeta 提升，info.ChannelMeta 为 nil 会解引用。
 		if openAIRequest.ReasoningEffort == "" {
-			// 用安全访问器：UpstreamModelName 由 *ChannelMeta 提升而来，
-			// info.ChannelMeta 为 nil 时直接取会 nil 解引用。
 			upstream := relaymeta.RelayInfoUpstreamModelName(info)
-			isGPT5 := dto.IsOpenAIGPT5Model(upstream)
-			if dto.IsOpenAIReasoningOModel(upstream) || isGPT5 {
-				if eff := clampReasoningEffortForOpenAI(claudeRequest.GetEfforts(), isGPT5); eff != "" {
-					openAIRequest.ReasoningEffort = eff
-				}
+			if dto.IsOpenAIReasoningOModel(upstream) || dto.IsOpenAIGPT5Model(upstream) {
+				openAIRequest.ReasoningEffort = claudeRequest.GetEfforts()
 			}
 		}
 		thinkingSuffix := "-thinking"
@@ -234,33 +231,4 @@ func requestToJSONString(v interface{}) string {
 		return "{}"
 	}
 	return string(b)
-}
-
-// clampReasoningEffortForOpenAI 把 Claude 的 effort 收敛到 OpenAI 目标模型接受的取值。
-// GPT-5 系列接受 minimal/low/medium/high/xhigh；O 系列只接受 low/medium/high。
-// GPT-5 原生支持 xhigh，直接透传；O 系列不支持则降为 high。Claude 专有的 max（OpenAI
-// 无此档）在 GPT-5 上收敛到 xhigh、O 系列收敛到 high；minimal 在非 GPT-5 上降为 low。
-// 无法安全映射(如 none/空)返回空，由调用方跳过设置。
-func clampReasoningEffortForOpenAI(effort string, isGPT5 bool) string {
-	switch effort {
-	case "low", "medium", "high":
-		return effort
-	case "minimal":
-		if isGPT5 {
-			return "minimal"
-		}
-		return "low"
-	case "xhigh":
-		if isGPT5 {
-			return "xhigh"
-		}
-		return "high"
-	case "max":
-		if isGPT5 {
-			return "xhigh"
-		}
-		return "high"
-	default:
-		return ""
-	}
 }
