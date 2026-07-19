@@ -9,6 +9,10 @@ type OpenAIModels struct {
 	Created                int                     `json:"created"`
 	OwnedBy                string                  `json:"owned_by"`
 	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
+	// ContextLength 上下文窗口(token)，源自模型元数据；未标注时为 0 并省略。
+	// max_model_len 是 vLLM/部分客户端沿用的别名，同值输出以提升兼容性。
+	ContextLength int `json:"context_length,omitempty"`
+	MaxModelLen   int `json:"max_model_len,omitempty"`
 }
 
 type AnthropicModel struct {

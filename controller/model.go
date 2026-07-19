@@ -166,6 +166,10 @@ func buildOpenAIModel(modelName string, ownerByModel map[string]string) dto.Open
 		oaiModel.OwnedBy = owner
 	}
 	oaiModel.SupportedEndpointTypes = model.GetModelSupportEndpointTypes(modelName)
+	if ctxLen := model.GetModelContextLength(modelName); ctxLen > 0 {
+		oaiModel.ContextLength = ctxLen
+		oaiModel.MaxModelLen = ctxLen
+	}
 	return oaiModel
 }
 

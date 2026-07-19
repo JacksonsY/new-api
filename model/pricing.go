@@ -72,6 +72,9 @@ var (
 
 var (
 	modelSupportEndpointTypes = make(map[string][]constant.EndpointType)
+	// modelContextLength 缓存 模型名 -> 上下文窗口(token)，取自模型元数据；
+	// 与 modelSupportEndpointTypes 一同在 updatePricing 内重建，复用同一把锁。
+	modelContextLength        = make(map[string]int)
 	modelSupportEndpointsLock = sync.RWMutex{}
 )
 
@@ -117,6 +120,20 @@ func GetModelSupportEndpointTypes(model string) []constant.EndpointType {
 		return endpoints
 	}
 	return make([]constant.EndpointType, 0)
+}
+
+// GetModelContextLength 返回模型的上下文窗口(token)，未标注时返回 0。
+// 数据源自模型元数据，仅覆盖当前有启用能力(abilities.enabled=1)的模型。
+func GetModelContextLength(model string) int {
+	if model == "" {
+		return 0
+	}
+	if time.Since(lastGetPricingTime) > time.Minute*1 || len(pricingMap) == 0 {
+		GetPricing()
+	}
+	modelSupportEndpointsLock.RLock()
+	defer modelSupportEndpointsLock.RUnlock()
+	return modelContextLength[model]
 }
 
 func getPricingEndpointTypesForAbility(ability AbilityWithChannel, advancedCustomConfigs map[int]*dto.AdvancedCustomConfig) []constant.EndpointType {
@@ -317,6 +334,7 @@ func updatePricing() {
 		}
 	}
 
+	modelContextLength = make(map[string]int)
 	modelSupportEndpointTypes = make(map[string][]constant.EndpointType)
 	for model, endpoints := range modelSupportEndpointsStr {
 		supportedEndpoints := make([]constant.EndpointType, 0)
@@ -389,6 +407,9 @@ func updatePricing() {
 			pricing.Tags = meta.Tags
 			pricing.VendorID = meta.VendorID
 			pricing.ContextLength = meta.ContextLength
+			if meta.ContextLength > 0 {
+				modelContextLength[model] = meta.ContextLength
+			}
 		}
 		modelPrice, findPrice := ratio_setting.GetModelPrice(model, false)
 		if findPrice {
