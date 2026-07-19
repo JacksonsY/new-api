@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -196,11 +197,25 @@ func main() {
 		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7",
 	}
 	if custom := common.GetEnvOrDefaultString("TRUSTED_PROXY_CIDRS", ""); custom != "" {
-		trustedProxyCIDRs = trustedProxyCIDRs[:0]
+		valid := make([]string, 0)
 		for _, cidr := range strings.Split(custom, ",") {
-			if cidr = strings.TrimSpace(cidr); cidr != "" {
-				trustedProxyCIDRs = append(trustedProxyCIDRs, cidr)
+			cidr = strings.TrimSpace(cidr)
+			if cidr == "" {
+				continue
 			}
+			if _, _, err := net.ParseCIDR(cidr); err != nil {
+				common.SysError(fmt.Sprintf("TRUSTED_PROXY_CIDRS 忽略非法条目 %q: %v", cidr, err))
+				continue
+			}
+			valid = append(valid, cidr)
+		}
+		// 仅当自定义值解析出至少一条合法 CIDR 才覆盖默认；否则保留私网默认，
+		// 避免因配置笔误落到空列表→ gin 不信任任何代理→所有用户塌缩成反代 IP，
+		// 静默击穿基于 ClientIP 的注册防刷/限流。
+		if len(valid) > 0 {
+			trustedProxyCIDRs = valid
+		} else {
+			common.SysError("TRUSTED_PROXY_CIDRS 未解析出任何合法 CIDR，回退到私网默认段")
 		}
 	}
 	if err := server.SetTrustedProxies(trustedProxyCIDRs); err != nil {
