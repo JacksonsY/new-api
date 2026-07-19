@@ -67,6 +67,17 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info *re
 			openAIRequest.Reasoning = reasoningJSON
 		}
 	} else if info != nil {
+		// 纯 OpenAI 兼容渠道：把 Claude 客户端显式的 effort 透传为 reasoning_effort，
+		// 否则 reasoning_effort=high 这类意图到 O 系列/GPT-5 上游会全丢(issue #5922)——
+		// effort 适配此前只在 OpenRouter 分支里做。GetEfforts 取的是 Claude
+		// output_config.effort(low/medium/high)，恰是合法的 OpenAI reasoning_effort 取值，
+		// 由下游 openai adaptor 的 O 系列/GPT-5 分支消费。仅 budget 无显式 effort 的场景
+		// 需启发式映射，风险较高，暂不处理。
+		if openAIRequest.ReasoningEffort == "" {
+			if effort := claudeRequest.GetEfforts(); effort != "" {
+				openAIRequest.ReasoningEffort = effort
+			}
+		}
 		thinkingSuffix := "-thinking"
 		if strings.HasSuffix(info.OriginModelName, thinkingSuffix) &&
 			!strings.HasSuffix(openAIRequest.Model, thinkingSuffix) {
