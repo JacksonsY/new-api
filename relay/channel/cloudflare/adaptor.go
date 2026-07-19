@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
@@ -56,6 +57,9 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
 	if request == nil {
 		return nil, errors.New("request is nil")
+	}
+	if info.RelayMode == constant.RelayModeChatCompletions && info.SupportStreamOptions && info.IsStream {
+		request.StreamOptions = &dto.StreamOptions{IncludeUsage: common.GetPointer(true)}
 	}
 	switch info.RelayMode {
 	case constant.RelayModeCompletions:
