@@ -533,6 +533,15 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
 	}
 
+	// 单个分组名长度校验：abilities.group 是 varchar(64) 主键，超长单组名会
+	// 通过 channels 落库(varchar 255)却在写 abilities 时失败，留下无能力可路由
+	// 的渠道。这里提前拒绝，改增改都要校验(渠道分组可编辑)。
+	for _, g := range channel.GetGroups() {
+		if len(g) > 64 {
+			return fmt.Errorf("分组名过长(单个分组名不得超过 64 字符): %s", g)
+		}
+	}
+
 	// 如果是添加操作，检查 channel 和 key 是否为空
 	if isAdd {
 		if channel.Key == "" {
