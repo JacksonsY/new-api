@@ -136,6 +136,7 @@ export function Pricing() {
       <ModelCardGrid
         models={filteredModels}
         onModelClick={handleModelClick}
+        onTryModel={handleTryModel}
         priceRate={priceRate}
         usdExchangeRate={usdExchangeRate}
         tokenUnit={tokenUnit}

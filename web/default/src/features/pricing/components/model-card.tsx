@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Copy } from 'lucide-react'
+import { Copy, Sparkles } from 'lucide-react'
 import { memo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -43,6 +43,8 @@ import type { PricingModel, TokenUnit } from '../types'
 export interface ModelCardProps {
   model: PricingModel
   onClick: () => void
+  /** Opens the playground with this model preselected (token models only). */
+  onTry?: () => void
   priceRate?: number
   usdExchangeRate?: number
   tokenUnit?: TokenUnit
@@ -139,7 +141,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         props.onClick()
       }}
       aria-label={props.model.model_name}
-      className='hover:bg-muted/20 focus-visible:ring-ring flex min-h-full cursor-pointer flex-col rounded-lg border p-4 transition-colors focus-visible:ring-2 focus-visible:outline-none'
+      className='group hover:bg-muted/20 focus-visible:ring-ring flex min-h-full cursor-pointer flex-col rounded-lg border p-4 transition-colors focus-visible:ring-2 focus-visible:outline-none'
     >
       <div className='flex items-start gap-3'>
         <div className='bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg'>
@@ -151,27 +153,43 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </div>
 
         <div className='min-w-0 flex-1'>
-          <div className='flex min-w-0 items-center gap-2'>
-            <h2 className='truncate font-mono text-sm font-medium'>
-              {props.model.model_name}
-            </h2>
-            <Button
-              type='button'
-              variant='ghost'
-              size='icon-xs'
-              onClick={(event) => {
-                // 整卡可点开详情，复制不应触发跳转
-                event.stopPropagation()
-                copyToClipboard(props.model.model_name || '')
-              }}
-              aria-label={t('Copy model name')}
-            >
-              <Copy aria-hidden='true' className='size-3' />
-            </Button>
-          </div>
+          <h2 className='truncate font-mono text-sm font-medium'>
+            {props.model.model_name}
+          </h2>
           <p className='text-muted-foreground mt-0.5 truncate text-xs tabular-nums'>
             {priceLine}
           </p>
+        </div>
+
+        {/* 悬浮浮现的操作组；键盘 Tab 聚焦到按钮时同样显示(focus-within) */}
+        <div className='flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100'>
+          {isTokenBased && props.onTry && (
+            <Button
+              type='button'
+              variant='secondary'
+              size='sm'
+              onClick={(event) => {
+                // 整卡可点开详情，体验/复制不应触发跳转
+                event.stopPropagation()
+                props.onTry?.()
+              }}
+            >
+              <Sparkles aria-hidden='true' data-icon='inline-start' />
+              {t('Try')}
+            </Button>
+          )}
+          <Button
+            type='button'
+            variant='secondary'
+            size='icon-sm'
+            onClick={(event) => {
+              event.stopPropagation()
+              copyToClipboard(props.model.model_name || '')
+            }}
+            aria-label={t('Copy model name')}
+          >
+            <Copy aria-hidden='true' className='size-3.5' />
+          </Button>
         </div>
       </div>
 

@@ -31,6 +31,7 @@ import { ModelCard } from './model-card'
 export interface ModelCardGridProps {
   models: PricingModel[]
   onModelClick: (modelName: string) => void
+  onTryModel?: (modelName: string) => void
   priceRate?: number
   usdExchangeRate?: number
   tokenUnit?: TokenUnit
@@ -40,6 +41,7 @@ export interface ModelCardGridProps {
 
 export function ModelCardGrid(props: ModelCardGridProps) {
   const { t } = useTranslation()
+  const onTryModel = props.onTryModel
   const [page, setPage] = useState(1)
   const pageSize = DEFAULT_PRICING_CARD_PAGE_SIZE
   const tokenUnit = props.tokenUnit ?? DEFAULT_TOKEN_UNIT
@@ -72,6 +74,11 @@ export function ModelCardGrid(props: ModelCardGridProps) {
             showRechargePrice={props.showRechargePrice}
             selectedGroup={props.selectedGroup}
             onClick={() => props.onModelClick(model.model_name || '')}
+            onTry={
+              onTryModel
+                ? () => onTryModel(model.model_name || '')
+                : undefined
+            }
           />
         ))}
       </div>
