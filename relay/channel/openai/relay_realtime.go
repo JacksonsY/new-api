@@ -187,9 +187,10 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 						errChan <- fmt.Errorf("error consume usage: %v", err)
 						return
 					}
-					// 官方 usage 已入账，清掉本句攒下的本地估算，避免重复
+					// 官方转写 usage 已入账，清掉本句攒下的官方 usage 累积。
+					// 不清 localUsage——它是对话侧「response.done 不带 usage」的本地输入
+					// 估算兜底，与转写 usage 相互独立；对话+转写混合会话清掉会漏计费。
 					usage = &dto.RealtimeUsage{}
-					localUsage = &dto.RealtimeUsage{}
 				} else if realtimeEvent.Type == dto.RealtimeEventTypeSessionUpdated || realtimeEvent.Type == dto.RealtimeEventTypeSessionCreated {
 					realtimeSession := realtimeEvent.Session
 					if realtimeSession != nil {
