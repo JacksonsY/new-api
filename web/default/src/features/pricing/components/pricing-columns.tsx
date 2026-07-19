@@ -33,6 +33,7 @@ import {
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import {
+  formatContextLength,
   getBillingTypeLabel,
   isPerSecondVideoModel,
   isTokenBasedModel,
@@ -87,13 +88,6 @@ type PriceRenderOptions = Required<
   >
 > & {
   selectedGroup?: string
-}
-
-/** 上下文窗口按 K 显示；未标注(0)时返回 null 交由调用方渲染占位。 */
-function formatContextLength(tokens?: number): string | null {
-  if (!tokens || tokens <= 0) return null
-  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`
-  return String(tokens)
 }
 
 /**

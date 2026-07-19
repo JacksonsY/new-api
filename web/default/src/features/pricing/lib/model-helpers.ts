@@ -136,3 +136,17 @@ export function getBillingTypeLabel(
   }
   return t('Per Request')
 }
+
+/**
+ * 上下文窗口的紧凑显示：≥1M 显示 xM，≥1K 显示 xK；未标注(0)返回 null
+ * 交由调用方渲染占位。表格「上下文」列与卡片右下角徽章共用。
+ */
+export function formatContextLength(tokens?: number): string | null {
+  if (!tokens || tokens <= 0) return null
+  if (tokens >= 1_000_000) {
+    const m = tokens / 1_000_000
+    return `${Number.isInteger(m) ? m : m.toFixed(1)}M`
+  }
+  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`
+  return String(tokens)
+}
