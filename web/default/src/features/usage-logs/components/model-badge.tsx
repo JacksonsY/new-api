@@ -62,6 +62,10 @@ function resolveModelProvider(modelName: string): ModelProvider | null {
   if (hasAny(['claude-', 'anthropic'])) {
     return { icon: 'Claude.Color', label: 'Claude' }
   }
+  // nano-banana（Gemini 图像系）用专属图标，且需先于 gemini 分支匹配。
+  if (hasAny(['nano-banana'])) {
+    return { icon: 'NanoBanana.Color', label: 'Nano Banana' }
+  }
   if (hasAny(['gemini-', 'learnlm-'])) {
     return { icon: 'Gemini.Color', label: 'Gemini' }
   }
@@ -84,7 +88,7 @@ function resolveModelProvider(modelName: string): ModelProvider | null {
     return { icon: 'Minimax.Color', label: 'MiniMax' }
   }
   if (hasAny(['glm-', 'chatglm', 'cogview', 'cogvideo'])) {
-    return { icon: 'Zhipu.Color', label: 'Zhipu' }
+    return { icon: 'fa', label: 'Zhipu' }
   }
   if (hasAny(['mimo-'])) {
     return { icon: 'XiaomiMiMo', label: 'MiMo' }
@@ -120,7 +124,7 @@ function resolveModelProvider(modelName: string): ModelProvider | null {
     return { icon: 'Cohere.Color', label: 'Cohere' }
   }
   if (hasAny(['happyhorse'])) {
-    return { icon: 'HappyHorse.Color', label: 'HappyHorse' }
+    return { icon: 'HappyHorse', label: 'HappyHorse' }
   }
 
   return null

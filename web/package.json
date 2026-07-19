@@ -6,7 +6,7 @@
     "classic"
   ],
   "catalog": {
-    "@lobehub/icons": "^5.10.1",
+    "@lobehub/icons": "^5.14.0",
     "@rsbuild/core": "^2.1.4",
     "@rsbuild/plugin-react": "^2.1.0",
     "@rsbuild/plugin-tailwindcss": "^2.0.3",

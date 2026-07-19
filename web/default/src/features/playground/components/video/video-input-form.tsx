@@ -299,7 +299,7 @@ export function VideoInputForm({
                 <SelectItem key={m.model} value={m.model}>
                   <span className='flex items-center gap-2'>
                     {m.model.startsWith('happyhorse-') &&
-                      getLobeIcon('HappyHorse.Color', 16)}
+                      getLobeIcon('HappyHorse', 16)}
                     {m.model}
                   </span>
                 </SelectItem>
