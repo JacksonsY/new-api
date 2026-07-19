@@ -71,7 +71,10 @@ func newTokenOrUserAuthTestRouter(t *testing.T, userID int, handler gin.HandlerF
 	return router
 }
 
-func TestTokenOrUserAuthRejectsDBDisabledSessionUser(t *testing.T) {
+// 被禁用的会话用户不再硬拒，而是回落 TokenAuth（保留双鉴权语义）。
+// 请求未带令牌 → TokenAuth 以「未提供令牌」401 拒绝；关键是禁用会话
+// 本身既不放行也不再挡住令牌路径。
+func TestTokenOrUserAuthFallsThroughForDisabledSessionUser(t *testing.T) {
 	db := setupTokenOrUserAuthTestDB(t)
 	user := &model.User{
 		Id:       101,
@@ -97,7 +100,7 @@ func TestTokenOrUserAuthRejectsDBDisabledSessionUser(t *testing.T) {
 	}
 	router.ServeHTTP(recorder, request)
 
-	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
 	require.False(t, handlerCalled)
 }
 
@@ -153,7 +156,9 @@ func TestTokenOrUserAuthRejectsMissingSessionUser(t *testing.T) {
 	require.False(t, handlerCalled)
 }
 
-func TestTokenOrUserAuthFailsClosedOnDatabaseError(t *testing.T) {
+// DB 故障时无法核实会话用户：回落 TokenAuth，请求未带令牌 → 401。
+// 关键是无论如何都不放行（handler 不被调用），fail-closed 成立。
+func TestTokenOrUserAuthDeniesWhenSessionUnverifiableAndNoToken(t *testing.T) {
 	db := setupTokenOrUserAuthTestDB(t)
 	user := &model.User{
 		Id:       104,
@@ -183,7 +188,7 @@ func TestTokenOrUserAuthFailsClosedOnDatabaseError(t *testing.T) {
 	}
 	router.ServeHTTP(recorder, request)
 
-	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
 	require.False(t, handlerCalled)
 }
 

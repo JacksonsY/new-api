@@ -372,33 +372,27 @@ func TokenOrUserAuth() func(c *gin.Context) {
 		session := sessions.Default(c)
 		if id := session.Get("id"); id != nil {
 			uid := asIntID(id)
-			full, refreshErr := getFreshSessionUser(uid)
-			if refreshErr != nil {
-				if model.DB != nil || common.RDB != nil {
-					abortSessionUserRefresh(c, refreshErr)
-					return
-				}
+			// 只有确为「启用」的会话用户才走会话身份；封禁/删除/查不到时不再
+			// 硬拒，而是回落 TokenAuth 让 API 令牌独立鉴权——保留本端点「会话
+			// 或令牌」双鉴权语义，避免残留会话 cookie 挡住持有效令牌的请求
+			// (TokenAuth 自身也校验用户封禁，安全不放松)。
+			if full, refreshErr := getFreshSessionUser(uid); refreshErr == nil &&
+				full.Status == common.UserStatusEnabled {
+				c.Set("id", full.Id)
+				c.Set("username", full.Username)
+				c.Set("role", full.Role)
+				c.Set("status", full.Status)
+				c.Set("group", full.Group)
+				c.Set("user_group", full.Group)
+				c.Next()
+				return
+			} else if model.DB == nil && common.RDB == nil {
 				// No persistence layer (tests): accept session as identity hint.
 				c.Set("id", uid)
 				c.Next()
 				return
 			}
-			if full.Status != common.UserStatusEnabled {
-				c.JSON(http.StatusForbidden, gin.H{
-					"success": false,
-					"message": common.TranslateMessage(c, i18n.MsgAuthUserBanned),
-				})
-				c.Abort()
-				return
-			}
-			c.Set("id", full.Id)
-			c.Set("username", full.Username)
-			c.Set("role", full.Role)
-			c.Set("status", full.Status)
-			c.Set("group", full.Group)
-			c.Set("user_group", full.Group)
-			c.Next()
-			return
+			// 会话无效/被封/查不到：继续回落令牌鉴权。
 		}
 		// Fall back to token auth (API clients)
 		TokenAuth()(c)
