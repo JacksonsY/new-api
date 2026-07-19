@@ -13,6 +13,9 @@ import (
 // maxVeoReferenceImages mirrors the Veo 3.1 limit on referenceImages.
 const maxVeoReferenceImages = 3
 
+// veoReferenceTypeAsset is the only reference type Veo 3.1 accepts.
+const veoReferenceTypeAsset = "asset"
+
 type rawMessage []byte
 
 func (m *rawMessage) UnmarshalJSON(data []byte) error {
@@ -224,7 +227,7 @@ func parseVeoReferenceImageItem(raw rawMessage) (rawMessage, string, error) {
 		return nil, "", fmt.Errorf("empty reference image")
 	}
 	if trimmed[0] == '"' {
-		return raw, "asset", nil
+		return raw, veoReferenceTypeAsset, nil
 	}
 
 	var item struct {
@@ -240,9 +243,17 @@ func parseVeoReferenceImageItem(raw rawMessage) (rawMessage, string, error) {
 		if referenceType == "" {
 			referenceType = item.ReferenceTypeSnake
 		}
+		if referenceType == "" {
+			referenceType = veoReferenceTypeAsset
+		}
+		// Veo 3.1 只支持 asset 参考图；style 会被上游直接拒绝，在这里拦下来
+		// 才能给出说得清的原因。
+		if referenceType != veoReferenceTypeAsset {
+			return nil, "", fmt.Errorf("referenceType %q is not supported, only %q", referenceType, veoReferenceTypeAsset)
+		}
 		return item.Image, referenceType, nil
 	}
 
 	// Allow a bare image object as a shorthand reference image.
-	return raw, "asset", nil
+	return raw, veoReferenceTypeAsset, nil
 }

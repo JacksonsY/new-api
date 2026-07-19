@@ -212,6 +212,32 @@ func TestApplyVeoMetadataToInstanceReturnsErrorsForInvalidInputs(t *testing.T) {
 			errContains: "referenceImages string must contain a JSON array",
 		},
 		{
+			// Veo 3.1 只支持 asset；style 透传上去会被上游拒绝，本地拦下来
+			// 才能说清原因。
+			name: "unsupported reference type",
+			metadata: map[string]any{
+				"referenceImages": []any{
+					map[string]any{
+						"image":         "data:image/png;base64,aVZCTw==",
+						"referenceType": "style",
+					},
+				},
+			},
+			errContains: "referenceType \"style\" is not supported",
+		},
+		{
+			name: "too many reference images",
+			metadata: map[string]any{
+				"referenceImages": []any{
+					"data:image/png;base64,aVZCTw==",
+					"data:image/png;base64,aVZCTw==",
+					"data:image/png;base64,aVZCTw==",
+					"data:image/png;base64,aVZCTw==",
+				},
+			},
+			errContains: "at most 3 reference images",
+		},
+		{
 			name: "malformed json image string",
 			metadata: map[string]any{
 				"last_frame": `{"inlineData":{"mimeType":"image/png","data":"broken"`,

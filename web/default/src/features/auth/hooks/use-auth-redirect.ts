@@ -115,17 +115,9 @@ export function useAuthRedirect() {
     })
   }
 
-  /**
-   * Redirect to register page
-   */
-  const redirectToRegister = () => {
-    navigate({ to: '/sign-up', replace: true })
-  }
-
   return {
     handleLoginSuccess,
     redirectTo2FA,
     redirectToLogin,
-    redirectToRegister,
   }
 }

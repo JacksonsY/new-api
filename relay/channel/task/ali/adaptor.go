@@ -102,31 +102,6 @@ type AliUsage struct {
 	SR                  dto.IntValue `json:"SR,omitempty"`                    // 生成视频的分辨率档位
 }
 
-type AliMetadata struct {
-	// Input 相关
-	AudioURL           string          `json:"audio_url,omitempty"`            // 音频URL
-	ImgURL             string          `json:"img_url,omitempty"`              // 图片URL（图生视频）
-	FirstFrameURL      string          `json:"first_frame_url,omitempty"`      // 首帧图片URL（首尾帧生视频）
-	LastFrameURL       string          `json:"last_frame_url,omitempty"`       // 尾帧图片URL（首尾帧生视频）
-	Media              []AliVideoMedia `json:"media,omitempty"`                // 媒体列表（wan2.7新协议）
-	NegativePrompt     string          `json:"negative_prompt,omitempty"`      // 反向提示词
-	Template           string          `json:"template,omitempty"`             // 视频特效模板
-	ReferenceVideoURLs []string        `json:"reference_video_urls,omitempty"` // 参考视频URL数组（wan2.6-r2v）
-	ReferenceVoice     *string         `json:"reference_voice,omitempty"`      // 参考声音URL（wan2.7-r2v）
-
-	// Parameters 相关
-	Resolution   *string `json:"resolution,omitempty"`    // 分辨率: 480P/720P/1080P
-	Size         *string `json:"size,omitempty"`          // 尺寸: 如 "832*480"
-	Ratio        *string `json:"ratio,omitempty"`         // 比例: 16:9/9:16/1:1/4:3/3:4（wan2.7）
-	Duration     *int    `json:"duration,omitempty"`      // 时长
-	PromptExtend *bool   `json:"prompt_extend,omitempty"` // 是否开启prompt智能改写
-	Watermark    *bool   `json:"watermark,omitempty"`     // 是否添加水印
-	Audio        *bool   `json:"audio,omitempty"`         // 是否添加音频
-	AudioSetting *string `json:"audio_setting,omitempty"` // 音频处理方式（wan2.7-videoedit）
-	Seed         *int    `json:"seed,omitempty"`          // 随机数种子
-	ShotType     *string `json:"shot_type,omitempty"`     // 镜头类型: single/multi（wan2.6-r2v）
-}
-
 // ============================
 // Adaptor implementation
 // ============================
