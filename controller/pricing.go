@@ -19,21 +19,29 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 
 	filtered := make([]model.Pricing, 0, len(pricing))
 	for _, item := range pricing {
-		if common.StringsContains(item.EnableGroup, "all") {
-			filtered = append(filtered, item)
-			continue
-		}
+		hasAll := common.StringsContains(item.EnableGroup, "all")
+		// 随行的具体分组名一律按用户可用集裁剪，"all" 另行处理——即使条目
+		// 含 "all"，也不能把用户无权使用的内部分组名(团队/代理)泄露到前端。
 		usableEnableGroups := make([]string, 0, len(item.EnableGroup))
 		for _, group := range item.EnableGroup {
+			if group == "all" {
+				continue
+			}
 			if _, ok := usableGroup[group]; ok {
 				usableEnableGroups = append(usableEnableGroups, group)
 			}
 		}
+		// item is a copy of the shared pricing cache entry; assign a fresh
+		// slice so the cached EnableGroup is never mutated across requests.
+		if hasAll {
+			// "all" 对所有用户可见，始终保留并置首；其余仅保留用户可用的具体分组。
+			item.EnableGroup = append([]string{"all"}, usableEnableGroups...)
+			filtered = append(filtered, item)
+			continue
+		}
 		if len(usableEnableGroups) == 0 {
 			continue
 		}
-		// item is a copy of the shared pricing cache entry; assign a fresh
-		// slice so the cached EnableGroup is never mutated across requests.
 		item.EnableGroup = usableEnableGroups
 		filtered = append(filtered, item)
 	}
