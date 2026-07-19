@@ -212,7 +212,11 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 			won, err := task.UpdateWithStatus(preStatus)
 			if err != nil {
 				logger.LogError(ctx, "UpdateMidjourneyTask task error: "+err.Error())
-			} else if won && shouldReturnQuota {
+			} else if won && shouldReturnQuota && preStatus != "FAILURE" {
+				// 必须判 preStatus != FAILURE：同批轮询响应对同一 mj_id 返回两条失败条目时，
+				// 第二条 preStatus 已是 FAILURE，UpdateWithStatus("FAILURE") 在 PG/SQLite
+				// (matched=affected)或 MySQL(任一字段变化)下仍 won=true，会再退一次款、余额
+				// 凭空增发。与 Suno 轮询退款(967c3132b)同款守卫。
 				err = model.IncreaseUserQuota(task.UserId, task.Quota, false)
 				if err != nil {
 					logger.LogError(ctx, "fail to increase user quota: "+err.Error())
