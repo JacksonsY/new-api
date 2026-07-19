@@ -79,8 +79,13 @@ var passthroughSkipHeaderNamesLower = map[string]struct{}{
 	"cookie": {},
 
 	// Additional headers that should not be forwarded by name-matching passthrough rules.
-	"host":            {},
-	"content-length":  {},
+	"host":           {},
+	"content-length": {},
+	// content-type 描述请求体格式，由各适配器 BuildRequestBody 根据上游协议设定；
+	// 若经 "*"/regex passthrough 透传客户端值，会把"客户端 multipart 提交→上游 JSON"
+	// 的任务适配器(xai/gemini 等)的 application/json 覆盖成 multipart boundary 导致上游 400。
+	// 显式配置的 content-type override 走单独的覆盖循环、不受此跳过影响。
+	"content-type":    {},
 	"accept-encoding": {},
 
 	// Do not passthrough credentials by wildcard/regex.
