@@ -67,15 +67,18 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info *re
 			openAIRequest.Reasoning = reasoningJSON
 		}
 	} else if info != nil {
-		// 纯 OpenAI 兼容渠道：把 Claude 客户端显式的 effort 透传为 reasoning_effort，
-		// 否则 reasoning_effort=high 这类意图到 O 系列/GPT-5 上游会全丢(issue #5922)——
-		// effort 适配此前只在 OpenRouter 分支里做。GetEfforts 取的是 Claude
-		// output_config.effort(low/medium/high)，恰是合法的 OpenAI reasoning_effort 取值，
-		// 由下游 openai adaptor 的 O 系列/GPT-5 分支消费。仅 budget 无显式 effort 的场景
-		// 需启发式映射，风险较高，暂不处理。
+		// 把 Claude 客户端的 effort 透传给 OpenAI 上游(issue #5922)，但必须收敛：
+		// (1) 仅对 OpenAI 推理模型(O 系列/GPT-5)设置——gpt-4o 等非推理模型带
+		//     reasoning_effort 会被上游 400；(2) 把 Claude 专有档(xhigh/max/minimal)
+		//     收敛到目标模型接受的取值——否则同样 400。GetEfforts 取 output_config.effort。
+		// 无法安全映射时不设，退回不透传行为，绝不产生 400。
 		if openAIRequest.ReasoningEffort == "" {
-			if effort := claudeRequest.GetEfforts(); effort != "" {
-				openAIRequest.ReasoningEffort = effort
+			upstream := info.UpstreamModelName
+			isGPT5 := dto.IsOpenAIGPT5Model(upstream)
+			if dto.IsOpenAIReasoningOModel(upstream) || isGPT5 {
+				if eff := clampReasoningEffortForOpenAI(claudeRequest.GetEfforts(), isGPT5); eff != "" {
+					openAIRequest.ReasoningEffort = eff
+				}
 			}
 		}
 		thinkingSuffix := "-thinking"
@@ -229,4 +232,23 @@ func requestToJSONString(v interface{}) string {
 		return "{}"
 	}
 	return string(b)
+}
+
+// clampReasoningEffortForOpenAI 把 Claude 的 effort 收敛到 OpenAI 目标模型接受的取值。
+// O 系列接受 low/medium/high；GPT-5 额外接受 minimal。Claude 专有的 xhigh/max 收敛为
+// high，minimal 在非 GPT-5 上降为 low。无法安全映射(如 none/空)返回空，由调用方跳过设置。
+func clampReasoningEffortForOpenAI(effort string, isGPT5 bool) string {
+	switch effort {
+	case "low", "medium", "high":
+		return effort
+	case "minimal":
+		if isGPT5 {
+			return "minimal"
+		}
+		return "low"
+	case "xhigh", "max":
+		return "high"
+	default:
+		return ""
+	}
 }
