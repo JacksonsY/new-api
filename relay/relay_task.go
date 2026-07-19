@@ -105,12 +105,15 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 		info.ApiKey = key
 	}
 
-	// 提取 remix 参数（时长、分辨率 → OtherRatios）
+	// 提取 remix 参数（时长、分辨率 → OtherRatios）。快照到 info.RemixOtherRatios，
+	// 供每次尝试(含跨渠道重试)重建 PriceData 后稳定重放——避免从累积的
+	// PriceData.OtherRatios() 现读而把上一尝试的适配器倍率带入(见 RelayTaskSubmit)。
 	if info.Action == constant.TaskActionRemix {
+		remix := map[string]float64{}
 		if originTask.PrivateData.BillingContext != nil {
 			// 新的 remix 逻辑：直接从原始任务的 BillingContext 中提取 OtherRatios（如果存在）
 			for s, f := range originTask.PrivateData.BillingContext.OtherRatios {
-				info.PriceData.AddOtherRatio(s, f)
+				remix[s] = f
 			}
 		} else {
 			// 旧的 remix 逻辑：直接从 task data 解析 seconds 和 size（如果存在）
@@ -126,12 +129,16 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 				seconds = relaycommon.MaxTaskDurationSeconds
 			}
 			sizeStr, _ := taskData["size"].(string)
-			info.PriceData.AddOtherRatio("seconds", float64(seconds))
-			info.PriceData.AddOtherRatio("size", 1)
+			remix["seconds"] = float64(seconds)
+			remix["size"] = 1
 			if sizeStr == "1792x1024" || sizeStr == "1024x1792" {
-				info.PriceData.AddOtherRatio("size", 1.666667)
+				remix["size"] = 1.666667
 			}
 		}
+		for s, f := range remix {
+			info.PriceData.AddOtherRatio(s, f)
+		}
+		info.RemixOtherRatios = remix
 	}
 
 	return nil
@@ -179,11 +186,14 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 4. 价格计算：基础模型价格
 	//    ModelPriceHelperPerCall 返回全新的 PriceData，其未导出的 otherRatios 为
-	//    空。先接住 ResolveOriginTask 在 remix 路径预设的倍率，重建后灌回——否则
-	//    remix 会丢掉原任务的时长/分辨率倍率而按基础单价计费（12 秒 1792x1024
+	//    空。先接住 ResolveOriginTask 在 remix 路径快照的原任务倍率，重建后灌回——
+	//    否则 remix 会丢掉原任务的时长/分辨率倍率而按基础单价计费（12 秒 1792x1024
 	//    的 sora remix 少收约 20 倍），而 sora 的 EstimateBilling 恰恰在 remix 时
 	//    返回 nil，正是因为它认定这些倍率已由 ResolveOriginTask 设好。
-	remixRatios := info.PriceData.OtherRatios()
+	//    必须读 info.RemixOtherRatios（一次性快照），不能读 info.PriceData.OtherRatios()
+	//    现值——后者在跨渠道重试时已累积上一尝试适配器 EstimateBilling 的键，各平台
+	//    键名不同、旧键不被新键覆盖，与新键连乘会过度计费（可达 20 倍）。
+	remixRatios := info.RemixOtherRatios
 	info.OriginModelName = modelName
 	priceData, err := helper.ModelPriceHelperPerCall(c, info)
 	if err != nil {

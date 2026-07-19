@@ -702,6 +702,12 @@ type TaskRelayInfo struct {
 
 	ConsumeQuota bool
 
+	// RemixOtherRatios 是 remix 提交时从原任务快照的一次性倍率(时长/分辨率等)。
+	// 每次尝试(含跨渠道重试)重建 PriceData 后从这里重放,不能改从 PriceData.OtherRatios()
+	// 现读——那会把上一尝试适配器 EstimateBilling 灌入的键(各平台键名不同)累积进来,
+	// 跨平台重试时旧键不被新键覆盖、与新键连乘造成过度计费。
+	RemixOtherRatios map[string]float64
+
 	// LockedChannel holds the full channel object when the request is bound to
 	// a specific channel (e.g., remix on origin task's channel). Stored as any
 	// to avoid an import cycle with model; callers type-assert to *model.Channel.
