@@ -2,7 +2,9 @@ package gemini
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -72,7 +74,32 @@ func ApplyVeoMetadataToInstance(metadata map[string]any, instance *VeoInstance) 
 		features.HasReferenceImages = len(referenceImages) > 0
 	}
 
+	// Veo 的三种输入模式互斥（官方 schema）：referenceImages 一旦提供就不允许
+	// 再带 image/lastFrame；lastFrame 只能作为 image 的配对尾帧存在。按 instance
+	// 的最终状态判断而非只看 metadata——image 也可能来自 multipart 上传。
+	if len(instance.ReferenceImages) > 0 && (instance.Image != nil || instance.LastFrame != nil) {
+		return features, fmt.Errorf("referenceImages cannot be combined with image or lastFrame")
+	}
+	if instance.LastFrame != nil && instance.Image == nil {
+		return features, fmt.Errorf("lastFrame requires image as the first frame")
+	}
+
 	return features, nil
+}
+
+// veoImageMimeType 归一化图片 MIME 类型。Veo 只接受 image/jpeg 与 image/png，
+// 声明缺失或不是图片类型时从 base64 内容嗅探；发 application/octet-stream 或
+// text/plain 这类值只会换来一次必然失败的上游往返。
+func veoImageMimeType(declared, base64Data string) string {
+	if t := strings.TrimSpace(declared); strings.HasPrefix(t, "image/") {
+		return t
+	}
+	if raw, err := base64.StdEncoding.DecodeString(base64Data); err == nil && len(raw) > 0 {
+		if detected := http.DetectContentType(raw); strings.HasPrefix(detected, "image/") {
+			return detected
+		}
+	}
+	return "image/png"
 }
 
 func rawMetadata(metadata map[string]any) (map[string]rawMessage, error) {
@@ -135,13 +162,13 @@ func parseVeoImageMetadata(raw rawMessage) (*VeoImageInput, error) {
 		if wire.InlineData.Data == "" {
 			return nil, fmt.Errorf("inlineData.data is required")
 		}
-		return NewVeoImageInput(wire.InlineData.Data, defaultMimeType(wire.InlineData.MimeType)), nil
+		return NewVeoImageInput(wire.InlineData.Data, veoImageMimeType(wire.InlineData.MimeType, wire.InlineData.Data)), nil
 	}
 	if wire.BytesBase64Encoded != "" {
-		return NewVeoImageInput(wire.BytesBase64Encoded, defaultMimeType(wire.MimeType)), nil
+		return NewVeoImageInput(wire.BytesBase64Encoded, veoImageMimeType(wire.MimeType, wire.BytesBase64Encoded)), nil
 	}
 	if wire.Data != "" {
-		return NewVeoImageInput(wire.Data, defaultMimeType(wire.MimeType)), nil
+		return NewVeoImageInput(wire.Data, veoImageMimeType(wire.MimeType, wire.Data)), nil
 	}
 	return nil, fmt.Errorf("image.inlineData is required")
 }
@@ -218,11 +245,4 @@ func parseVeoReferenceImageItem(raw rawMessage) (rawMessage, string, error) {
 
 	// Allow a bare image object as a shorthand reference image.
 	return raw, "asset", nil
-}
-
-func defaultMimeType(mimeType string) string {
-	if strings.TrimSpace(mimeType) == "" {
-		return "application/octet-stream"
-	}
-	return mimeType
 }

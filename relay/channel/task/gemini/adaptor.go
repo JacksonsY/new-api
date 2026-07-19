@@ -41,7 +41,26 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate)
+	if taskErr = relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate); taskErr != nil {
+		return taskErr
+	}
+	return ValidateVeoMediaMetadata(c)
+}
+
+// ValidateVeoMediaMetadata 预解析 metadata 里的媒体输入。这些是用户输入，必须在
+// 这里以 400 本地错误拒绝：留到 BuildRequestBody 才报会被包成 500 非本地错误，
+// 从而记为渠道故障并跨渠道重试——每个渠道都拿同一份坏输入再失败一次。
+// 这里用空 instance 校验，multipart 图片与 metadata 的互斥组合仍由
+// BuildRequestBody 的真实 instance 兜底。
+func ValidateVeoMediaMetadata(c *gin.Context) *dto.TaskError {
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	if _, err := ApplyVeoMetadataToInstance(req.Metadata, &VeoInstance{}); err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_metadata", http.StatusBadRequest)
+	}
+	return nil
 }
 
 // BuildRequestURL constructs the Gemini API predictLongRunning endpoint for Veo.

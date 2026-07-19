@@ -77,7 +77,12 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
 	// Use the standard validation method for TaskSubmitReq
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate)
+	if taskErr = relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate); taskErr != nil {
+		return taskErr
+	}
+	// 与 gemini 侧同理：metadata 媒体输入的解析错误属于用户输入错误，必须在此
+	// 以 400 拒绝，否则会被当成渠道故障并跨渠道重试。
+	return geminitask.ValidateVeoMediaMetadata(c)
 }
 
 // BuildRequestURL constructs the upstream URL.
