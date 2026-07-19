@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net/http"
@@ -151,6 +152,12 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	httpResp = resp.(*http.Response)
 	clientStream := info.IsStream
 	upstreamStream := isResponsesEventStreamContentType(httpResp.Header.Get("Content-Type"))
+	if !upstreamStream {
+		// 部分上游(如 ChatGPT Codex 的 /responses)返回 200 SSE 流却完全不带
+		// Content-Type，上面的 header 判断漏掉后调用方会把 SSE body 当 JSON 解析，
+		// 报 "invalid character 'e'"。改为嗅探 body 前缀。
+		upstreamStream = isResponsesEventStreamSSEBody(httpResp.Body, &httpResp.Body)
+	}
 	info.IsStream = clientStream || upstreamStream
 	if httpResp.StatusCode != http.StatusOK {
 		newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
@@ -186,4 +193,53 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 
 func isResponsesEventStreamContentType(contentType string) bool {
 	return strings.Contains(strings.ToLower(contentType), "text/event-stream")
+}
+
+// isResponsesEventStreamSSEBody detects an SSE response body (a leading
+// "event:" or "data:" prefix, after an optional BOM and/or whitespace) when
+// the upstream omits the Content-Type header. It uses bufio.Reader.Peek so no
+// byte is consumed — the wrapped reader written back through out still holds
+// the complete original body for the downstream stream/JSON handler. Peeking a
+// growing prefix lets a short live SSE prefix (e.g. "event: ping\n\n") be
+// recognized before EOF. JSON-like bodies (leading '{', '[', '"') are rejected
+// early. The caller must use out for subsequent reads.
+func isResponsesEventStreamSSEBody(rc io.ReadCloser, out *io.ReadCloser) bool {
+	if rc == nil {
+		return false
+	}
+	br := bufio.NewReader(rc)
+	// Peek 不消费字节，交回的 br 仍含完整 body（bufio 默认缓冲远大于 64）。
+	*out = &peekReadCloser{Reader: br, closer: rc}
+	for n := 1; n <= 64; n++ {
+		peeked, err := br.Peek(n)
+		trimmed := strings.TrimPrefix(string(peeked), "\xef\xbb\xbf")
+		trimmed = strings.TrimLeft(trimmed, " \t\r\n")
+		if strings.HasPrefix(trimmed, "event:") || strings.HasPrefix(trimmed, "data:") {
+			return true
+		}
+		// JSON-like start → definitely not SSE, stop probing.
+		if len(peeked) >= 1 && (peeked[0] == '{' || peeked[0] == '[' || peeked[0] == '"') {
+			return false
+		}
+		if err != nil {
+			break // EOF or buffer limit: no more bytes to confirm SSE
+		}
+	}
+	return false
+}
+
+// peekReadCloser wraps a bufio.Reader plus the original closer so downstream
+// consumers read from the buffer (which still holds every byte) and close
+// correctly.
+type peekReadCloser struct {
+	Reader *bufio.Reader
+	closer io.ReadCloser
+}
+
+func (p *peekReadCloser) Read(b []byte) (int, error) {
+	return p.Reader.Read(b)
+}
+
+func (p *peekReadCloser) Close() error {
+	return p.closer.Close()
 }
