@@ -6216,6 +6216,11 @@
     "Video URL": "URL video",
     "Watermark": "Hình mờ",
     "Your browser does not support the video tag.": "Trình duyệt của bạn không hỗ trợ thẻ video.",
-    "Timed out waiting for the video task": "Hết thời gian chờ tác vụ video"
+    "Timed out waiting for the video task": "Hết thời gian chờ tác vụ video",
+    "Input/Output": "Đầu vào/Đầu ra",
+    "Availability": "Khả dụng",
+    "Try": "Dùng thử",
+    "Context length": "Độ dài ngữ cảnh",
+    "Context window in tokens. Shown on the model pricing page; leave 0 if not applicable.": "Cửa sổ ngữ cảnh (token). Hiển thị trên trang giá mô hình; để 0 nếu không áp dụng."
   }
 }

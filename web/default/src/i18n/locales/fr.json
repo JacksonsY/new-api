@@ -6216,6 +6216,11 @@
     "Video URL": "URL de la vidéo",
     "Watermark": "Filigrane",
     "Your browser does not support the video tag.": "Votre navigateur ne prend pas en charge la balise vidéo.",
-    "Timed out waiting for the video task": "Délai d'attente dépassé pour la tâche vidéo"
+    "Timed out waiting for the video task": "Délai d'attente dépassé pour la tâche vidéo",
+    "Input/Output": "Entrée/Sortie",
+    "Availability": "Disponibilité",
+    "Try": "Essayer",
+    "Context length": "Longueur de contexte",
+    "Context window in tokens. Shown on the model pricing page; leave 0 if not applicable.": "Fenêtre de contexte en tokens. Affichée sur la page des tarifs ; laissez 0 si non applicable."
   }
 }

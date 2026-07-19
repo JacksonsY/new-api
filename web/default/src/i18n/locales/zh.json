@@ -6216,6 +6216,11 @@
     "Video URL": "视频 URL",
     "Watermark": "水印",
     "Your browser does not support the video tag.": "您的浏览器不支持 video 标签。",
-    "Timed out waiting for the video task": "等待视频任务超时"
+    "Timed out waiting for the video task": "等待视频任务超时",
+    "Input/Output": "输入/输出",
+    "Availability": "可用率",
+    "Try": "体验",
+    "Context length": "上下文长度",
+    "Context window in tokens. Shown on the model pricing page; leave 0 if not applicable.": "上下文窗口（token）。展示在模型广场，不适用时填 0。"
   }
 }

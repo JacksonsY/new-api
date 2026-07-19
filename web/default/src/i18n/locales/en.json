@@ -6216,6 +6216,11 @@
     "Video URL": "Video URL",
     "Watermark": "Watermark",
     "Your browser does not support the video tag.": "Your browser does not support the video tag.",
-    "Timed out waiting for the video task": "Timed out waiting for the video task"
+    "Timed out waiting for the video task": "Timed out waiting for the video task",
+    "Input/Output": "Input/Output",
+    "Availability": "Availability",
+    "Try": "Try",
+    "Context length": "Context length",
+    "Context window in tokens. Shown on the model pricing page; leave 0 if not applicable.": "Context window in tokens. Shown on the model pricing page; leave 0 if not applicable."
   }
 }

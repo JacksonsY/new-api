@@ -22,7 +22,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { BadgeListCell } from '@/components/data-table'
-import { GroupBadge } from '@/components/group-badge'
+import { Button } from '@/components/design-system/button'
 import { StatusBadge } from '@/components/status-badge'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
@@ -52,6 +52,10 @@ export interface PricingColumnsOptions {
   showRechargePrice?: boolean
   selectedGroup?: string
   perfMap?: Map<string, ModelPerfBadgeData>
+  /** Opens the model detail panel. */
+  onModelClick?: (modelName: string) => void
+  /** Opens the playground with this model preselected. */
+  onTryModel?: (modelName: string) => void
 }
 
 type PriceColumnType = Extract<PriceType, 'input' | 'cache' | 'output'>
@@ -76,34 +80,42 @@ function renderEmptyPrice(): ReactNode {
   return renderEmptyCell('right')
 }
 
-function renderPriceCell(
-  props: {
-    model: PricingModel
-    priceType: PriceColumnType
-    options: Required<
-      Omit<PricingColumnsOptions, 'selectedGroup' | 'perfMap'>
-    > & {
-      selectedGroup?: string
-    }
-  },
+type PriceRenderOptions = Required<
+  Omit<
+    PricingColumnsOptions,
+    'selectedGroup' | 'perfMap' | 'onModelClick' | 'onTryModel'
+  >
+> & {
+  selectedGroup?: string
+}
+
+/** 上下文窗口按 K 显示；未标注(0)时返回 null 交由调用方渲染占位。 */
+function formatContextLength(tokens?: number): string | null {
+  if (!tokens || tokens <= 0) return null
+  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`
+  return String(tokens)
+}
+
+/**
+ * 价格合并列：按量计费显示「输入 / 输出」，按次/按秒计费只有单一价格，
+ * 显示价格与其计价单位。
+ */
+function renderPriceSummaryCell(
+  props: { model: PricingModel; options: PriceRenderOptions },
   t: TFunction
 ): ReactNode {
-  const tokenUnitLabel = props.options.tokenUnit === 'K' ? '1K' : '1M'
-  const dynamicSummary = getDynamicPricingSummary(props.model, {
-    tokenUnit: props.options.tokenUnit,
-    showRechargePrice: props.options.showRechargePrice,
-    priceRate: props.options.priceRate,
-    usdExchangeRate: props.options.usdExchangeRate,
-    groupRatioMultiplier: getDynamicDisplayGroupRatio(
-      props.model,
-      props.options.selectedGroup
-    ),
+  const { model, options } = props
+  const dynamicSummary = getDynamicPricingSummary(model, {
+    tokenUnit: options.tokenUnit,
+    showRechargePrice: options.showRechargePrice,
+    priceRate: options.priceRate,
+    usdExchangeRate: options.usdExchangeRate,
+    groupRatioMultiplier: getDynamicDisplayGroupRatio(model, options.selectedGroup),
   })
 
   if (dynamicSummary?.isSpecialExpression) {
-    if (props.priceType !== 'input') return renderEmptyPrice()
     return (
-      <div className='max-w-36'>
+      <div className='text-right'>
         <p className='text-warning text-xs font-medium'>
           {t('Special billing expression')}
         </p>
@@ -115,74 +127,71 @@ function renderPriceCell(
   }
 
   if (dynamicSummary) {
-    const entry = dynamicSummary.entries.find(
-      (item) => item.field === DYNAMIC_FIELD_BY_PRICE_TYPE[props.priceType]
-    )
-    if (!entry) return renderEmptyPrice()
-
+    const pick = (field: string) =>
+      dynamicSummary.entries.find((item) => item.field === field)
+    const input = pick(DYNAMIC_FIELD_BY_PRICE_TYPE.input)
+    const output = pick(DYNAMIC_FIELD_BY_PRICE_TYPE.output)
+    if (!input && !output) return renderEmptyPrice()
     return (
       <div className='text-right'>
         <p className='text-sm font-medium tabular-nums'>
-          {stripTrailingZeros(entry.formatted)}
+          {input ? stripTrailingZeros(input.formatted) : '—'}
+          <span className='text-muted-foreground mx-1'>/</span>
+          {output ? stripTrailingZeros(output.formatted) : '—'}
         </p>
-        <p className='text-muted-foreground mt-0.5 text-xs'>
-          / {tokenUnitLabel} {t('tokens')}
-          {dynamicSummary.tierCount > 1 &&
-            ` · ${t('{{count}} tiers', {
-              count: dynamicSummary.tierCount,
-            })}`}
-        </p>
+        {dynamicSummary.tierCount > 1 && (
+          <p className='text-muted-foreground mt-0.5 text-xs'>
+            {t('{{count}} tiers', { count: dynamicSummary.tierCount })}
+          </p>
+        )}
       </div>
     )
   }
 
-  if (!isTokenBasedModel(props.model)) {
-    if (props.priceType !== 'input') return renderEmptyPrice()
+  if (!isTokenBasedModel(model)) {
+    const unit = isPerSecondVideoModel(model) ? t('second') : t('request')
     return (
       <div className='text-right'>
         <p className='text-sm font-medium tabular-nums'>
           {stripTrailingZeros(
             formatRequestPrice(
-              props.model,
-              props.options.showRechargePrice,
-              props.options.priceRate,
-              props.options.usdExchangeRate,
-              props.options.selectedGroup
+              model,
+              options.showRechargePrice,
+              options.priceRate,
+              options.usdExchangeRate,
+              options.selectedGroup
             )
           )}
-        </p>
-        <p className='text-muted-foreground mt-0.5 text-xs'>
-          / {isPerSecondVideoModel(props.model) ? t('second') : t('request')}
+          <span className='text-muted-foreground'>/{unit}</span>
         </p>
       </div>
     )
   }
 
-  if (props.priceType === 'cache' && props.model.cache_ratio == null) {
-    return renderEmptyPrice()
-  }
+  const priceOf = (priceType: PriceColumnType) =>
+    stripTrailingZeros(
+      formatPrice(
+        model,
+        priceType,
+        options.tokenUnit,
+        options.showRechargePrice,
+        options.priceRate,
+        options.usdExchangeRate,
+        options.selectedGroup
+      )
+    )
 
   return (
     <div className='text-right'>
       <p className='text-sm font-medium tabular-nums'>
-        {stripTrailingZeros(
-          formatPrice(
-            props.model,
-            props.priceType,
-            props.options.tokenUnit,
-            props.options.showRechargePrice,
-            props.options.priceRate,
-            props.options.usdExchangeRate,
-            props.options.selectedGroup
-          )
-        )}
-      </p>
-      <p className='text-muted-foreground mt-0.5 text-xs'>
-        / {tokenUnitLabel} {t('tokens')}
+        {priceOf('input')}
+        <span className='text-muted-foreground mx-1'>/</span>
+        {priceOf('output')}
       </p>
     </div>
   )
 }
+
 
 export function usePricingColumns(
   options: PricingColumnsOptions = {}
@@ -199,7 +208,7 @@ export function usePricingColumns(
   return [
     {
       accessorKey: 'model_name',
-      header: t('Model'),
+      header: t('Model name'),
       cell: ({ row }) => {
         const model = row.original
         const modelIconKey = model.icon || model.vendor_icon
@@ -219,73 +228,13 @@ export function usePricingColumns(
                 {model.model_name}
               </p>
               <p className='text-muted-foreground mt-0.5 line-clamp-1 text-xs'>
-                {model.vendor_name ||
-                  model.description ||
-                  getBillingTypeLabel(t, model)}
+                {model.vendor_name || model.description || ''}
               </p>
             </div>
           </div>
         )
       },
-      minSize: 260,
-      enableSorting: false,
-    },
-    {
-      id: 'input_price',
-      header: () => <div className='text-right'>{t('Input')}</div>,
-      cell: ({ row }) =>
-        renderPriceCell(
-          {
-            model: row.original,
-            priceType: 'input',
-            options: priceOptions,
-          },
-          t
-        ),
-      size: 130,
-      enableSorting: false,
-    },
-    {
-      id: 'cached_price',
-      header: () => <div className='text-right'>{t('Cached input')}</div>,
-      cell: ({ row }) =>
-        renderPriceCell(
-          {
-            model: row.original,
-            priceType: 'cache',
-            options: priceOptions,
-          },
-          t
-        ),
-      size: 130,
-      enableSorting: false,
-    },
-    {
-      id: 'output_price',
-      header: () => <div className='text-right'>{t('Output')}</div>,
-      cell: ({ row }) =>
-        renderPriceCell(
-          {
-            model: row.original,
-            priceType: 'output',
-            options: priceOptions,
-          },
-          t
-        ),
-      size: 130,
-      enableSorting: false,
-    },
-    {
-      id: 'health',
-      header: t('Health'),
-      cell: ({ row }) => {
-        const perf = options.perfMap?.get(row.original.model_name || '')
-        if (!perf) {
-          return renderEmptyCell()
-        }
-        return <ModelPerfBadge perf={perf} className='grid' />
-      },
-      size: 160,
+      minSize: 240,
       enableSorting: false,
     },
     {
@@ -306,48 +255,83 @@ export function usePricingColumns(
           />
         )
       },
-      size: 160,
-      enableSorting: false,
-    },
-    {
-      accessorKey: 'supported_endpoint_types',
-      header: t('Endpoints'),
-      cell: ({ row }) => {
-        const endpoints = row.original.supported_endpoint_types || []
-        if (endpoints.length === 0) {
-          return renderEmptyCell()
-        }
-        return (
-          <BadgeListCell
-            items={endpoints.map((endpoint) => (
-              <StatusBadge key={endpoint} variant='neutral' size='md'>
-                {endpoint}
-              </StatusBadge>
-            ))}
-          />
-        )
-      },
       size: 150,
       enableSorting: false,
     },
     {
-      accessorKey: 'enable_groups',
-      header: t('Groups'),
+      id: 'context',
+      header: t('Context'),
       cell: ({ row }) => {
-        const groups = row.original.enable_groups || []
-        if (groups.length === 0) {
+        const label = formatContextLength(row.original.context_length)
+        if (!label) return renderEmptyCell()
+        return <span className='text-sm tabular-nums'>{label}</span>
+      },
+      size: 90,
+      enableSorting: false,
+    },
+    {
+      id: 'billing',
+      header: t('Billing'),
+      cell: ({ row }) => (
+        <StatusBadge variant='neutral' size='md'>
+          {getBillingTypeLabel(t, row.original)}
+        </StatusBadge>
+      ),
+      size: 110,
+      enableSorting: false,
+    },
+    {
+      id: 'price',
+      header: () => (
+        <div className='text-right'>
+          {t('Input/Output')} $/{priceOptions.tokenUnit}
+        </div>
+      ),
+      cell: ({ row }) =>
+        renderPriceSummaryCell({ model: row.original, options: priceOptions }, t),
+      size: 170,
+      enableSorting: false,
+    },
+    {
+      id: 'health',
+      header: t('Availability'),
+      cell: ({ row }) => {
+        const perf = options.perfMap?.get(row.original.model_name || '')
+        if (!perf) {
           return renderEmptyCell()
         }
+        return <ModelPerfBadge perf={perf} className='grid' />
+      },
+      size: 160,
+      enableSorting: false,
+    },
+    {
+      id: 'actions',
+      header: '',
+      cell: ({ row }) => {
+        const model = row.original
+        const canTry = isTokenBasedModel(model) && Boolean(options.onTryModel)
         return (
-          <BadgeListCell
-            items={groups.map((group) => (
-              <GroupBadge key={group} group={group} size='md' />
-            ))}
-            tooltipClassName='max-w-72 p-2'
-          />
+          <div className='flex justify-end'>
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={(event) => {
+                // 行本身也可点开详情，避免两个处理器同时触发
+                event.stopPropagation()
+                if (canTry) {
+                  options.onTryModel?.(model.model_name)
+                  return
+                }
+                options.onModelClick?.(model.model_name)
+              }}
+            >
+              {canTry ? t('Try') : t('Details')}
+            </Button>
+          </div>
         )
       },
-      size: 140,
+      size: 90,
       enableSorting: false,
     },
   ]

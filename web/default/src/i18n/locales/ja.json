@@ -6216,6 +6216,11 @@
     "Video URL": "動画 URL",
     "Watermark": "透かし",
     "Your browser does not support the video tag.": "お使いのブラウザは video タグに対応していません。",
-    "Timed out waiting for the video task": "動画タスクの待機がタイムアウトしました"
+    "Timed out waiting for the video task": "動画タスクの待機がタイムアウトしました",
+    "Input/Output": "入力/出力",
+    "Availability": "可用性",
+    "Try": "試す",
+    "Context length": "コンテキスト長",
+    "Context window in tokens. Shown on the model pricing page; leave 0 if not applicable.": "コンテキストウィンドウ（トークン）。モデル価格ページに表示されます。該当しない場合は 0 のままにしてください。"
   }
 }

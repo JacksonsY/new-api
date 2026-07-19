@@ -6216,6 +6216,11 @@
     "Video URL": "URL видео",
     "Watermark": "Водяной знак",
     "Your browser does not support the video tag.": "Ваш браузер не поддерживает тег video.",
-    "Timed out waiting for the video task": "Истекло время ожидания задачи видео"
+    "Timed out waiting for the video task": "Истекло время ожидания задачи видео",
+    "Input/Output": "Ввод/Вывод",
+    "Availability": "Доступность",
+    "Try": "Попробовать",
+    "Context length": "Длина контекста",
+    "Context window in tokens. Shown on the model pricing page; leave 0 if not applicable.": "Контекстное окно в токенах. Отображается на странице цен; оставьте 0, если неприменимо."
   }
 }

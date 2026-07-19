@@ -89,6 +89,14 @@ export function Pricing() {
     [navigate, routeSearch]
   )
 
+  // 「体验」直达 playground 并预选该模型，省去用户到那边再翻一遍模型列表。
+  const handleTryModel = useCallback(
+    (modelName: string) => {
+      navigate({ to: '/playground', search: { model: modelName } })
+    },
+    [navigate]
+  )
+
   const availableGroups = useMemo(
     () =>
       Object.keys(usableGroup || {}).filter(
@@ -111,6 +119,7 @@ export function Pricing() {
       showRechargePrice={showRechargePrice}
       selectedGroup={groupFilter}
       onModelClick={handleModelClick}
+      onTryModel={handleTryModel}
     />
   )
 

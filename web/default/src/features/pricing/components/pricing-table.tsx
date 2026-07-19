@@ -43,6 +43,7 @@ export interface PricingTableProps {
   showRechargePrice?: boolean
   selectedGroup?: string
   onModelClick?: (modelName: string) => void
+  onTryModel?: (modelName: string) => void
 }
 
 export function PricingTable(props: PricingTableProps) {
@@ -56,6 +57,7 @@ export function PricingTable(props: PricingTableProps) {
     showRechargePrice = false,
     selectedGroup,
     onModelClick,
+    onTryModel,
   } = props
 
   const [pagination, setPagination] = useState<PaginationState>({
@@ -91,6 +93,8 @@ export function PricingTable(props: PricingTableProps) {
     showRechargePrice,
     selectedGroup,
     perfMap,
+    onModelClick,
+    onTryModel,
   })
 
   const { table } = useDataTable({

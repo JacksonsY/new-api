@@ -95,6 +95,7 @@ const extendedModelFormSchema = z.object({
   tags: z.array(z.string()),
   vendor_id: z.number().optional(),
   endpoints: z.string(),
+  context_length: z.number().min(0),
   name_rule: z.number(),
   status: z.boolean(),
   sync_official: z.boolean(),
@@ -255,6 +256,7 @@ export function ModelMutateDrawer({
       tags: [],
       vendor_id: undefined,
       endpoints: '',
+      context_length: 0,
       name_rule: 0,
       status: true,
       sync_official: true,
@@ -315,6 +317,7 @@ export function ModelMutateDrawer({
         tags: parseModelTags(model.tags),
         vendor_id: model.vendor_id,
         endpoints: model.endpoints || '',
+        context_length: model.context_length || 0,
         name_rule: model.name_rule || 0,
         status: model.status === 1,
         sync_official: model.sync_official === 1,
@@ -419,6 +422,7 @@ export function ModelMutateDrawer({
         tags: [],
         vendor_id: undefined,
         endpoints: '',
+        context_length: 0,
         name_rule: 0,
         status: true,
         sync_official: true,
@@ -841,6 +845,33 @@ export function ModelMutateDrawer({
                     </FormControl>
                     <FormDescription>
                       {t('Press Enter or comma to add tags')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='context_length'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Context length')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        value={field.value === 0 ? '' : Number(field.value)}
+                        onChange={(e) =>
+                          field.onChange(Number(e.target.value) || 0)
+                        }
+                        placeholder='200000'
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Context window in tokens. Shown on the model pricing page; leave 0 if not applicable.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

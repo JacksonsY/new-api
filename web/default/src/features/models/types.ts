@@ -41,6 +41,8 @@ export interface Model {
   tags?: string
   vendor_id?: number
   endpoints?: string
+  /** 上下文窗口(token)，0 表示未标注 */
+  context_length?: number
   status: number
   sync_official: number
   created_time: number
@@ -235,6 +237,7 @@ export const modelFormSchema = z.object({
   tags: z.array(z.string()).default([]),
   vendor_id: z.number().optional(),
   endpoints: z.string().default(''),
+  context_length: z.number().min(0).default(0),
   name_rule: z.number().min(0).max(3).default(0),
   status: z.boolean().default(true),
   sync_official: z.boolean().default(true),

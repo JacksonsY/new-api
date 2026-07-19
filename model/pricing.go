@@ -37,6 +37,8 @@ type Pricing struct {
 	BillingExpr            string                  `json:"billing_expr,omitempty"`
 	PricingVersion         string                  `json:"pricing_version,omitempty"`
 	VideoResolutionPricing []VideoResolutionPrice  `json:"video_resolution_pricing,omitempty"`
+	// ContextLength 上下文窗口(token)，取自模型元数据；0 表示未标注。
+	ContextLength int `json:"context_length,omitempty"`
 }
 
 // VideoResolutionPrice 视频模型某分辨率档的每秒价（元/秒），用于定价页展示。
@@ -386,6 +388,7 @@ func updatePricing() {
 			pricing.Icon = meta.Icon
 			pricing.Tags = meta.Tags
 			pricing.VendorID = meta.VendorID
+			pricing.ContextLength = meta.ContextLength
 		}
 		modelPrice, findPrice := ratio_setting.GetModelPrice(model, false)
 		if findPrice {

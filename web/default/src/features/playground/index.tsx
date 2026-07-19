@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useSearch } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -45,6 +46,9 @@ import type { VideoTaskItem } from './types'
 
 export function Playground() {
   const { t } = useTranslation()
+  const { model: presetModel } = useSearch({
+    from: '/_authenticated/playground/',
+  })
   const {
     config,
     parameterEnabled,
@@ -103,6 +107,14 @@ export function Playground() {
   } = useVideoTask()
 
   const [previewTask, setPreviewTask] = useState<VideoTaskItem | null>(null)
+
+  // 模型广场的「体验」按钮会带 ?model= 过来，覆盖上次使用的模型。
+  // 仅在该参数变化时生效，用户随后手动改模型不会被这里回滚。
+  useEffect(() => {
+    if (presetModel) {
+      updateConfig('model', presetModel)
+    }
+  }, [presetModel, updateConfig])
 
   // The video tab only appears when the user can reach a video model
   const hasVideoModels = models.some((model) =>
