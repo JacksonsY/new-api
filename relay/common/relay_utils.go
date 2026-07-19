@@ -303,9 +303,15 @@ func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *d
 		return taskErr
 	}
 
-	if len(req.Images) == 0 && strings.TrimSpace(req.Image) != "" {
-		// 兼容单图上传
-		req.Images = []string{req.Image}
+	// 兼容单图上传：input_reference 是 OpenAI 视频接口的标准字段，image 是历史别名。
+	// 适配器统一从 Images 取媒体，这里不做归一化的话，只读 Images 的适配器分支会
+	// 静默丢掉整个媒体输入。
+	if len(req.Images) == 0 {
+		if inputReference := strings.TrimSpace(req.InputReference); inputReference != "" {
+			req.Images = []string{inputReference}
+		} else if image := strings.TrimSpace(req.Image); image != "" {
+			req.Images = []string{image}
+		}
 	}
 
 	storeTaskRequest(c, info, action, req)

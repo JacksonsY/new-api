@@ -18,7 +18,10 @@ type TaskStatus string
 func (t TaskStatus) ToVideoStatus() string {
 	var status string
 	switch t {
-	case TaskStatusQueued, TaskStatusSubmitted:
+	// NOT_START 是 InitTask 建行时的初始态，轮询 worker 尚未接手。对客户端而言
+	// 这就是排队中；不映射的话会落到 default 返回 "unknown"，而那不是 OpenAI
+	// 视频协议的合法状态值，下游按四状态解析时会整条记录落空。
+	case TaskStatusNotStart, TaskStatusQueued, TaskStatusSubmitted:
 		status = dto.VideoStatusQueued
 	case TaskStatusInProgress:
 		status = dto.VideoStatusInProgress

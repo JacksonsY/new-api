@@ -401,8 +401,8 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 	if isWan27I2VModel(aliReq.Model) {
 		// wan2.7-i2v 由 normalizeWan27I2VInput 从 req 构建 input.media（含首尾帧分型与 trim）
 	} else if isNewFormatModel(aliReq.Model) {
-		appendImageURLsAsMedia(aliReq, imageMediaType(aliReq.Model), req.Images)
-	} else if len(req.Images) > 1 {
+		appendTaskImagesAsMedia(aliReq, req.Images)
+	} else if len(req.Images) > 1 && isKeyFrameModel(aliReq.Model) {
 		aliReq.Input.FirstFrameURL = req.Images[0]
 		aliReq.Input.LastFrameURL = req.Images[1]
 	} else {
@@ -456,10 +456,6 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 			aliReq.Parameters.Duration = seconds
 		}
 	}
-	if aliReq.Parameters.Duration <= 0 {
-		aliReq.Parameters.Duration = 5 // 默认5秒
-	}
-
 	// 从 metadata 中提取额外参数
 	if req.Metadata != nil {
 		if metadataBytes, err := common.Marshal(req.Metadata); err == nil {
@@ -470,6 +466,14 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 		} else {
 			return nil, errors.Wrap(err, "marshal metadata failed")
 		}
+	}
+
+	// 时长兜底必须放在 metadata 合并之后：metadata 能把 Duration 写回 0，而 0
+	// 一头被 omitempty 从上游请求里抹掉（阿里改用自己的默认时长照常出片），
+	// 另一头让 seconds 倍率在 AddOtherRatio 处被静默丢弃（按 1 秒计价）——
+	// 净效果是付 1 秒的钱拿到默认时长的视频。
+	if aliReq.Parameters.Duration <= 0 {
+		aliReq.Parameters.Duration = 5 // 默认5秒
 	}
 
 	if aliReq.Model != upstreamModel {
