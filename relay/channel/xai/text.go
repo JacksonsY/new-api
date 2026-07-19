@@ -54,9 +54,13 @@ func xAIStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		// 把 xAI 的usage转换为 OpenAI 的usage
 		if xAIResp.Usage != nil {
 			containStreamUsage = true
-			usage.PromptTokens = xAIResp.Usage.PromptTokens
-			usage.TotalTokens = xAIResp.Usage.TotalTokens
-			usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
+			// 整 struct 拷贝（与 openai.handleLastResponse 同款）保留
+			// prompt_tokens_details.cached_tokens 等明细；只重建三个标量
+			// 会把流式请求的缓存命中 token 全部丢掉，导致按全价计费。
+			*usage = *xAIResp.Usage
+			if usage.CompletionTokens == 0 && usage.TotalTokens > usage.PromptTokens {
+				usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
+			}
 		}
 
 		openaiResponse := streamResponseXAI2OpenAI(xAIResp, usage)
