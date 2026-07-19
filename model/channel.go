@@ -50,7 +50,10 @@ type Channel struct {
 	Balance            float64 `json:"balance"` // in USD
 	BalanceUpdatedTime int64   `json:"balance_updated_time" gorm:"bigint"`
 	Models             string  `json:"models"`
-	Group              string  `json:"group" gorm:"type:varchar(64);default:'default'"`
+	// group 存的是逗号拼接的多分组名（非单值、非索引，经 LIKE 过滤）。
+	// varchar(64) 在团队/代理/供应商分组增生时会溢出导致插入报错(issue #6017)，
+	// 放宽到 255。GORM AutoMigrate 对 MySQL/PG 一次性加宽，SQLite 动态类型忽略长度。
+	Group              string  `json:"group" gorm:"type:varchar(255);default:'default'"`
 	UsedQuota          int64   `json:"used_quota" gorm:"bigint;default:0"`
 	// BalanceSnapshot 上次余额落库时的 used_quota 快照（NULL=从未设置过余额）。
 	// 实时余额 = balance - (used_quota - balance_snapshot)/QuotaPerUnit，
