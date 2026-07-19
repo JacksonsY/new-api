@@ -32,6 +32,7 @@ import {
   OAUTH_BIND_STORAGE_KEY,
   OAUTH_REDIRECT_STORAGE_KEY,
 } from '@/features/auth/constants'
+import { isSafeInternalRedirect } from '@/features/auth/lib/validation'
 import { api, getSelf } from '@/lib/api'
 import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 
@@ -63,19 +64,22 @@ function OAuthCallback() {
   useEffect(() => {
     ;(async () => {
       const safeNavigate = (target: string) => {
-        navigate({ to: target as never, replace: true })
+        // 兜底会走 window.location.replace（会跟随跨域地址），任何来自 URL 或
+        // sessionStorage 的目标都必须先确认同源，否则构成开放重定向。
+        const safeTarget = isSafeInternalRedirect(target) ? target : '/dashboard'
+        navigate({ to: safeTarget as never, replace: true })
         if (typeof window !== 'undefined') {
           setTimeout(() => {
-            const normalizedTarget = target.startsWith('/')
-              ? target
-              : `/${target}`
+            const normalizedTarget = safeTarget.startsWith('/')
+              ? safeTarget
+              : `/${safeTarget}`
             const currentPath =
               window.location.pathname + window.location.search
             if (
               currentPath !== normalizedTarget &&
               currentPath !== `${normalizedTarget}/`
             ) {
-              window.location.replace(target)
+              window.location.replace(safeTarget)
             }
           }, 100)
         }

@@ -32,6 +32,7 @@ import {
   buildOIDCOAuthUrl,
   buildLinuxDOOAuthUrl,
 } from '../lib/oauth'
+import { isSafeInternalRedirect } from '../lib/validation'
 import type { SystemStatus, CustomOAuthProviderInfo } from '../types'
 
 type LogoutRequestConfig = AxiosRequestConfig & {
@@ -42,8 +43,10 @@ type LogoutRequestConfig = AxiosRequestConfig & {
 // 的 redirect 到那时已经丢失，不存的话第三方登录用户永远只落到 /dashboard。
 function leaveForOAuth(url: string) {
   const redirect = new URLSearchParams(window.location.search).get('redirect')
-  // 只接受站内绝对路径：'//host' 会被浏览器解析成协议相对的跨站地址。
-  if (redirect?.startsWith('/') && !redirect.startsWith('//')) {
+  // 只接受站内同源路径。URLSearchParams 已解码，且 '/\evil.com' 会被浏览器
+  // 规范化成协议相对的跨站地址，startsWith 判不出来——必须按同源解析校验，
+  // 否则回调侧的 window.location.replace 会跟着跳到站外（开放重定向）。
+  if (isSafeInternalRedirect(redirect)) {
     sessionStorage.setItem(OAUTH_REDIRECT_STORAGE_KEY, redirect)
   } else {
     sessionStorage.removeItem(OAUTH_REDIRECT_STORAGE_KEY)
