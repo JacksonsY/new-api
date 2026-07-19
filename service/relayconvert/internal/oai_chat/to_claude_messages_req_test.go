@@ -64,3 +64,40 @@ func TestOpenAIChatRequestToClaudeMessagesOmitsAbsentToolRequired(t *testing.T) 
 	// 声明了 required 的工具应原样保留。
 	assert.Equal(t, []any{"server", "uri"}, tools[1].InputSchema["required"])
 }
+
+func TestOpenAIChatRequestToClaudeMessagesReasoningEffortDisablesThinking(t *testing.T) {
+	for _, effort := range []string{"none", "minimal"} {
+		t.Run(effort, func(t *testing.T) {
+			request := dto.GeneralOpenAIRequest{
+				Model:           "claude-sonnet-5",
+				ReasoningEffort: effort,
+				Messages:        []dto.Message{{Role: "user", Content: "hi"}},
+			}
+			claudeRequest, err := OpenAIChatRequestToClaudeMessages(&gin.Context{}, request)
+			require.NoError(t, err)
+			require.NotNil(t, claudeRequest.Thinking)
+			assert.Equal(t, "disabled", claudeRequest.Thinking.Type)
+			assert.Nil(t, claudeRequest.Thinking.BudgetTokens)
+			assert.Empty(t, claudeRequest.OutputConfig)
+		})
+	}
+}
+
+func TestOpenAIChatRequestToClaudeMessagesReasoningEffortEnablesThinking(t *testing.T) {
+	cases := map[string]int{"low": 1280, "medium": 2048, "high": 4096}
+	for effort, wantBudget := range cases {
+		t.Run(effort, func(t *testing.T) {
+			request := dto.GeneralOpenAIRequest{
+				Model:           "claude-sonnet-5",
+				ReasoningEffort: effort,
+				Messages:        []dto.Message{{Role: "user", Content: "hi"}},
+			}
+			claudeRequest, err := OpenAIChatRequestToClaudeMessages(&gin.Context{}, request)
+			require.NoError(t, err)
+			require.NotNil(t, claudeRequest.Thinking)
+			assert.Equal(t, "enabled", claudeRequest.Thinking.Type)
+			require.NotNil(t, claudeRequest.Thinking.BudgetTokens)
+			assert.Equal(t, wantBudget, *claudeRequest.Thinking.BudgetTokens)
+		})
+	}
+}

@@ -183,6 +183,14 @@ func OpenAIChatRequestToClaudeMessages(c *gin.Context, textRequest dto.GeneralOp
 
 	if textRequest.ReasoningEffort != "" {
 		switch textRequest.ReasoningEffort {
+		case "none", "minimal":
+			// 显式关闭思考：新版 Claude(sonnet-5 起)不带 thinking 字段时上游默认跑
+			// adaptive thinking，隐藏思考照常计入 output_tokens 且挤占 max_tokens，
+			// 客户端经 chat/completions 此前无法关闭(issue #5914)。Claude 的 thinking
+			// 是二元的(enabled/disabled)、无"最小"档，故 none/minimal 均映射为 disabled，
+			// 并清掉上面自适应分支可能设的 effort 配置，避免 disabled 与 effort 冲突。
+			claudeRequest.Thinking = &dto.Thinking{Type: "disabled"}
+			claudeRequest.OutputConfig = nil
 		case "low":
 			claudeRequest.Thinking = &dto.Thinking{
 				Type:         "enabled",
