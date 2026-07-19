@@ -554,6 +554,13 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	if err != nil {
 		return nil, fmt.Errorf("setup request header failed: %w", err)
 	}
+	// 在 BuildRequestHeader 之后应用 header_override，让渠道自定义头覆盖默认头；
+	// 与 DoApiRequest/DoFormRequest/DoWssRequest 三路行为对齐(此前任务路径漏了)。
+	headerOverride, err := processHeaderOverride(info, c)
+	if err != nil {
+		return nil, err
+	}
+	applyHeaderOverrideToRequest(req, headerOverride)
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
