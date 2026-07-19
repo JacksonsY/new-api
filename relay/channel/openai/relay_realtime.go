@@ -187,10 +187,13 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 						errChan <- fmt.Errorf("error consume usage: %v", err)
 						return
 					}
-					// 官方转写 usage 已入账，清掉本句攒下的官方 usage 累积。
-					// 不清 localUsage——它是对话侧「response.done 不带 usage」的本地输入
-					// 估算兜底，与转写 usage 相互独立；对话+转写混合会话清掉会漏计费。
+					// 官方转写 usage 已入账，同时清掉 usage 与 localUsage：官方 usage 是
+					// 权威值，本句攒下的本地音频估算必须作废，否则纯转写会话(无 response.done、
+					// localUsage 无清空点)会在会话结束时把整段估算再扣一次，与官方 usage
+					// 双重计费(可达数倍)。与上游 PR #6033 一致。混合会话的对话输入估算由
+					// 每个 response.done 结算，此处清空只损失极小窗口，远优于系统性多收。
 					usage = &dto.RealtimeUsage{}
+					localUsage = &dto.RealtimeUsage{}
 				} else if realtimeEvent.Type == dto.RealtimeEventTypeSessionUpdated || realtimeEvent.Type == dto.RealtimeEventTypeSessionCreated {
 					realtimeSession := realtimeEvent.Session
 					if realtimeSession != nil {
