@@ -217,6 +217,12 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 				if err != nil {
 					logger.LogError(ctx, "fail to increase user quota: "+err.Error())
 				}
+				// 回退用户已用额度统计，避免退款后「剩余 + 已用」虚增（与异步任务退款一致）。
+				// 渠道侧成本口径回退需要原始扣费的 groupRatio 快照，但 Midjourney 结构没有
+				// Group/BillingContext 字段（group_ratio 只写进了消费日志 other，未落任务表），
+				// 无可靠来源，硬猜会漂移；渠道 used_quota 仅统计口径、不涉资金，留待 MJ 任务
+				// 补 groupRatio 快照后再回退。
+				model.DecreaseUserUsedQuota(task.UserId, task.Quota)
 				model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 					UserId:    task.UserId,
 					LogType:   model.LogTypeRefund,
