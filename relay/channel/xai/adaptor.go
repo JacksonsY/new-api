@@ -64,6 +64,14 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
+	// grok-4 及更新型号(含 grok-4.5)拒绝采样惩罚参数，会 400 报
+	// "Model <name> does not support parameter presencePenalty/frequencyPenalty"。
+	// 剥掉它们让始终携带这些参数的客户端仍可用。放在 -search 分支之前，
+	// 使 search 与非 search 两条路径都覆盖(ToMap() 序列化同一 struct)。
+	if strings.HasPrefix(request.Model, "grok-4") {
+		request.PresencePenalty = nil
+		request.FrequencyPenalty = nil
+	}
 	if strings.HasSuffix(info.UpstreamModelName, "-search") {
 		info.UpstreamModelName = strings.TrimSuffix(info.UpstreamModelName, "-search")
 		request.Model = info.UpstreamModelName
