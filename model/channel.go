@@ -1003,8 +1003,33 @@ func UpdateChannelUsedQuota(id int, quota int, groupRatio float64) {
 	updateChannelUsedQuota(id, quota)
 }
 
+// DecreaseChannelUsedQuota 回退渠道已用额度（任务退款/负差额结算用）。
+// 与 UpdateChannelUsedQuota 同口径：先按渠道成本倍率折算再回退，否则会按
+// 用户额度口径多减（渠道 used_quota 存的是成本口径）。钳 0 由 updateChannelUsedQuota
+// 的负数分支（含 batch flush）保证，不产生负值。
+func DecreaseChannelUsedQuota(id int, quota int, groupRatio float64) {
+	if id <= 0 || quota <= 0 {
+		return
+	}
+	quota = applyChannelRatio(id, quota, groupRatio)
+	if quota <= 0 {
+		return
+	}
+	if common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeChannelUsedQuota, id, -quota)
+		return
+	}
+	updateChannelUsedQuota(id, -quota)
+}
+
 func updateChannelUsedQuota(id int, quota int) {
-	err := DB.Model(&Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
+	expr := gorm.Expr("used_quota + ?", quota)
+	if quota < 0 {
+		// 回退：钳 0，避免并发/重复退款把 used_quota 减成负数。
+		refund := -quota
+		expr = gorm.Expr("CASE WHEN used_quota < ? THEN 0 ELSE used_quota - ? END", refund, refund)
+	}
+	err := DB.Model(&Channel{}).Where("id = ?", id).Update("used_quota", expr).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update channel used quota: channel_id=%d, delta_quota=%d, error=%v", id, quota, err))
 	}

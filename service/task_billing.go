@@ -195,7 +195,16 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	// 2. 退还令牌额度
 	taskAdjustTokenQuota(ctx, task, -quota)
 
-	// 3. 记录日志
+	// 3. 回退已用额度统计，避免退款后「剩余额度 + 已用额度」虚增。
+	//    渠道侧按原始扣费的分组倍率同口径折算成本额度再回退。
+	model.DecreaseUserUsedQuota(task.UserId, quota)
+	refundGroupRatio := 1.0
+	if bc := task.PrivateData.BillingContext; bc != nil {
+		refundGroupRatio = bc.GroupRatio
+	}
+	model.DecreaseChannelUsedQuota(task.ChannelId, quota, refundGroupRatio)
+
+	// 4. 记录日志
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
@@ -267,6 +276,13 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	} else {
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta
+		// 负差额退款同步回退已用额度统计（渠道侧同口径折算）。
+		model.DecreaseUserUsedQuota(task.UserId, logQuota)
+		groupRatio := 1.0
+		if bc := task.PrivateData.BillingContext; bc != nil {
+			groupRatio = bc.GroupRatio
+		}
+		model.DecreaseChannelUsedQuota(task.ChannelId, logQuota, groupRatio)
 	}
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
