@@ -144,20 +144,26 @@ func NewChannelSortOptions(sortBy string, sortOrder string, idSort bool) Channel
 }
 
 func (options ChannelSortOptions) Apply(query *gorm.DB) *gorm.DB {
-	if columnName, ok := channelSortColumns[options.SortBy]; ok {
-		return query.Order(clause.OrderByColumn{
-			Column: clause.Column{Name: columnName},
-			Desc:   options.SortOrder != "asc",
-		})
+	columnName := "priority"
+	descending := true
+	if requestedColumn, ok := channelSortColumns[options.SortBy]; ok {
+		columnName = requestedColumn
+		descending = options.SortOrder != "asc"
+	} else if options.IDSort {
+		columnName = "id"
 	}
-	if options.IDSort {
-		return query.Order(clause.OrderByColumn{
-			Column: clause.Column{Name: "id"},
-			Desc:   true,
-		})
+
+	query = query.Order(clause.OrderByColumn{
+		Column: clause.Column{Name: columnName},
+		Desc:   descending,
+	})
+	// 追加 id 作为唯一次序键：priority/name 等非唯一字段并列时，MySQL/PG
+	// 的行返回顺序不确定，翻页会重复或丢行。id 排序本身唯一，无需再追加。
+	if columnName == "id" {
+		return query
 	}
 	return query.Order(clause.OrderByColumn{
-		Column: clause.Column{Name: "priority"},
+		Column: clause.Column{Name: "id"},
 		Desc:   true,
 	})
 }
@@ -1096,6 +1102,7 @@ func SearchTags(keyword string, group string, model string, idSort bool) ([]*str
 
 	err := DB.Table("(?) as sub", subQuery).
 		Select("DISTINCT tag").
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "tag"}}).
 		Find(&tags).Error
 
 	if err != nil {
