@@ -111,6 +111,7 @@ func InitEnv() {
 	RelayMaxIdleConns = GetEnvOrDefault("RELAY_MAX_IDLE_CONNS", 500)
 	RelayMaxIdleConnsPerHost = GetEnvOrDefault("RELAY_MAX_IDLE_CONNS_PER_HOST", 100)
 	RelayDisableHTTP2 = GetEnvOrDefaultBool("RELAY_DISABLE_HTTP2", false)
+	XFrameOptions = GetEnvOrDefaultString("X_FRAME_OPTIONS", "SAMEORIGIN")
 
 	// Initialize string variables with GetEnvOrDefaultString
 	GeminiSafetySetting = GetEnvOrDefaultString("GEMINI_SAFETY_SETTING", "BLOCK_NONE")

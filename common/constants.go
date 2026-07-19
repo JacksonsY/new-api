@@ -246,6 +246,11 @@ var RelayMaxIdleConnsPerHost int
 // true, each in-flight request gets its own pooled HTTP/1.1 connection.
 var RelayDisableHTTP2 bool
 
+// XFrameOptions 控制 SecurityHeaders 发送的 X-Frame-Options 值。默认
+// SAMEORIGIN(防点击劫持);分销/团队场景需把面板嵌进下游门户(跨子域即跨源)
+// 时,设为空或 "off" 关闭该头(改由部署侧用 CSP frame-ancestors 精细控制)。
+var XFrameOptions string
+
 var GeminiSafetySetting string
 
 // https://docs.cohere.com/docs/safety-modes Type; NONE/CONTEXTUAL/STRICT

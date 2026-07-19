@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
 )
 
@@ -14,7 +15,11 @@ func SecurityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-		c.Header("X-Frame-Options", "SAMEORIGIN")
+		// X-Frame-Options 可经 X_FRAME_OPTIONS 配置；分销/团队场景需把面板嵌进
+		// 下游门户(跨子域即跨源)时，设为空或 "off" 关闭该头，避免被浏览器硬拦。
+		if xfo := strings.TrimSpace(common.XFrameOptions); xfo != "" && !strings.EqualFold(xfo, "off") {
+			c.Header("X-Frame-Options", xfo)
+		}
 
 		if isHTTPSRequest(c.Request) {
 			// 6 months; no includeSubDomains/preload — single-host production default.
