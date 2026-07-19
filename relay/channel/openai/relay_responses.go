@@ -123,6 +123,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
 		case "response.completed":
+			// 收到成功收口：此前攒的非致命 error 事件作废，否则非规范上游先发
+			// 一个非终止 error 再正常 completed 时会被误判失败并 0 计费(漏费)。
+			pendingStreamErr = nil
 			if streamResponse.Response != nil {
 				if streamResponse.Response.Usage != nil {
 					if streamResponse.Response.Usage.InputTokens != 0 {
