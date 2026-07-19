@@ -36,6 +36,7 @@ func TestInsertWithTxStoresInviterId(t *testing.T) {
 				Status:   common.UserStatusEnabled,
 			}
 
+			require.NoError(t, user.PrepareAffCode())
 			err := DB.Transaction(func(tx *gorm.DB) error {
 				return user.InsertWithTx(tx, tc.inviterId)
 			})
