@@ -723,6 +723,9 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 		}
 		user.Quota = common.QuotaForNewUser
 		user.AffCode = common.GetRandomString(4)
+		// OAuth 注册也要落邀请关系：奖励在 FinalizeOAuthUserCreation 里发，
+		// 但 inviter_id 不写库的话分销归属就永久丢失、无法追溯分佣。
+		user.InviterId = inviterId
 
 		// 初始化用户设置
 		if user.Setting == "" {
