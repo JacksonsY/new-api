@@ -49,12 +49,26 @@ func TestEstimateBillingTotalUnits(t *testing.T) {
 			want: 10 * 1.0,
 		},
 		{
-			name: "input images add a per-image surcharge",
+			name: "input image adds a surcharge",
 			req: relaycommon.TaskSubmitReq{
 				Duration: 10,
-				Images:   []string{"data:image/png;base64,aVZCTw==", "data:image/png;base64,aVZCTw=="},
+				Images:   []string{"data:image/png;base64,aVZCTw=="},
 			},
-			want: 10*0.7 + 2*0.02,
+			want: 10*0.7 + 0.02,
+		},
+		{
+			// 上游只接受一张输入图,BuildRequestBody 也只发 Images[0]。多传的图片
+			// 不产生成本,不能按张数收费——否则传 N 张就被收 N 份。
+			name: "extra images are not charged",
+			req: relaycommon.TaskSubmitReq{
+				Duration: 10,
+				Images: []string{
+					"data:image/png;base64,aVZCTw==",
+					"data:image/png;base64,aVZCTw==",
+					"data:image/png;base64,aVZCTw==",
+				},
+			},
+			want: 10*0.7 + 0.02,
 		},
 	}
 

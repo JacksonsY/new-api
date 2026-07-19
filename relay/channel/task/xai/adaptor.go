@@ -77,10 +77,12 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, _ *relaycommon.RelayInfo) 
 	}
 	// 4. 统计图片数量并计算图片计费单位:
 	// 每张图 $0.002,基准每秒 $0.1,故每张图折合 0.02 个计费单位。
-	// 上传文件形式的首帧图也计一张。
-	imageCount := len(req.Images)
-	if imageURL := ExtractMultipartImageURL(c, nil); imageURL != "" {
-		imageCount++
+	// 上游 VideoGenerationRequest 只接受一张输入图,BuildRequestBody 也只在
+	// multipart 与 Images[0] 之间二选一,多传的图片既不发给上游也不产生成本,
+	// 因此按实际发送张数计费——这同时让该乘数天然有界。
+	imageCount := 0
+	if ExtractMultipartImageURL(c, nil) != "" || len(req.Images) > 0 {
+		imageCount = 1
 	}
 
 	imageBillingUnits := float64(imageCount) * 0.02
@@ -115,10 +117,10 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
 
+	// 不要在这里用 meta.Duration 覆盖:它与 ResolveDurationSeconds 读的是同一个
+	// metadata.duration 字段,而后者已按优先级取值并钳到 MaxTaskDurationSeconds。
+	// 覆盖会绕过钳制,使计费按上限收、上游却收到原始超大时长。
 	duration := ResolveDurationSeconds(req.Metadata, req.Duration, req.Seconds)
-	if meta.Duration != nil && *meta.Duration > 0 {
-		duration = *meta.Duration
-	}
 
 	aspectRatio := ResolveAspectRatio(req.Metadata, req.Size)
 	if strings.TrimSpace(meta.AspectRatio) != "" {
