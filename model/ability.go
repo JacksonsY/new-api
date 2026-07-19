@@ -16,8 +16,11 @@ import (
 )
 
 type Ability struct {
-	Group     string  `json:"group" gorm:"type:varchar(64);primaryKey;autoIncrement:false"`
-	Model     string  `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false"`
+	Group string `json:"group" gorm:"type:varchar(64);primaryKey;autoIncrement:false"`
+	// Model 是复合主键的第二列（主键最左为 group），单列 WHERE model=? 无法走主键前缀。
+	// 追加独立二级索引：ModelExistsInAbilities / GetEnabledModels 等按 model 单查在
+	// 模型全渠道 auto-ban 的 503 风暴下会被高频调用，全表扫会把渠道故障放大成 DB 故障。
+	Model     string  `json:"model" gorm:"type:varchar(255);primaryKey;autoIncrement:false;index"`
 	ChannelId int     `json:"channel_id" gorm:"primaryKey;autoIncrement:false;index"`
 	Enabled   bool    `json:"enabled"`
 	Priority  *int64  `json:"priority" gorm:"bigint;default:0;index"`
