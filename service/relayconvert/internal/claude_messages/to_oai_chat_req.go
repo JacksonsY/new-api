@@ -237,8 +237,10 @@ func requestToJSONString(v interface{}) string {
 }
 
 // clampReasoningEffortForOpenAI 把 Claude 的 effort 收敛到 OpenAI 目标模型接受的取值。
-// O 系列接受 low/medium/high；GPT-5 额外接受 minimal。Claude 专有的 xhigh/max 收敛为
-// high，minimal 在非 GPT-5 上降为 low。无法安全映射(如 none/空)返回空，由调用方跳过设置。
+// GPT-5 系列接受 minimal/low/medium/high/xhigh；O 系列只接受 low/medium/high。
+// GPT-5 原生支持 xhigh，直接透传；O 系列不支持则降为 high。Claude 专有的 max（OpenAI
+// 无此档）在 GPT-5 上收敛到 xhigh、O 系列收敛到 high；minimal 在非 GPT-5 上降为 low。
+// 无法安全映射(如 none/空)返回空，由调用方跳过设置。
 func clampReasoningEffortForOpenAI(effort string, isGPT5 bool) string {
 	switch effort {
 	case "low", "medium", "high":
@@ -248,7 +250,15 @@ func clampReasoningEffortForOpenAI(effort string, isGPT5 bool) string {
 			return "minimal"
 		}
 		return "low"
-	case "xhigh", "max":
+	case "xhigh":
+		if isGPT5 {
+			return "xhigh"
+		}
+		return "high"
+	case "max":
+		if isGPT5 {
+			return "xhigh"
+		}
 		return "high"
 	default:
 		return ""

@@ -22,9 +22,10 @@ func TestClaudeMessagesForwardsEffortToOpenAIReasoningModel(t *testing.T) {
 		wantEffort    string
 	}{
 		{"gpt5 high passes", "gpt-5", "high", "high"},
-		{"gpt5 xhigh clamps to high", "gpt-5", "xhigh", "high"},
-		{"gpt5 max clamps to high", "gpt-5", "max", "high"},
+		{"gpt5 xhigh passes (native)", "gpt-5", "xhigh", "xhigh"},
+		{"gpt5 max clamps to xhigh", "gpt-5", "max", "xhigh"},
 		{"gpt5 minimal kept", "gpt-5", "minimal", "minimal"},
+		{"o3 xhigh downgrades to high", "o3-mini", "xhigh", "high"},
 		{"o3 minimal downgrades to low", "o3-mini", "minimal", "low"},
 		{"o3 high passes", "o3-mini", "high", "high"},
 		{"non-reasoning model gets nothing", "gpt-4o", "high", ""},
@@ -81,11 +82,16 @@ func TestClaudeMessagesEffortForwardingNilChannelMetaSafe(t *testing.T) {
 }
 
 func TestClampReasoningEffortForOpenAI(t *testing.T) {
-	assert.Equal(t, "high", clampReasoningEffortForOpenAI("high", false))
-	assert.Equal(t, "high", clampReasoningEffortForOpenAI("xhigh", true))
-	assert.Equal(t, "high", clampReasoningEffortForOpenAI("max", false))
+	// GPT-5 系列：xhigh 原生透传，max 收敛到 xhigh，minimal 保留
+	assert.Equal(t, "high", clampReasoningEffortForOpenAI("high", true))
+	assert.Equal(t, "xhigh", clampReasoningEffortForOpenAI("xhigh", true))
+	assert.Equal(t, "xhigh", clampReasoningEffortForOpenAI("max", true))
 	assert.Equal(t, "minimal", clampReasoningEffortForOpenAI("minimal", true))
+	// O 系列：不支持 xhigh/minimal，分别降为 high/low
+	assert.Equal(t, "high", clampReasoningEffortForOpenAI("xhigh", false))
+	assert.Equal(t, "high", clampReasoningEffortForOpenAI("max", false))
 	assert.Equal(t, "low", clampReasoningEffortForOpenAI("minimal", false))
+	// 无法映射
 	assert.Empty(t, clampReasoningEffortForOpenAI("none", true))
 	assert.Empty(t, clampReasoningEffortForOpenAI("", true))
 }
