@@ -139,13 +139,29 @@ func ReviewAgentApplication(id int, approve bool, usageProfitRate float64, reaso
 			return err
 		}
 		if approve {
-			if err := tx.Model(&User{}).Where("id = ?", app.UserId).
+			// 复检角色:提交申请时是普通用户,审核前可能已被提为管理员。管理员兼任
+			// 代理会打破裁判/运动员隔离(既能发额度又能按下游消费抽成),与
+			// AdminReviewSupplier 的处理保持一致——审核时刻再判一次。
+			var applicant User
+			if err := tx.Select("id", "role").First(&applicant, "id = ?", app.UserId).Error; err != nil {
+				return errors.New("申请人不存在")
+			}
+			if applicant.Role >= common.RoleAdminUser {
+				return errors.New("管理员及以上不能成为代理")
+			}
+			result := tx.Model(&User{}).Where("id = ?", app.UserId).
 				Updates(map[string]interface{}{
 					"agent_type":          "normal",
 					"usage_profit_rate":   usageProfitRate,
 					"agent_approved_time": now, // v2 §3.4 生效时刻落档(审计+未来边界地基)
-				}).Error; err != nil {
-				return err
+				})
+			if result.Error != nil {
+				return result.Error
+			}
+			// 事务只保证两条语句同生共死,不保证第二条命中了行:申请人被删后
+			// 更新会匹配 0 行且不报错,留下"申请已通过但无人成为代理"的脏账。
+			if result.RowsAffected == 0 {
+				return errors.New("申请人不存在")
 			}
 		}
 		return nil

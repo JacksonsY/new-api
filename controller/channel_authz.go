@@ -132,6 +132,13 @@ func clearChannelReadOnlyFields(channel *PatchChannel, requestData map[string]an
 	if _, ok := requestData["audit_status"]; ok {
 		channel.AuditStatus = 0
 	}
+	// 指针字段置 nil（而非 0）才会被 GORM 的 Updates 跳过。漏掉这一分支的后果
+	// 比不登记还糟：登记进 channelReadOnlyFields 会让 channelHasSensitiveChanges
+	// 的兜底扫描直接跳过该字段，于是它反而成了唯一一个既不需要
+	// ChannelSensitiveWrite、又不过 validateChannel 的可写字段。
+	if _, ok := requestData["pending_channel_ratio"]; ok {
+		channel.PendingChannelRatio = nil
+	}
 	if _, ok := requestData["detect_verdict"]; ok {
 		channel.DetectVerdict = ""
 	}

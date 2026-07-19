@@ -144,7 +144,9 @@ func GetSupplierChannels(supplierId int, offset int, limit int) ([]*Channel, int
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := query.Order("id desc").Offset(offset).Limit(limit).Find(&channels).Error
+	// Omit("key")：渠道列表一律不返回上游明文密钥，取明文只走加固过的
+	// POST /api/channel/:id/key（RootAuth + 二次验证 + 限流）。
+	err := query.Omit("key").Order("id desc").Offset(offset).Limit(limit).Find(&channels).Error
 	return channels, total, err
 }
 
@@ -169,7 +171,9 @@ func ListPendingSupplierChannels(offset int, limit int) ([]*Channel, int64, erro
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := query.Order("id desc").Offset(offset).Limit(limit).Find(&channels).Error
+	// Omit("key")：渠道列表一律不返回上游明文密钥，取明文只走加固过的
+	// POST /api/channel/:id/key（RootAuth + 二次验证 + 限流）。
+	err := query.Omit("key").Order("id desc").Offset(offset).Limit(limit).Find(&channels).Error
 	return channels, total, err
 }
 
@@ -236,7 +240,9 @@ func ListPendingRateChangeChannels(offset int, limit int) ([]*Channel, int64, er
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := query.Order("id desc").Offset(offset).Limit(limit).Find(&channels).Error
+	// Omit("key")：渠道列表一律不返回上游明文密钥，取明文只走加固过的
+	// POST /api/channel/:id/key（RootAuth + 二次验证 + 限流）。
+	err := query.Omit("key").Order("id desc").Offset(offset).Limit(limit).Find(&channels).Error
 	return channels, total, err
 }
 
@@ -251,6 +257,12 @@ func ApproveChannelRateChange(channelId int) (float64, error) {
 		return 0, errors.New("该渠道没有待审的价格申请")
 	}
 	newRate := *channel.PendingChannelRatio
+	// 只判上限不够：负数 / NaN / Inf 都能绕过 `> SupplierMaxRate`，而写进去之后
+	// GetChannelRatio 会把非法值回退成 1.0，等于按全额结算给供应商、平台毛利
+	// 归零，且库里存的值在审计里看不出是 1.0。
+	if err := ValidateChannelRatio(newRate); err != nil {
+		return 0, err
+	}
 	if newRate > common.SupplierMaxRate {
 		return 0, ErrSupplierRateTooHigh
 	}

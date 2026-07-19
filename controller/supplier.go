@@ -158,7 +158,7 @@ func SupplierListChannels(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	// 供应商侧不回显完整 Key（掩码），沿用列表默认（Key 字段列表查询本就不 Select 明文）。
+	// 供应商侧不回显完整 Key：由 GetSupplierChannels 的 Omit("key") 保证。
 	common.ApiSuccess(c, gin.H{"items": channels, "total": total, "page": page, "page_size": pageSize})
 }
 
@@ -289,6 +289,10 @@ func SupplierUpdateChannel(c *gin.Context) {
 	clearPendingRate := false
 	if req.ChannelRatio > 0 {
 		ratio := req.ChannelRatio
+		if err := model.ValidateChannelRatio(ratio); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 		// v2 §4.2 价格变更申请流:已上线渠道涨价不再直接生效——那是"平台毛利被
 		// 单方面清零"的资损口。新价写入 pending,渠道继续按现价在线运行,管理员
 		// 批准后原子切换;降价对平台单向有利,即时生效并撤销在途涨价申请。
