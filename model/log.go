@@ -355,6 +355,11 @@ type RecordConsumeLogParams struct {
 	ChannelId        int                    `json:"channel_id"`
 	PromptTokens     int                    `json:"prompt_tokens"`
 	CompletionTokens int                    `json:"completion_tokens"`
+	// TotalTokens 用于汇总统计(quota_data.token_used)。Anthropic 语义下
+	// PromptTokens 不含缓存 token，需把 cache_read/cache_creation 加回后写入此处，
+	// 避免数据看板总 TOKEN 数漏算缓存；OpenAI 语义下与 Prompt+Completion 相同。
+	// 缺省 0 时 RecordConsumeLog 回退 Prompt+Completion，保持旧调用点兼容。
+	TotalTokens      int                    `json:"total_tokens"`
 	ModelName        string                 `json:"model_name"`
 	TokenName        string                 `json:"token_name"`
 	Quota            int                    `json:"quota"`
@@ -472,6 +477,12 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		logger.LogError(c, "failed to record log: "+err.Error())
 	}
 	if common.DataExportEnabled {
+		// Anthropic 语义下 PromptTokens 不含缓存，优先用调用方算好的 TotalTokens；
+		// 未提供(<=0)时回退 Prompt+Completion，保持旧调用点兼容。
+		tokenUsed := params.TotalTokens
+		if tokenUsed <= 0 {
+			tokenUsed = params.PromptTokens + params.CompletionTokens
+		}
 		// 渠道维度成本随用量数据一并预聚合进 quota_data，与日志快照同源同口径
 		LogQuotaData(QuotaDataLogParams{
 			UserID:       userId,
@@ -480,7 +491,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			Quota:        params.Quota,
 			ChannelQuota: channelQuota,
 			CreatedAt:    createdAt,
-			TokenUsed:    params.PromptTokens + params.CompletionTokens,
+			TokenUsed:    tokenUsed,
 			UseGroup:     params.Group,
 			TokenID:      params.TokenId,
 			ChannelID:    params.ChannelId,

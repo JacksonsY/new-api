@@ -353,6 +353,18 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 	return "openai"
 }
 
+// logTotalTokensFromSummary 计算用于数据看板统计的总 token 数。
+// Anthropic 语义下 PromptTokens 仅表示未命中缓存的 fresh token，需把
+// cache_read/cache_creation 加回；OpenAI 语义下 PromptTokens 已含缓存，
+// 直接用 PromptTokens + CompletionTokens。
+func logTotalTokensFromSummary(summary textQuotaSummary) int {
+	total := summary.PromptTokens + summary.CompletionTokens
+	if summary.IsClaudeUsageSemantic {
+		total += summary.CacheTokens + summary.CacheCreationTokens
+	}
+	return total
+}
+
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
 	originUsage := usage
 	billingUsage := effectiveBillingUsage(usage)
@@ -504,6 +516,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,
 		CompletionTokens: summary.CompletionTokens,
+		TotalTokens:      logTotalTokensFromSummary(summary),
 		ModelName:        logModel,
 		TokenName:        summary.TokenName,
 		Quota:            summary.Quota,
