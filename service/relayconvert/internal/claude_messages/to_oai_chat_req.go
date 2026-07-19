@@ -73,7 +73,9 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info *re
 		//     收敛到目标模型接受的取值——否则同样 400。GetEfforts 取 output_config.effort。
 		// 无法安全映射时不设，退回不透传行为，绝不产生 400。
 		if openAIRequest.ReasoningEffort == "" {
-			upstream := info.UpstreamModelName
+			// 用安全访问器：UpstreamModelName 由 *ChannelMeta 提升而来，
+			// info.ChannelMeta 为 nil 时直接取会 nil 解引用。
+			upstream := relaymeta.RelayInfoUpstreamModelName(info)
 			isGPT5 := dto.IsOpenAIGPT5Model(upstream)
 			if dto.IsOpenAIReasoningOModel(upstream) || isGPT5 {
 				if eff := clampReasoningEffortForOpenAI(claudeRequest.GetEfforts(), isGPT5); eff != "" {

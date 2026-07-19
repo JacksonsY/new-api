@@ -66,6 +66,20 @@ func TestClaudeMessagesOpenRouterUsesReasoningNotEffort(t *testing.T) {
 	assert.NotEmpty(t, openAIRequest.Reasoning)
 }
 
+// info.ChannelMeta 为 nil 时不得 nil 解引用(UpstreamModelName 由 *ChannelMeta 提升)。
+func TestClaudeMessagesEffortForwardingNilChannelMetaSafe(t *testing.T) {
+	claudeRequest := dto.ClaudeRequest{
+		Model:        "gpt-5",
+		OutputConfig: json.RawMessage(`{"effort":"high"}`),
+	}
+	info := &relaycommon.RelayInfo{} // ChannelMeta 为 nil
+	assert.NotPanics(t, func() {
+		openAIRequest, err := ClaudeMessagesRequestToOpenAIChat(claudeRequest, info)
+		require.NoError(t, err)
+		assert.Empty(t, openAIRequest.ReasoningEffort)
+	})
+}
+
 func TestClampReasoningEffortForOpenAI(t *testing.T) {
 	assert.Equal(t, "high", clampReasoningEffortForOpenAI("high", false))
 	assert.Equal(t, "high", clampReasoningEffortForOpenAI("xhigh", true))
