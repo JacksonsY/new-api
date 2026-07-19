@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -535,9 +536,11 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 
 	// 单个分组名长度校验：abilities.group 是 varchar(64) 主键，超长单组名会
 	// 通过 channels 落库(varchar 255)却在写 abilities 时失败，留下无能力可路由
-	// 的渠道。这里提前拒绝，改增改都要校验(渠道分组可编辑)。
+	// 的渠道。这里提前拒绝，改增改都要校验(渠道分组可编辑)。varchar(64) 在
+	// MySQL/PostgreSQL 下按「字符」计（非字节），故用 RuneCount，否则 22+ 个
+	// 中文的合法组名会被按字节误拒（能装进 varchar(64) 却过不了校验）。
 	for _, g := range channel.GetGroups() {
-		if len(g) > 64 {
+		if utf8.RuneCountInString(g) > 64 {
 			return fmt.Errorf("分组名过长(单个分组名不得超过 64 字符): %s", g)
 		}
 	}
