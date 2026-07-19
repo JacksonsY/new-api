@@ -178,16 +178,25 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 
 	// 4. 价格计算：基础模型价格
+	//    ModelPriceHelperPerCall 返回全新的 PriceData，其未导出的 otherRatios 为
+	//    空。先接住 ResolveOriginTask 在 remix 路径预设的倍率，重建后灌回——否则
+	//    remix 会丢掉原任务的时长/分辨率倍率而按基础单价计费（12 秒 1792x1024
+	//    的 sora remix 少收约 20 倍），而 sora 的 EstimateBilling 恰恰在 remix 时
+	//    返回 nil，正是因为它认定这些倍率已由 ResolveOriginTask 设好。
+	remixRatios := info.PriceData.OtherRatios()
 	info.OriginModelName = modelName
 	priceData, err := helper.ModelPriceHelperPerCall(c, info)
 	if err != nil {
 		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 	}
 	info.PriceData = priceData
+	for key, ratio := range remixRatios {
+		info.PriceData.AddOtherRatio(key, ratio)
+	}
 
-	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
+	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）。
 	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
-	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
+	//    同名键覆盖上面灌回的 remix 快照——用户本次请求的参数优先。
 	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
 		for k, v := range estimatedRatios {
 			info.PriceData.AddOtherRatio(k, v)

@@ -139,7 +139,9 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 		if bc.ModelRatio > 0 {
 			other["model_ratio"] = bc.ModelRatio
 		}
-		if bc.CompletionRatio != nil {
+		// 与紧邻的 model_ratio 同样要求 > 0：按次计价的任务不会赋补全倍率，
+		// 存下来是 0，写进日志后会被管理端换算成 $0/M 的输出单价。
+		if bc.CompletionRatio != nil && *bc.CompletionRatio > 0 {
 			other["completion_ratio"] = *bc.CompletionRatio
 		}
 		other["group_ratio"] = bc.GroupRatio

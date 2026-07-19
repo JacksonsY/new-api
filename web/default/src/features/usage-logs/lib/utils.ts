@@ -76,11 +76,15 @@ export function isPerCallBilling(modelPrice?: number): boolean {
  * Check if a per-call log actually billed per second of generated video:
  * task_ratios carrying a positive billed-seconds count means the charge was
  * base price × seconds (× tier multipliers), so labels should read per-second.
+ *
+ * The key name differs by channel: ali/sora/gemini/vertex/aiai emit `seconds`,
+ * while xAI folds seconds × resolution multiplier into a single `total_units`.
+ * `duration` has no producer today and is kept only as a spelling fallback.
  */
 export function isPerSecondTaskBilling(
   taskRatios?: Record<string, number>
 ): boolean {
-  return ['seconds', 'duration'].some((key) => {
+  return ['seconds', 'duration', 'total_units'].some((key) => {
     const value = taskRatios?.[key]
     return typeof value === 'number' && Number.isFinite(value) && value > 0
   })
