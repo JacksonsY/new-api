@@ -186,6 +186,26 @@ func main() {
 
 	// Initialize HTTP server
 	server := gin.New()
+	// 安全加固：限制受信任的反向代理，使 c.ClientIP() 只采信可信代理设置的
+	// X-Forwarded-For，防止公网客户端伪造 XFF 绕过基于 IP 的限流/注册防刷/
+	// 支付回调审计（本 fork 大量以 ClientIP 做反欺诈）。
+	// 默认信任本机+私网段（覆盖 nginx 经 docker 网桥接入的标准部署）；
+	// 反代持公网 IP 时用 TRUSTED_PROXY_CIDRS 覆盖（逗号分隔的 CIDR 列表）。
+	trustedProxyCIDRs := []string{
+		"127.0.0.1/8", "::1/128",
+		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7",
+	}
+	if custom := common.GetEnvOrDefaultString("TRUSTED_PROXY_CIDRS", ""); custom != "" {
+		trustedProxyCIDRs = trustedProxyCIDRs[:0]
+		for _, cidr := range strings.Split(custom, ",") {
+			if cidr = strings.TrimSpace(cidr); cidr != "" {
+				trustedProxyCIDRs = append(trustedProxyCIDRs, cidr)
+			}
+		}
+	}
+	if err := server.SetTrustedProxies(trustedProxyCIDRs); err != nil {
+		common.SysError("failed to set trusted proxies: " + err.Error())
+	}
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
 		common.SysLog(fmt.Sprintf("panic detected: %v", err))
 		c.JSON(http.StatusInternalServerError, gin.H{

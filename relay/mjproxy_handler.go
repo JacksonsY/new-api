@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,6 +29,13 @@ import (
 
 func RelayMidjourneyImage(c *gin.Context) {
 	taskId := c.Param("id")
+	// 安全加固 (CVE-2026-9306)：该路由免鉴权，必须校验签名以防未授权按任意 mj_id 越权取图。
+	if sig := c.Query("sig"); sig == "" || !hmac.Equal([]byte(sig), []byte(common.SignMjImage(taskId))) {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "invalid or missing signature",
+		})
+		return
+	}
 	midjourneyTask := model.GetByOnlyMJId(taskId)
 	if midjourneyTask == nil {
 		c.JSON(400, gin.H{
@@ -150,9 +158,9 @@ func coverMidjourneyTaskDto(c *gin.Context, originTask *model.Midjourney) (midjo
 	midjourneyTask.FinishTime = originTask.FinishTime
 	midjourneyTask.ImageUrl = ""
 	if originTask.ImageUrl != "" && setting.MjForwardUrlEnabled {
-		midjourneyTask.ImageUrl = system_setting.ServerAddress + "/mj/image/" + originTask.MjId
+		midjourneyTask.ImageUrl = system_setting.ServerAddress + "/mj/image/" + originTask.MjId + "?sig=" + common.SignMjImage(originTask.MjId)
 		if originTask.Status != "SUCCESS" {
-			midjourneyTask.ImageUrl += "?rand=" + strconv.FormatInt(time.Now().UnixNano(), 10)
+			midjourneyTask.ImageUrl += "&rand=" + strconv.FormatInt(time.Now().UnixNano(), 10)
 		}
 	} else {
 		midjourneyTask.ImageUrl = originTask.ImageUrl
