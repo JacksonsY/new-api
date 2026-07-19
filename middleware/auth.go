@@ -23,6 +23,24 @@ import (
 	"gorm.io/gorm"
 )
 
+func asIntID(v any) int {
+	switch x := v.(type) {
+	case int:
+		return x
+	case int32:
+		return int(x)
+	case int64:
+		return int(x)
+	case float64:
+		return int(x)
+	case string:
+		n, _ := strconv.Atoi(x)
+		return n
+	default:
+		return 0
+	}
+}
+
 func validUserInfo(username string, role int) bool {
 	// check username is empty
 	if strings.TrimSpace(username) == "" {
@@ -34,12 +52,51 @@ func validUserInfo(username string, role int) bool {
 	return true
 }
 
+// getFreshSessionUser returns a cache-first snapshot of the session user.
+// Prefer GetUserCache over a direct DB First: Redis hit is common, miss still
+// falls back to DB and re-populates cache asynchronously.
+// When neither Redis nor DB is initialized (unit tests without model setup),
+// return ErrRecordNotFound so callers can fall back to session values.
+func getFreshSessionUser(userID int) (*model.UserBase, error) {
+	if userID <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	// RedisEnabled defaults true before InitRedis; only call cache when a client exists.
+	if common.RDB == nil && model.DB == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return model.GetUserCache(userID)
+}
+
+func abortSessionUserRefresh(c *gin.Context, err error) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn),
+		})
+	} else {
+		common.SysLog("session user refresh failed: " + err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": common.TranslateMessage(c, i18n.MsgDatabaseError),
+		})
+	}
+	c.Abort()
+}
+
 func authHelper(c *gin.Context, minRole int) {
 	session := sessions.Default(c)
 	username := session.Get("username")
 	role := session.Get("role")
 	id := session.Get("id")
 	status := session.Get("status")
+	authenticatedBySession := username != nil
+	userGroup := ""
+	if g := session.Get("group"); g != nil {
+		if gs, ok := g.(string); ok {
+			userGroup = gs
+		}
+	}
 	useAccessToken := false
 	if username == nil {
 		// Check access token
@@ -83,6 +140,9 @@ func authHelper(c *gin.Context, minRole int) {
 			role = user.Role
 			id = user.Id
 			status = user.Status
+			// ValidateAccessToken 是刚出炉的 DB 全行，组直接取自它，
+			// 比 session/缓存都新鲜（access token 路径没有 session 组可用）。
+			userGroup = user.Group
 			useAccessToken = true
 		} else {
 			c.JSON(http.StatusOK, gin.H{
@@ -113,7 +173,7 @@ func authHelper(c *gin.Context, minRole int) {
 		return
 
 	}
-	if id != apiUserId {
+	if asIntID(id) != apiUserId {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
 			"message": common.TranslateMessage(c, i18n.MsgAuthUserIdMismatch),
@@ -121,7 +181,38 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if status.(int) == common.UserStatusDisabled {
+	// Session cookie 只是身份线索，授权始终以当前缓存/DB 行为准，
+	// 封禁、删除、降权在 30 天 cookie 到期前即刻生效（fail-closed）。
+	// jzlh-fix 原先只对 group 读实时缓存，这里升级为 role/status/
+	// username/group 全字段快照；缓存失效路径（disable/promote/demote
+	// 后 InvalidateUserCache）已由管理接口保证。
+	if authenticatedBySession {
+		full, refreshErr := getFreshSessionUser(asIntID(id))
+		if refreshErr != nil {
+			// 生产环境 fail-closed；无持久层的单测环境保留 session 线索。
+			if model.DB != nil || common.RDB != nil {
+				abortSessionUserRefresh(c, refreshErr)
+				return
+			}
+		} else {
+			// 旧版 Redis 快照没有 Role 字段（零值 0）：视为陈旧，强制回源
+			// DB 重载，绝不回退 cookie 里可能被抬高的角色。
+			if full.Role == 0 && model.DB != nil {
+				_ = model.InvalidateUserCache(asIntID(id))
+				if dbUser, dbErr := model.GetUserById(asIntID(id), false); dbErr == nil && dbUser != nil {
+					full = dbUser.ToBaseUser()
+				}
+			}
+			username = full.Username
+			role = full.Role
+			status = full.Status
+			userGroup = full.Group
+		}
+	}
+	statusInt := asIntID(status)
+	roleInt := asIntID(role)
+	usernameStr, _ := username.(string)
+	if statusInt == common.UserStatusDisabled {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": common.TranslateMessage(c, i18n.MsgAuthUserBanned),
@@ -129,7 +220,7 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if role.(int) < minRole {
+	if roleInt < minRole {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege),
@@ -137,7 +228,7 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if !validUserInfo(username.(string), role.(int)) {
+	if !validUserInfo(usernameStr, roleInt) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": common.TranslateMessage(c, i18n.MsgAuthUserInfoInvalid),
@@ -147,17 +238,10 @@ func authHelper(c *gin.Context, minRole int) {
 	}
 	// 防止不同newapi版本冲突，导致数据不通用
 	c.Header("Auth-Version", "864b7076dbcd0a3c01b5520316720ebf")
-	c.Set("username", username)
-	c.Set("role", role)
-	c.Set("id", id)
-	// jzlh-fix: 分组鉴权读实时缓存,而非 session 登录快照——防降级/升级后越权。
-	// session.Get("group") 是登录时刻的组;订阅到期降级/管理员改组/充值升级都刷了
-	// UpdateUserGroupCache,唯独这里读陈旧 session 会让被降级用户继续按旧高分组
-	// 白嫖 premium 准入与低价倍率档。缓存失败则回退 session,不因缓存故障阻断登录态。
-	userGroup := session.Get("group")
-	if cache, cErr := model.GetUserCache(apiUserId); cErr == nil && cache.Group != "" {
-		userGroup = cache.Group
-	}
+	c.Set("username", usernameStr)
+	c.Set("role", roleInt)
+	c.Set("status", statusInt)
+	c.Set("id", asIntID(id))
 	c.Set("group", userGroup)
 	c.Set("user_group", userGroup)
 	c.Set("use_access_token", useAccessToken)
@@ -283,14 +367,38 @@ func WssAuth(c *gin.Context) {
 // Used for endpoints that need to be accessible from both the dashboard and API clients.
 func TokenOrUserAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		// Try session auth first (dashboard users)
+		// Try session auth first (dashboard users) — re-source status via user cache
+		// so ban/disable takes effect before 30-day cookie expires.
 		session := sessions.Default(c)
 		if id := session.Get("id"); id != nil {
-			if status, ok := session.Get("status").(int); ok && status == common.UserStatusEnabled {
-				c.Set("id", id)
+			uid := asIntID(id)
+			full, refreshErr := getFreshSessionUser(uid)
+			if refreshErr != nil {
+				if model.DB != nil || common.RDB != nil {
+					abortSessionUserRefresh(c, refreshErr)
+					return
+				}
+				// No persistence layer (tests): accept session as identity hint.
+				c.Set("id", uid)
 				c.Next()
 				return
 			}
+			if full.Status != common.UserStatusEnabled {
+				c.JSON(http.StatusForbidden, gin.H{
+					"success": false,
+					"message": common.TranslateMessage(c, i18n.MsgAuthUserBanned),
+				})
+				c.Abort()
+				return
+			}
+			c.Set("id", full.Id)
+			c.Set("username", full.Username)
+			c.Set("role", full.Role)
+			c.Set("status", full.Status)
+			c.Set("group", full.Group)
+			c.Set("user_group", full.Group)
+			c.Next()
+			return
 		}
 		// Fall back to token auth (API clients)
 		TokenAuth()(c)
