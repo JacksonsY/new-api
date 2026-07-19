@@ -166,7 +166,18 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		case "error":
 			// 顶层 error 事件先攒着：多数上游随后会发 response.failed 收口；
 			// 若只发了 error 就断流，扫描结束后再据此返回。
-			if pendingErr := responsesStreamErrorFromOpenAIError(dto.GetOpenAIError(streamResponse.Error)); pendingErr != nil {
+			// OpenAI 官方规范的 error 事件是扁平的：{"type":"error","code","message","param"}，
+			// 错误字段就在事件顶层、没有嵌套 error 对象；部分兼容上游才把它嵌在 "error" 键里。
+			// 两种形状都要认，否则规范形状的孤立 error 事件会被吞、按成功计费(issue：官方 SDK
+			// ResponseErrorEvent 为扁平结构)。
+			oaiErr := dto.GetOpenAIError(streamResponse.Error)
+			if oaiErr == nil {
+				var flat types.OpenAIError
+				if err := common.UnmarshalJsonStr(data, &flat); err == nil && flat.Message != "" {
+					oaiErr = &flat
+				}
+			}
+			if pendingErr := responsesStreamErrorFromOpenAIError(oaiErr); pendingErr != nil {
 				pendingStreamErr = pendingErr
 				sr.Error(pendingErr)
 			}

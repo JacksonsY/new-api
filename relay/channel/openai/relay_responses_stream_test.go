@@ -44,9 +44,10 @@ func TestOaiResponsesStreamHandlerReturnsErrorForResponseFailed(t *testing.T) {
 	constant.StreamingTimeout = 30
 	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
 
+	// 官方规范：顶层 error 事件是扁平结构（code/message/param 在事件顶层，无嵌套 error 对象）。
 	body := strings.Join([]string{
 		`event: error`,
-		`data: {"type":"error","error":{"type":"invalid_request_error","code":"context_length_exceeded","message":"Your input exceeds the context window of this model. Please adjust your input and try again.","param":"input"},"sequence_number":2}`,
+		`data: {"type":"error","code":"context_length_exceeded","message":"Your input exceeds the context window of this model. Please adjust your input and try again.","param":"input","sequence_number":2}`,
 		``,
 		`event: response.failed`,
 		`data: {"type":"response.failed","response":{"id":"resp_failed","object":"response","created_at":1710000000,"status":"failed","model":"gpt-5.5","error":{"message":"Your input exceeds the context window of this model. Please adjust your input and try again.","code":"context_length_exceeded"}}}`,
@@ -77,9 +78,11 @@ func TestOaiResponsesStreamHandlerReturnsPendingTopLevelErrorWithoutFailedEvent(
 	constant.StreamingTimeout = 30
 	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
 
+	// 关键回归：官方规范的扁平顶层 error 事件（无嵌套 error 对象），且不发 response.failed
+	// 收口。修复前只解析嵌套 error 键、此形状被吞并按成功计费。
 	body := strings.Join([]string{
 		`event: error`,
-		`data: {"type":"error","error":{"type":"invalid_request_error","code":"context_length_exceeded","message":"Your input exceeds the context window of this model. Please adjust your input and try again.","param":"input"}}`,
+		`data: {"type":"error","code":"context_length_exceeded","message":"Your input exceeds the context window of this model. Please adjust your input and try again.","param":"input"}`,
 		``,
 	}, "\n")
 
