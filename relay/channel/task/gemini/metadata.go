@@ -238,22 +238,24 @@ func parseVeoReferenceImageItem(raw rawMessage) (rawMessage, string, error) {
 	if err := common.Unmarshal(trimmed, &item); err != nil {
 		return nil, "", err
 	}
+	referenceType := item.ReferenceType
+	if referenceType == "" {
+		referenceType = item.ReferenceTypeSnake
+	}
+	if referenceType == "" {
+		referenceType = veoReferenceTypeAsset
+	}
+	// Veo 3.1 只支持 asset 参考图；style 会被上游直接拒绝，在这里拦下来才能给出
+	// 说得清的原因。无论标准的 {"image":...,"referenceType":...} 形态还是顶层
+	// 直接带图数据的简写形态，都要校验——否则简写形态会绕过校验被静默当 asset。
+	if referenceType != veoReferenceTypeAsset {
+		return nil, "", fmt.Errorf("referenceType %q is not supported, only %q", referenceType, veoReferenceTypeAsset)
+	}
+
 	if hasRaw(item.Image) {
-		referenceType := item.ReferenceType
-		if referenceType == "" {
-			referenceType = item.ReferenceTypeSnake
-		}
-		if referenceType == "" {
-			referenceType = veoReferenceTypeAsset
-		}
-		// Veo 3.1 只支持 asset 参考图；style 会被上游直接拒绝，在这里拦下来
-		// 才能给出说得清的原因。
-		if referenceType != veoReferenceTypeAsset {
-			return nil, "", fmt.Errorf("referenceType %q is not supported, only %q", referenceType, veoReferenceTypeAsset)
-		}
 		return item.Image, referenceType, nil
 	}
 
 	// Allow a bare image object as a shorthand reference image.
-	return raw, veoReferenceTypeAsset, nil
+	return raw, referenceType, nil
 }

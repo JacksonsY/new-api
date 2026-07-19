@@ -226,6 +226,21 @@ func TestApplyVeoMetadataToInstanceReturnsErrorsForInvalidInputs(t *testing.T) {
 			errContains: "referenceType \"style\" is not supported",
 		},
 		{
+			// 简写形态（顶层直接带图数据、无 image 包装）也必须校验
+			// referenceType，否则 style 会绕过校验被静默当 asset 透传。
+			name: "unsupported reference type in shorthand form",
+			metadata: map[string]any{
+				"referenceImages": []any{
+					map[string]any{
+						"bytesBase64Encoded": "aVZCTw==",
+						"mimeType":           "image/png",
+						"referenceType":      "style",
+					},
+				},
+			},
+			errContains: "referenceType \"style\" is not supported",
+		},
+		{
 			name: "too many reference images",
 			metadata: map[string]any{
 				"referenceImages": []any{
