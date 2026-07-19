@@ -16,6 +16,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// normalizeXAIUsage 把 xAI 的 usage 归一到本仓库计费口径。
+// xAI 的 completion_tokens 不含 reasoning_tokens
+// (total = prompt + completion + reasoning)，用 total-prompt 重算把 reasoning
+// 计入 completion（计费按 CompletionTokens），再回填 text tokens 明细。
+// 流式与非流式两条路径共用此函数，避免口径分叉。
+// 保留 total<=prompt 的兜底：异常上游数据下不产生负值 completion。
+func normalizeXAIUsage(usage *dto.Usage) {
+	if usage == nil {
+		return
+	}
+	if usage.TotalTokens > usage.PromptTokens {
+		usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
+	}
+	usage.CompletionTokenDetails.TextTokens = usage.CompletionTokens - usage.CompletionTokenDetails.ReasoningTokens
+}
+
 func streamResponseXAI2OpenAI(xAIResp *dto.ChatCompletionsStreamResponse, usage *dto.Usage) *dto.ChatCompletionsStreamResponse {
 	if xAIResp == nil {
 		return nil
@@ -58,9 +74,7 @@ func xAIStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			// prompt_tokens_details.cached_tokens 等明细；只重建三个标量
 			// 会把流式请求的缓存命中 token 全部丢掉，导致按全价计费。
 			*usage = *xAIResp.Usage
-			if usage.CompletionTokens == 0 && usage.TotalTokens > usage.PromptTokens {
-				usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
-			}
+			normalizeXAIUsage(usage)
 		}
 
 		openaiResponse := streamResponseXAI2OpenAI(xAIResp, usage)
@@ -93,10 +107,7 @@ func xAIHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	if xaiResponse.Usage != nil {
-		xaiResponse.Usage.CompletionTokens = xaiResponse.Usage.TotalTokens - xaiResponse.Usage.PromptTokens
-		xaiResponse.Usage.CompletionTokenDetails.TextTokens = xaiResponse.Usage.CompletionTokens - xaiResponse.Usage.CompletionTokenDetails.ReasoningTokens
-	}
+	normalizeXAIUsage(xaiResponse.Usage)
 
 	// new body
 	encodeJson, err := common.Marshal(xaiResponse)
