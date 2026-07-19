@@ -6216,6 +6216,7 @@
     "Video generation failed": "Échec de la génération vidéo",
     "Video URL": "URL de la vidéo",
     "Watermark": "Filigrane",
-    "Your browser does not support the video tag.": "Votre navigateur ne prend pas en charge la balise vidéo."
+    "Your browser does not support the video tag.": "Votre navigateur ne prend pas en charge la balise vidéo.",
+    "Timed out waiting for the video task": "Délai d'attente dépassé pour la tâche vidéo"
   }
 }

@@ -6215,6 +6215,7 @@
     "Video generation failed": "Video generation failed",
     "Video URL": "Video URL",
     "Watermark": "Watermark",
-    "Your browser does not support the video tag.": "Your browser does not support the video tag."
+    "Your browser does not support the video tag.": "Your browser does not support the video tag.",
+    "Timed out waiting for the video task": "Timed out waiting for the video task"
   }
 }

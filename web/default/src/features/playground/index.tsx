@@ -114,10 +114,12 @@ export function Playground() {
   >['onSubmit'] = async (req, apiKey, tokenId, meta) => {
     try {
       await submitTask(req, apiKey, tokenId, meta)
+      return true
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : t('Failed to submit video task')
       )
+      return false
     }
   }
 
@@ -190,7 +192,11 @@ export function Playground() {
           </TabsList>
         </div>
 
+        {/* keepMounted：两个面板都保留挂载。默认卸载的话，切走再切回会清掉
+            聊天草稿与滚动位置，视频侧的提示词/分辨率/时长/图片 URL 也全部重置，
+            并且每次重挂都会重新拉一遍密钥列表。 */}
         <TabsContent
+          keepMounted
           className='flex min-h-0 flex-1 flex-col overflow-hidden'
           value='chat'
         >
@@ -198,6 +204,7 @@ export function Playground() {
         </TabsContent>
 
         <TabsContent
+          keepMounted
           className='flex min-h-0 flex-1 gap-4 overflow-hidden p-4'
           value='video'
         >

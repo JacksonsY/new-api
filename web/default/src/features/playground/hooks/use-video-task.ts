@@ -26,6 +26,7 @@ import {
   fetchTokenKey,
 } from '../api'
 import {
+  VIDEO_MAX_POLL_ATTEMPTS,
   VIDEO_POLLING_INTERVAL,
   VIDEO_TASK_HISTORY_LIMIT,
   STORAGE_KEYS_VIDEO,
@@ -33,6 +34,7 @@ import {
 import type {
   VideoGenerationRequest,
   VideoTaskItem,
+  VideoTaskStatus,
   VideoModelType,
 } from '../types'
 
@@ -54,6 +56,20 @@ function saveTasksToStorage(tasks: VideoTaskItem[]) {
     localStorage.setItem(STORAGE_KEYS_VIDEO.TASK_QUEUE, JSON.stringify(tasks))
   } catch {
     // ignore storage errors (quota exceeded, private mode)
+  }
+}
+
+// 后端在任务刚入库、轮询 worker 尚未接手时可能返回四态之外的值。原样存下来会让
+// 任务既不算进行中也不算已完成，在队列里整条消失，直到下一次状态刷新才冒出来。
+function normalizeVideoStatus(status: string | undefined): VideoTaskStatus {
+  switch (status) {
+    case 'queued':
+    case 'in_progress':
+    case 'completed':
+    case 'failed':
+      return status
+    default:
+      return 'in_progress'
   }
 }
 
@@ -94,13 +110,23 @@ export function useVideoTask() {
       // Avoid duplicate intervals
       if (pollingTimers.current[id]) return
       let inFlight = false
+      let attempts = 0
 
       const poll = async () => {
         if (inFlight) return
         inFlight = true
         try {
+          attempts += 1
+          if (attempts > VIDEO_MAX_POLL_ATTEMPTS) {
+            stopPolling(id)
+            updateTask(id, {
+              status: 'failed',
+              error: t('Timed out waiting for the video task'),
+            })
+            return
+          }
           const res = await fetchVideoTaskStatus(id, apiKey)
-          const status = res.status ?? 'in_progress'
+          const status = normalizeVideoStatus(res.status)
           const videoUrl =
             status === 'completed'
               ? (res.metadata?.url as string | undefined)
@@ -179,8 +205,17 @@ export function useVideoTask() {
     }
     void resumePolling()
 
+    // 每个标签页各持一份内存副本，而持久化是整体覆写。不监听 storage 的话，
+    // 本标签页的下一次写入会抹掉另一个标签页刚提交的任务（已付费任务失联）。
+    const syncFromOtherTab = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEYS_VIDEO.TASK_QUEUE) return
+      setTasks(loadTasksFromStorage())
+    }
+    window.addEventListener('storage', syncFromOtherTab)
+
     const timers = pollingTimers
     return () => {
+      window.removeEventListener('storage', syncFromOtherTab)
       // Clear all timers on unmount
       Object.values(timers.current).forEach(clearInterval)
       timers.current = {}

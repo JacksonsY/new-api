@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
@@ -57,12 +58,13 @@ import { MediaDropZone } from './media-drop-zone'
 
 interface VideoInputFormProps {
   models: ModelOption[]
+  /** Resolves to false when submission failed, so the form can keep the prompt. */
   onSubmit: (
     req: VideoGenerationRequest,
     apiKey: string,
     tokenId: number,
     meta?: { size?: string; duration?: number; type?: VideoModelType }
-  ) => Promise<void>
+  ) => Promise<boolean>
   isSubmitting?: boolean
 }
 
@@ -172,9 +174,21 @@ export function VideoInputForm({
     )
     if (!selectedToken) return
 
-    // Fetch the real (unmasked) key just before submitting
-    const realKey = await fetchTokenKey(selectedToken.id)
-    if (!realKey) return
+    // Fetch the real (unmasked) key just before submitting.
+    // fetchTokenKey 走 skipErrorHandler，全局拦截器不会提示；不在这里接住的话，
+    // 密钥被删或无权限时点「生成视频」会毫无反应，只在控制台留一条未捕获拒绝。
+    let realKey: string
+    try {
+      const fetched = await fetchTokenKey(selectedToken.id)
+      if (!fetched) {
+        toast.error(t('Failed to restore API Key'))
+        return
+      }
+      realKey = fetched
+    } catch {
+      toast.error(t('Failed to restore API Key'))
+      return
+    }
 
     const req: VideoGenerationRequest = {
       model: selectedModel,
@@ -201,12 +215,15 @@ export function VideoInputForm({
       }
     }
 
-    await onSubmit(req, realKey, selectedToken.id, {
+    const submitted = await onSubmit(req, realKey, selectedToken.id, {
       size,
       duration,
       type: modelConfig.type,
     })
-    setPrompt('')
+    // 仅在提交成功后清空：失败还清掉的话，用户刚写的长提示词会随报错一起消失。
+    if (submitted) {
+      setPrompt('')
+    }
   }
 
   return (

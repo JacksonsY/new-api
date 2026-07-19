@@ -6215,6 +6215,7 @@
     "Video generation failed": "视频生成失败",
     "Video URL": "视频 URL",
     "Watermark": "水印",
-    "Your browser does not support the video tag.": "您的浏览器不支持 video 标签。"
+    "Your browser does not support the video tag.": "您的浏览器不支持 video 标签。",
+    "Timed out waiting for the video task": "等待视频任务超时"
   }
 }

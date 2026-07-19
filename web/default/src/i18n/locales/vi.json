@@ -6216,6 +6216,7 @@
     "Video generation failed": "Tạo video thất bại",
     "Video URL": "URL video",
     "Watermark": "Hình mờ",
-    "Your browser does not support the video tag.": "Trình duyệt của bạn không hỗ trợ thẻ video."
+    "Your browser does not support the video tag.": "Trình duyệt của bạn không hỗ trợ thẻ video.",
+    "Timed out waiting for the video task": "Hết thời gian chờ tác vụ video"
   }
 }

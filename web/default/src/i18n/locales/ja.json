@@ -6216,6 +6216,7 @@
     "Video generation failed": "動画生成に失敗しました",
     "Video URL": "動画 URL",
     "Watermark": "透かし",
-    "Your browser does not support the video tag.": "お使いのブラウザは video タグに対応していません。"
+    "Your browser does not support the video tag.": "お使いのブラウザは video タグに対応していません。",
+    "Timed out waiting for the video task": "動画タスクの待機がタイムアウトしました"
   }
 }

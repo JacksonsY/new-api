@@ -6216,6 +6216,7 @@
     "Video generation failed": "Ошибка генерации видео",
     "Video URL": "URL видео",
     "Watermark": "Водяной знак",
-    "Your browser does not support the video tag.": "Ваш браузер не поддерживает тег video."
+    "Your browser does not support the video tag.": "Ваш браузер не поддерживает тег video.",
+    "Timed out waiting for the video task": "Истекло время ожидания задачи видео"
   }
 }

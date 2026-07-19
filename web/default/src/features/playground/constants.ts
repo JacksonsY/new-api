@@ -182,6 +182,11 @@ export const VIDEO_POLLING_INTERVAL = 5000
 // Cap the persisted queue so localStorage cannot grow without bound
 export const VIDEO_TASK_HISTORY_LIMIT = 50
 
+// 轮询上限。上游任务被清理、密钥被删等情况下状态查询会一直失败，没有上限的话
+// 只要标签页开着就会以固定频率永远轮询下去，任务也永远停在进行中。
+// 240 次 × 5 秒 = 20 分钟，远超正常出片时间。
+export const VIDEO_MAX_POLL_ATTEMPTS = 240
+
 export const STORAGE_KEYS_VIDEO = {
   TASK_QUEUE: 'playground_video_tasks',
 } as const
