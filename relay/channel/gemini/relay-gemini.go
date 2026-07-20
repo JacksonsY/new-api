@@ -548,3 +548,61 @@ func FetchGeminiModels(baseURL, apiKey, proxyURL string) ([]string, error) {
 
 	return allModels, nil
 }
+
+// convertGeminiImageResponse 把 Gemini generateContent 的内联图(inlineData)响应
+// 转成 OpenAI Images API 的 data[].b64_json 形状,使 gemini 图片模型
+// (nano-banana / *-flash-image)可经 /v1/images/generations 出图。
+func convertGeminiImageResponse(geminiResponse *dto.GeminiChatResponse) (*dto.ImageResponse, error) {
+	openAIResponse := &dto.ImageResponse{
+		Created: common.GetTimestamp(),
+		Data:    make([]dto.ImageData, 0),
+	}
+	for _, candidate := range geminiResponse.Candidates {
+		for _, part := range candidate.Content.Parts {
+			if part.InlineData != nil && strings.HasPrefix(part.InlineData.MimeType, "image") {
+				openAIResponse.Data = append(openAIResponse.Data, dto.ImageData{
+					B64Json: part.InlineData.Data,
+				})
+			}
+		}
+	}
+	if len(openAIResponse.Data) == 0 {
+		return nil, errors.New("no images found in response")
+	}
+	return openAIResponse, nil
+}
+
+// ChatImageHandler 处理 gemini 图片模型经 /v1/images/generations 的响应:读取
+// generateContent 返回,抽取内联图转成 OpenAI Images 响应体,并按 gemini 用量计费。
+func ChatImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	responseBody, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, types.NewOpenAIError(readErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+	service.CloseResponseBodyGracefully(resp)
+
+	var geminiResponse dto.GeminiChatResponse
+	if jsonErr := common.Unmarshal(responseBody, &geminiResponse); jsonErr != nil {
+		return nil, types.NewOpenAIError(jsonErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+	if len(geminiResponse.Candidates) == 0 {
+		return nil, types.NewOpenAIError(errors.New("no images generated"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	openAIResponse, err := convertGeminiImageResponse(&geminiResponse)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	jsonResponse, jsonErr := common.Marshal(openAIResponse)
+	if jsonErr != nil {
+		return nil, types.NewError(jsonErr, types.ErrorCodeBadResponseBody)
+	}
+
+	c.Writer.Header().Set("Content-Type", "application/json")
+	c.Writer.WriteHeader(resp.StatusCode)
+	_, _ = c.Writer.Write(jsonResponse)
+
+	usage := buildUsageFromGeminiMetadata(&geminiResponse.UsageMetadata, 0)
+	return &usage, nil
+}

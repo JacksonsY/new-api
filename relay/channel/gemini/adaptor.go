@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -60,7 +61,59 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 	return nil, errors.New("not implemented")
 }
 
+// geminiImageAspectRatio 把 OpenAI Images 的 size 映射成 Gemini 的 aspect_ratio。
+// 只映射宽高比:刻意不带 imageSize(2K/4K)——gemini-2.5-flash-image 会拒绝该参数,
+// 只有 gemini-3.x 图片模型才接受,透传会直接搞挂普通 nano-banana。
+func geminiImageAspectRatio(size string) string {
+	size = strings.TrimSpace(size)
+	if size == "" {
+		return ""
+	}
+	if strings.Contains(size, ":") {
+		return size
+	}
+	switch size {
+	case "1536x1024":
+		return "3:2"
+	case "1024x1536":
+		return "2:3"
+	case "1024x1792":
+		return "9:16"
+	case "1792x1024":
+		return "16:9"
+	case "256x256", "512x512", "1024x1024":
+		return "1:1"
+	}
+	return ""
+}
+
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	// Gemini 原生图片模型(nano-banana / *-flash-image / *-pro-image)不走 imagen 的
+	// :predict 接口,而是靠 chat generateContent + responseModalities 出图。这里把
+	// /v1/images/generations 请求转成对话请求交给 OpenAI→Gemini 转换(转换层会对
+	// imagine 模型自动注入 responseModalities),响应侧由 ChatImageHandler 转回
+	// data[].b64_json。复刻上游被回滚的 #2305,并按本仓 extra_body schema 适配。
+	if info.RelayMode == constant.RelayModeImagesGenerations && model_setting.IsGeminiModelSupportImagine(info.UpstreamModelName) {
+		n := int(lo.FromPtrOr(request.N, uint(1)))
+		chatRequest := dto.GeneralOpenAIRequest{
+			Model:    request.Model,
+			Messages: []dto.Message{{Role: "user", Content: request.Prompt}},
+			N:        &n,
+		}
+		if aspectRatio := geminiImageAspectRatio(request.Size); aspectRatio != "" {
+			extraBody, err := common.Marshal(map[string]any{
+				"google": map[string]any{
+					"image_config": map[string]any{"aspect_ratio": aspectRatio},
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
+			chatRequest.ExtraBody = extraBody
+		}
+		return a.ConvertOpenAIRequest(c, info, &chatRequest)
+	}
+
 	if !strings.HasPrefix(info.UpstreamModelName, "imagen") {
 		return nil, errors.New("not supported model for image generation, only imagen models are supported")
 	}
@@ -276,6 +329,13 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 
 	if strings.HasPrefix(info.UpstreamModelName, "imagen") {
 		return GeminiImageHandler(c, info, resp)
+	}
+
+	// Gemini 图片模型经 /v1/images/generations 出图:上游返回的是 generateContent
+	// 内联图,需转回 OpenAI Images 的 data[].b64_json;仅限图片生成路由,聊天补全
+	// (RelayMode != ImagesGenerations)仍走 GeminiChatHandler 返回对话格式。
+	if info.RelayMode == constant.RelayModeImagesGenerations && model_setting.IsGeminiModelSupportImagine(info.UpstreamModelName) {
+		return ChatImageHandler(c, info, resp)
 	}
 
 	// check if the model is an embedding model
