@@ -6245,6 +6245,7 @@
     "Storage settings cleared": "儲存設定已清除",
     "Failed to clear storage settings": "清除儲存設定失敗",
     "Please fill in Endpoint, Bucket and AccessKey ID": "請填寫 Endpoint、Bucket 與 AccessKey ID",
-    "Export": "匯出"
+    "Export": "匯出",
+    "Real Person Mode": "真人模式"
   }
 }

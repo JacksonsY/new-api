@@ -6245,6 +6245,7 @@
     "Storage settings cleared": "Настройки хранилища очищены",
     "Failed to clear storage settings": "Не удалось очистить настройки хранилища",
     "Please fill in Endpoint, Bucket and AccessKey ID": "Заполните Endpoint, Bucket и AccessKey ID",
-    "Export": "Экспорт"
+    "Export": "Экспорт",
+    "Real Person Mode": "Режим реального человека"
   }
 }

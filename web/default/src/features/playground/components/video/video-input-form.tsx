@@ -48,7 +48,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
 import { fetchTokenKey, getUserTokens } from '../../api'
-import { HAPPYHORSE_MODELS, VIDEO_MODEL_TYPE_LABELS } from '../../constants'
+import { VIDEO_MODELS, VIDEO_MODEL_TYPE_LABELS } from '../../constants'
 import type {
   ModelOption,
   TokenOption,
@@ -79,11 +79,11 @@ export function VideoInputForm({
   // Filter to only the video models the user actually has access to
   const availableModels = useMemo(() => {
     const userModelValues = new Set(models.map((m) => m.value))
-    return HAPPYHORSE_MODELS.filter((m) => userModelValues.has(m.model))
+    return VIDEO_MODELS.filter((m) => userModelValues.has(m.model))
   }, [models])
 
   const [selectedModel, setSelectedModel] = useState<string>(
-    availableModels[0]?.model ?? HAPPYHORSE_MODELS[0].model
+    availableModels[0]?.model ?? VIDEO_MODELS[0].model
   )
   const [prompt, setPrompt] = useState('')
   const [size, setSize] = useState('720P')
@@ -95,6 +95,8 @@ export function VideoInputForm({
   const [promptExtend, setPromptExtend] = useState(true)
   const [seed, setSeed] = useState<number | undefined>(undefined)
   const [watermark, setWatermark] = useState(false)
+  // 真人模式(仅 seedance):经 extra_body.real_person_mode 透传 aiai 上游
+  const [realPersonMode, setRealPersonMode] = useState(false)
 
   // Token (API key) selector state
   const [tokens, setTokens] = useState<TokenOption[]>([])
@@ -120,10 +122,10 @@ export function VideoInputForm({
 
   const modelConfig = useMemo(
     () =>
-      HAPPYHORSE_MODELS.find((m) => m.model === selectedModel) ??
-      HAPPYHORSE_MODELS[0],
+      VIDEO_MODELS.find((m) => m.model === selectedModel) ?? VIDEO_MODELS[0],
     [selectedModel]
   )
+  const isSeedance = modelConfig.family === 'seedance'
 
   // Keep selectedModel in sync with async model availability
   useEffect(() => {
@@ -133,8 +135,19 @@ export function VideoInputForm({
     }
   }, [availableModels, selectedModel])
 
+  // 各模型分辨率档位不同(如 seedance-mini 无 1080P):切换后落到不支持的档位时回退
+  useEffect(() => {
+    if (!modelConfig.supportedSizes.includes(size)) {
+      setSize(
+        modelConfig.supportedSizes.includes('720P')
+          ? '720P'
+          : modelConfig.supportedSizes[0]
+      )
+    }
+  }, [modelConfig, size])
+
   const modelsToShow = useMemo(
-    () => (availableModels.length > 0 ? availableModels : HAPPYHORSE_MODELS),
+    () => (availableModels.length > 0 ? availableModels : VIDEO_MODELS),
     [availableModels]
   )
 
@@ -191,17 +204,28 @@ export function VideoInputForm({
       return
     }
 
-    const req: VideoGenerationRequest = {
-      model: selectedModel,
-      prompt: prompt.trim(),
-      size,
-      duration,
-      metadata: {
-        prompt_extend: promptExtend,
-        watermark,
-        ...(seed != null ? { seed } : {}),
-      },
-    }
+    // seedance(aiai)走原生字段:resolution 档位 + 顶层 watermark + extra_body 真人模式;
+    // prompt_extend/seed 是 happyhorse 侧参数,不发给 seedance,避免严格上游拒收未知参数。
+    const req: VideoGenerationRequest = isSeedance
+      ? {
+          model: selectedModel,
+          prompt: prompt.trim(),
+          resolution: size.toLowerCase(),
+          duration,
+          watermark,
+          ...(realPersonMode ? { extra_body: { real_person_mode: true } } : {}),
+        }
+      : {
+          model: selectedModel,
+          prompt: prompt.trim(),
+          size,
+          duration,
+          metadata: {
+            prompt_extend: promptExtend,
+            watermark,
+            ...(seed != null ? { seed } : {}),
+          },
+        }
 
     if (modelConfig.requiresVideo && videoUrl.trim()) {
       req.input_reference = videoUrl.trim()
@@ -300,6 +324,8 @@ export function VideoInputForm({
                   <span className='flex items-center gap-2'>
                     {m.model.startsWith('happyhorse-') &&
                       getLobeIcon('HappyHorse', 16)}
+                    {m.model.startsWith('doubao-') &&
+                      getLobeIcon('Doubao.Color', 16)}
                     {m.model}
                   </span>
                 </SelectItem>
@@ -412,16 +438,18 @@ export function VideoInputForm({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className='mt-2 flex flex-col gap-3'>
-            <div className='flex items-center justify-between'>
-              <Label className='text-sm font-normal'>
-                {t('Prompt Extend')}
-              </Label>
-              <Switch
-                size='sm'
-                checked={promptExtend}
-                onCheckedChange={setPromptExtend}
-              />
-            </div>
+            {!isSeedance && (
+              <div className='flex items-center justify-between'>
+                <Label className='text-sm font-normal'>
+                  {t('Prompt Extend')}
+                </Label>
+                <Switch
+                  size='sm'
+                  checked={promptExtend}
+                  onCheckedChange={setPromptExtend}
+                />
+              </div>
+            )}
 
             <div className='flex items-center justify-between'>
               <Label className='text-sm font-normal'>{t('Watermark')}</Label>
@@ -432,19 +460,34 @@ export function VideoInputForm({
               />
             </div>
 
-            <div className='flex items-center justify-between gap-4'>
-              <Label className='text-sm font-normal'>{t('Seed')}</Label>
-              <Input
-                type='number'
-                className='w-32 text-sm'
-                placeholder={t('Random')}
-                value={seed ?? ''}
-                onChange={(e) => {
-                  const value = e.target.value
-                  setSeed(value === '' ? undefined : Number(value))
-                }}
-              />
-            </div>
+            {isSeedance && (
+              <div className='flex items-center justify-between'>
+                <Label className='text-sm font-normal'>
+                  {t('Real Person Mode')}
+                </Label>
+                <Switch
+                  size='sm'
+                  checked={realPersonMode}
+                  onCheckedChange={setRealPersonMode}
+                />
+              </div>
+            )}
+
+            {!isSeedance && (
+              <div className='flex items-center justify-between gap-4'>
+                <Label className='text-sm font-normal'>{t('Seed')}</Label>
+                <Input
+                  type='number'
+                  className='w-32 text-sm'
+                  placeholder={t('Random')}
+                  value={seed ?? ''}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    setSeed(value === '' ? undefined : Number(value))
+                  }}
+                />
+              </div>
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>

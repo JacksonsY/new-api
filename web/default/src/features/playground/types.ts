@@ -167,6 +167,8 @@ export interface VideoModelConfig {
   requiresVideo: boolean
   supportedSizes: string[]
   durationRange: [number, number]
+  /** seedance(aiai 豆包线)请求体字段与 happyhorse 不同,并支持真人模式 */
+  family?: 'seedance'
 }
 
 // Only id/name are exposed: the list endpoint returns a masked key, and the
@@ -187,6 +189,12 @@ export interface VideoGenerationRequest {
     prompt_extend?: boolean
     seed?: number
     watermark?: boolean
+  }
+  // seedance(aiai)原生字段:分辨率档位、水印与真人模式(extra_body 由网关透传上游)
+  resolution?: string
+  watermark?: boolean
+  extra_body?: {
+    real_person_mode?: boolean
   }
 }
 

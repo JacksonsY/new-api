@@ -6245,6 +6245,7 @@
     "Storage settings cleared": "Đã xóa cài đặt lưu trữ",
     "Failed to clear storage settings": "Xóa cài đặt lưu trữ thất bại",
     "Please fill in Endpoint, Bucket and AccessKey ID": "Vui lòng điền Endpoint, Bucket và AccessKey ID",
-    "Export": "Xuất"
+    "Export": "Xuất",
+    "Real Person Mode": "Chế độ người thật"
   }
 }

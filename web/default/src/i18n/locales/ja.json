@@ -6245,6 +6245,7 @@
     "Storage settings cleared": "ストレージ設定をクリアしました",
     "Failed to clear storage settings": "ストレージ設定のクリアに失敗しました",
     "Please fill in Endpoint, Bucket and AccessKey ID": "Endpoint、Bucket、AccessKey ID を入力してください",
-    "Export": "エクスポート"
+    "Export": "エクスポート",
+    "Real Person Mode": "リアル人物モード"
   }
 }

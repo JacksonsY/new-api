@@ -34,7 +34,7 @@ import { PlaygroundInput } from './components/input/playground-input'
 import { VideoInputForm } from './components/video/video-input-form'
 import { VideoPlayer } from './components/video/video-player'
 import { VideoTaskQueue } from './components/video/video-task-queue'
-import { HAPPYHORSE_MODEL_PREFIX } from './constants'
+import { VIDEO_MODELS } from './constants'
 import {
   useChatHandler,
   usePlaygroundConversation,
@@ -118,7 +118,7 @@ export function Playground() {
 
   // The video tab only appears when the user can reach a video model
   const hasVideoModels = models.some((model) =>
-    model.value.startsWith(HAPPYHORSE_MODEL_PREFIX)
+    VIDEO_MODELS.some((video) => video.model === model.value)
   )
 
   const handleVideoSubmit: React.ComponentProps<

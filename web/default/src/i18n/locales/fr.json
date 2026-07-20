@@ -6245,6 +6245,7 @@
     "Storage settings cleared": "Paramètres de stockage effacés",
     "Failed to clear storage settings": "Échec de l'effacement des paramètres de stockage",
     "Please fill in Endpoint, Bucket and AccessKey ID": "Veuillez renseigner l'Endpoint, le Bucket et l'AccessKey ID",
-    "Export": "Exporter"
+    "Export": "Exporter",
+    "Real Person Mode": "Mode personne réelle"
   }
 }

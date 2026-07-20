@@ -102,9 +102,7 @@ export const VIDEO_API_ENDPOINTS = {
 
 // Video models are served by the `ali` channel and identified by model name
 // prefix, so both the 1.0 and 1.1 families are matched.
-export const HAPPYHORSE_MODEL_PREFIX = 'happyhorse-'
-
-export const HAPPYHORSE_MODELS: VideoModelConfig[] = [
+export const VIDEO_MODELS: VideoModelConfig[] = [
   {
     model: 'happyhorse-1.0-t2v',
     label: 'Text-to-Video',
@@ -167,6 +165,38 @@ export const HAPPYHORSE_MODELS: VideoModelConfig[] = [
     requiresVideo: true,
     supportedSizes: ['720P', '1080P'],
     durationRange: [2, 15],
+  },
+  // 豆包 Seedance 2.0(aiai 渠道,按秒计费):原生字段 resolution/duration,
+  // 支持 extra_body.real_person_mode 真人模式。分辨率档位与 aiai 价目表一致。
+  {
+    model: 'doubao-seedance-2.0',
+    label: 'Text-to-Video',
+    type: 'text-to-video',
+    requiresImage: false,
+    requiresVideo: false,
+    supportedSizes: ['480P', '720P', '1080P', '4K'],
+    durationRange: [4, 15],
+    family: 'seedance',
+  },
+  {
+    model: 'doubao-seedance-2.0-mini',
+    label: 'Text-to-Video',
+    type: 'text-to-video',
+    requiresImage: false,
+    requiresVideo: false,
+    supportedSizes: ['480P', '720P'],
+    durationRange: [4, 15],
+    family: 'seedance',
+  },
+  {
+    model: 'doubao-seedance-2.0-fast',
+    label: 'Text-to-Video',
+    type: 'text-to-video',
+    requiresImage: false,
+    requiresVideo: false,
+    supportedSizes: ['480P', '720P'],
+    durationRange: [4, 15],
+    family: 'seedance',
   },
 ]
 
