@@ -60,6 +60,30 @@ func TestConvertGeminiImageResponse(t *testing.T) {
 	})
 }
 
+// isGeminiImageModel 需识别精确表内模型与命名变体,并排除 imagen*。
+func TestIsGeminiImageModel(t *testing.T) {
+	cases := []struct {
+		model string
+		want  bool
+	}{
+		{"gemini-2.5-flash-image", true},
+		{"gemini-3.1-flash-image-preview", true},
+		{"gemini-3-pro-image-preview", true},
+		{"gemini-2.0-flash-exp-image-generation", true},
+		{"nano-banana", true},
+		{"nano-banana-2", true},
+		{"nano-banana-pro-preview", true},
+		{"imagen-4.0-generate-001", false},
+		{"imagen-3", false},
+		{"gemini-2.5-flash", false},
+		{"gpt-image-1", false},
+		{"dall-e-3", false},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, isGeminiImageModel(tc.model), "model=%q", tc.model)
+	}
+}
+
 // geminiImageAspectRatio 只映射安全的宽高比,不产出 imageSize(避免 gemini-2.5-flash-image 拒绝)。
 func TestGeminiImageAspectRatio(t *testing.T) {
 	cases := []struct {
