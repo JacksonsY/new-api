@@ -16,7 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ArrowUpDown, Check, Filter, Grid2X2, Table2 } from 'lucide-react'
+import {
+  ArrowUpDown,
+  Check,
+  Download,
+  Filter,
+  Grid2X2,
+  Table2,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -54,6 +61,7 @@ import {
   type SortOption,
   type ViewMode,
 } from '../constants'
+import { downloadPricingCsv } from '../lib/export'
 import type { PricingModel, PricingVendor, TokenUnit } from '../types'
 import { PricingSidebar } from './pricing-sidebar'
 import { SearchBar } from './search-bar'
@@ -90,6 +98,10 @@ export interface PricingToolbarProps {
   hasActiveFilters: boolean
   activeFilterCount: number
   onClearFilters: () => void
+  /** 导出用:当前筛选后的模型列表与价格换算参数 */
+  filteredModels: PricingModel[]
+  priceRate: number
+  usdExchangeRate: number
 }
 
 function PriceModeTabs(props: {
@@ -172,6 +184,18 @@ export function PricingToolbar(props: PricingToolbarProps) {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const sortLabels = getSortLabels(t)
 
+  // 按当前所见导出:筛选结果 + 当前单位/充值模式/分组的价格口径
+  const handleExport = () => {
+    downloadPricingCsv(props.filteredModels, {
+      t,
+      tokenUnit: props.tokenUnit,
+      showRechargePrice: props.showRechargePrice,
+      priceRate: props.priceRate,
+      usdExchangeRate: props.usdExchangeRate,
+      selectedGroup: props.groupFilter,
+    })
+  }
+
   return (
     <div>
       <div className='flex flex-col gap-3 sm:flex-row sm:items-center'>
@@ -196,6 +220,16 @@ export function PricingToolbar(props: PricingToolbarProps) {
                 {props.activeFilterCount}
               </StatusBadge>
             )}
+          </Button>
+
+          <Button
+            type='button'
+            variant='outline'
+            onClick={handleExport}
+            disabled={props.filteredCount === 0}
+          >
+            <Download aria-hidden='true' />
+            {t('Export')}
           </Button>
 
           <DropdownMenu>

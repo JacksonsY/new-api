@@ -6244,6 +6244,7 @@
     "Failed to save storage settings": "Failed to save storage settings",
     "Storage settings cleared": "Storage settings cleared",
     "Failed to clear storage settings": "Failed to clear storage settings",
-    "Please fill in Endpoint, Bucket and AccessKey ID": "Please fill in Endpoint, Bucket and AccessKey ID"
+    "Please fill in Endpoint, Bucket and AccessKey ID": "Please fill in Endpoint, Bucket and AccessKey ID",
+    "Export": "Export"
   }
 }

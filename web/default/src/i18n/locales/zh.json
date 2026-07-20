@@ -6244,6 +6244,7 @@
     "Failed to save storage settings": "保存存储配置失败",
     "Storage settings cleared": "存储配置已清除",
     "Failed to clear storage settings": "清除存储配置失败",
-    "Please fill in Endpoint, Bucket and AccessKey ID": "请填写 Endpoint、Bucket 与 AccessKey ID"
+    "Please fill in Endpoint, Bucket and AccessKey ID": "请填写 Endpoint、Bucket 与 AccessKey ID",
+    "Export": "导出"
   }
 }
