@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -505,17 +506,38 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	if ti.Progress != "" {
 		task.Progress = ti.Progress
 	}
-	if strings.HasPrefix(ti.Url, "data:") {
-		// data: URI — kept in Data, not ResultURL
-	} else if ti.Url != "" {
-		task.PrivateData.ResultURL = ti.Url
-	} else if task.Status == model.TaskStatusSuccess {
-		// No URL from adaptor — construct proxy URL using public task ID
-		task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
+	// 已转存个人存储桶的任务保持桶地址,不再被上游临时 URL 覆盖
+	if !task.PrivateData.StorageArchived {
+		if strings.HasPrefix(ti.Url, "data:") {
+			// data: URI — kept in Data, not ResultURL
+		} else if ti.Url != "" {
+			task.PrivateData.ResultURL = ti.Url
+		} else if task.Status == model.TaskStatusSuccess {
+			// No URL from adaptor — construct proxy URL using public task ID
+			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
+		}
 	}
 
 	if !snap.Equal(task.Snapshot()) {
 		_, _ = task.UpdateWithStatus(snap.Status)
+	}
+
+	// 成功且未转存时,异步把视频归档到用户个人桶(不阻塞查询请求);
+	// 基于最新 DB 状态归档,成功后以 CAS(status=SUCCESS)落库。
+	if task.Status == model.TaskStatusSuccess && !task.PrivateData.StorageArchived &&
+		ti.Url != "" && service.GetUserStorageConfig(task.UserId) != nil {
+		archiveURL := ti.Url
+		taskID := task.TaskID
+		common.RelayCtxGo(context.Background(), func() {
+			fresh, exists, err := model.GetByOnlyTaskId(taskID)
+			if err != nil || !exists || fresh.PrivateData.StorageArchived {
+				return
+			}
+			service.ArchiveTaskVideoToUserStorage(context.Background(), fresh, archiveURL)
+			if fresh.PrivateData.StorageArchived {
+				_, _ = fresh.UpdateWithStatus(model.TaskStatusSuccess)
+			}
+		})
 	}
 
 	// OpenAI Video API 由调用者的 ConvertToOpenAIVideo 分支处理

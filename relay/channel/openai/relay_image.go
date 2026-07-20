@@ -51,6 +51,9 @@ func OpenaiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 
 	updateOpenAIImageCount(info, gjson.GetBytes(responseBody, "data.#").Int())
 
+	// 用户配置了个人存储桶时,把产出图片转存到桶并改写 URL(fail-open)
+	responseBody = service.ArchiveImageResponseBody(c, info.UserId, responseBody)
+
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 

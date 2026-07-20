@@ -60,6 +60,34 @@ export async function updateUserSettings(
   return res.data
 }
 
+export interface SaveStorageSettingRequest {
+  endpoint: string
+  bucket: string
+  region: string
+  access_key_id: string
+  secret_key: string
+  public_domain: string
+}
+
+/**
+ * Verify and save personal storage bucket settings
+ * (backend writes a test file to the bucket before saving)
+ */
+export async function saveStorageSetting(
+  data: SaveStorageSettingRequest
+): Promise<ApiResponse<{ path_style?: boolean }>> {
+  const res = await api.put('/api/user/storage_setting', data)
+  return res.data
+}
+
+/**
+ * Clear personal storage bucket settings
+ */
+export async function deleteStorageSetting(): Promise<ApiResponse> {
+  const res = await api.delete('/api/user/storage_setting')
+  return res.data
+}
+
 /**
  * Update interface language preference
  */

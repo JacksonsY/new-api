@@ -281,5 +281,7 @@
   "Merchant profile is too long": "Merchant profile is too long",
   "Channel name cannot have leading or trailing spaces": "Channel name cannot have leading or trailing spaces",
   "Channel name must be 1-10 characters": "Channel name must be 1-10 characters",
-  "Channel name cannot contain commas or quotes": "Channel name cannot contain commas or quotes"
+  "Channel name cannot contain commas or quotes": "Channel name cannot contain commas or quotes",
+  "AccessKey ID": "AccessKey ID",
+  "SecretKey": "SecretKey"
 }

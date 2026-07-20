@@ -118,6 +118,21 @@ export interface UserSettings {
   upstream_model_update_notify_enabled?: boolean
   /** Preferred interface/API response language */
   language?: string
+  /** Personal S3-compatible storage bucket */
+  storage?: UserStorageSettings
+}
+
+/**
+ * Personal S3-compatible storage bucket settings
+ */
+export interface UserStorageSettings {
+  endpoint?: string
+  bucket?: string
+  region?: string
+  access_key_id?: string
+  secret_key?: string
+  public_domain?: string
+  path_style?: boolean
 }
 
 /**

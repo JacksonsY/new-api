@@ -29,6 +29,7 @@ import { NotificationSettingsCard } from './components/notification-settings-car
 import { ProfileHeader } from './components/profile-header'
 import { ProfileSecurityCard } from './components/profile-security-card'
 import { SidebarModulesCard } from './components/sidebar-modules-card'
+import { StorageSettingsCard } from './components/storage-settings-card'
 import { useProfile } from './hooks'
 
 export function Profile() {
@@ -60,6 +61,11 @@ export function Profile() {
               />
               <ProfileSecurityCard profile={profile} loading={loading} />
               <NotificationSettingsCard
+                profile={profile}
+                loading={loading}
+                onUpdate={refreshProfile}
+              />
+              <StorageSettingsCard
                 profile={profile}
                 loading={loading}
                 onUpdate={refreshProfile}

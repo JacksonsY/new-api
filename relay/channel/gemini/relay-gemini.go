@@ -455,6 +455,9 @@ func GeminiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 		return nil, types.NewError(jsonErr, types.ErrorCodeBadResponseBody)
 	}
 
+	// 用户配置了个人存储桶时,把产出图片转存到桶并补充 URL(fail-open)
+	jsonResponse = service.ArchiveImageResponseBody(c, info.UserId, jsonResponse)
+
 	c.Writer.Header().Set("Content-Type", "application/json")
 	c.Writer.WriteHeader(resp.StatusCode)
 	_, _ = c.Writer.Write(jsonResponse)

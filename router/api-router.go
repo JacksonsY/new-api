@@ -129,6 +129,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPancakePay)
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
+				selfRoute.PUT("/storage_setting", middleware.CriticalRateLimit(), controller.UpdateUserStorageSetting)
+				selfRoute.DELETE("/storage_setting", controller.DeleteUserStorageSetting)
 
 				// 2FA routes
 				selfRoute.GET("/2fa/status", controller.Get2FAStatus)
@@ -171,7 +173,6 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
 			}
-
 
 			// >>> jzlh-agent 代理分销（/api/user/agent/*）
 			agentRoute := userRoute.Group("/agent")

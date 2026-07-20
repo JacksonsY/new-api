@@ -552,6 +552,8 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			// No URL from adaptor — construct proxy URL using public task ID
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		}
+		// 用户配置了个人存储桶时,把视频转存到桶并改写 ResultURL(fail-open),随下方任务落库持久化
+		ArchiveTaskVideoToUserStorage(ctx, task, taskResult.Url)
 		shouldSettle = true
 	case model.TaskStatusFailure:
 		logger.LogJson(ctx, fmt.Sprintf("Task %s failed", taskId), task)
