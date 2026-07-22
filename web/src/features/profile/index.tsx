@@ -19,7 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import {
+  CardStaggerContainer,
+  CardStaggerItem,
+} from '@/components/page-transition'
 import { useStatus } from '@/hooks/use-status'
+import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { CheckinCalendarCard } from './components/checkin-calendar-card'
@@ -45,51 +50,65 @@ export function Profile() {
   )
   const turnstileSiteKey = status?.turnstile_site_key || ''
   const canConfigureSidebar = permissions?.sidebar_settings !== false
+  // 右侧粘性侧栏(上游布局):签到 + 侧栏配置。两者都关闭时退化为单列,避免空轨占位。
+  const hasSideRail = checkinEnabled || canConfigureSidebar
 
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Profile')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
-        <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
-          <ProfileHeader profile={profile} loading={loading} />
+        <CardStaggerContainer className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
+          <CardStaggerItem>
+            <ProfileHeader profile={profile} loading={loading} />
+          </CardStaggerItem>
 
-          <div className='grid gap-4 sm:gap-5 xl:grid-cols-3 xl:items-start'>
-            <div className='flex flex-col gap-4 sm:gap-5 xl:col-span-2'>
-              <ConnectedAccountsCard
-                profile={profile}
-                loading={loading}
-                onUpdate={refreshProfile}
-              />
-              <ProfileSecurityCard profile={profile} loading={loading} />
-              <LoginSessionsCard />
-              <NotificationSettingsCard
-                profile={profile}
-                loading={loading}
-                onUpdate={refreshProfile}
-              />
-              <StorageSettingsCard
-                profile={profile}
-                loading={loading}
-                onUpdate={refreshProfile}
-              />
-            </div>
-
-            <div className='flex flex-col gap-4 sm:gap-5'>
-              {checkinEnabled && (
-                <CheckinCalendarCard
-                  checkinEnabled={checkinEnabled}
-                  turnstileEnabled={turnstileEnabled}
-                  turnstileSiteKey={turnstileSiteKey}
-                />
+          <CardStaggerItem>
+            <div
+              className={cn(
+                'grid gap-4 sm:gap-5 xl:items-start',
+                hasSideRail &&
+                  'xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.46fr)]'
               )}
-              <LanguagePreferencesCard
-                profile={profile}
-                onProfileUpdate={refreshProfile}
-              />
-              {canConfigureSidebar && <SidebarModulesCard />}
+            >
+              <div className='space-y-4 sm:space-y-5'>
+                <ConnectedAccountsCard
+                  profile={profile}
+                  loading={loading}
+                  onUpdate={refreshProfile}
+                />
+                <NotificationSettingsCard
+                  profile={profile}
+                  loading={loading}
+                  onUpdate={refreshProfile}
+                />
+                <StorageSettingsCard
+                  profile={profile}
+                  loading={loading}
+                  onUpdate={refreshProfile}
+                />
+                <LanguagePreferencesCard
+                  profile={profile}
+                  onProfileUpdate={refreshProfile}
+                />
+                <ProfileSecurityCard profile={profile} loading={loading} />
+                <LoginSessionsCard />
+              </div>
+
+              {hasSideRail && (
+                <div className='space-y-4 sm:space-y-5 xl:sticky xl:top-6'>
+                  {checkinEnabled && (
+                    <CheckinCalendarCard
+                      checkinEnabled={checkinEnabled}
+                      turnstileEnabled={turnstileEnabled}
+                      turnstileSiteKey={turnstileSiteKey}
+                    />
+                  )}
+                  {canConfigureSidebar && <SidebarModulesCard />}
+                </div>
+              )}
             </div>
-          </div>
-        </div>
+          </CardStaggerItem>
+        </CardStaggerContainer>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )
