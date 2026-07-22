@@ -53,8 +53,8 @@ type Channel struct {
 	// group 存的是逗号拼接的多分组名（非单值、非索引，经 LIKE 过滤）。
 	// varchar(64) 在团队/代理/供应商分组增生时会溢出导致插入报错(issue #6017)，
 	// 放宽到 255。GORM AutoMigrate 对 MySQL/PG 一次性加宽，SQLite 动态类型忽略长度。
-	Group              string  `json:"group" gorm:"type:varchar(255);default:'default'"`
-	UsedQuota          int64   `json:"used_quota" gorm:"bigint;default:0"`
+	Group     string `json:"group" gorm:"type:varchar(255);default:'default'"`
+	UsedQuota int64  `json:"used_quota" gorm:"bigint;default:0"`
 	// BalanceSnapshot 上次余额落库时的 used_quota 快照（NULL=从未设置过余额）。
 	// 实时余额 = balance - (used_quota - balance_snapshot)/QuotaPerUnit，
 	// 供渠道列表"剩余天数"与余额告警本地推算，无需反复查上游。(蓝图A, feitianbubu)
@@ -520,26 +520,32 @@ func BatchInsertChannels(channels []Channel) error {
 	return tx.Commit().Error
 }
 
-func BatchDeleteChannels(ids []int) error {
+func BatchDeleteChannels(ids []int) (int64, error) {
 	if len(ids) == 0 {
-		return nil
+		return 0, nil
 	}
 	// 使用事务 分批删除channel表和abilities表
 	tx := DB.Begin()
 	if tx.Error != nil {
-		return tx.Error
+		return 0, tx.Error
 	}
+	var deletedCount int64
 	for _, chunk := range lo.Chunk(ids, 200) {
-		if err := tx.Where("id in (?)", chunk).Delete(&Channel{}).Error; err != nil {
+		result := tx.Where("id in (?)", chunk).Delete(&Channel{})
+		if result.Error != nil {
 			tx.Rollback()
-			return err
+			return 0, result.Error
 		}
+		deletedCount += result.RowsAffected
 		if err := tx.Where("channel_id in (?)", chunk).Delete(&Ability{}).Error; err != nil {
 			tx.Rollback()
-			return err
+			return 0, err
 		}
 	}
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return 0, err
+	}
+	return deletedCount, nil
 }
 
 func (channel *Channel) GetPriority() int64 {
@@ -1122,6 +1128,9 @@ func (channel *Channel) ValidateSettings() error {
 	}
 	if channelParams.MaxConcurrency < 0 {
 		return fmt.Errorf("max_concurrency must be non-negative")
+	}
+	if _, err := common.ParseProxyURLStrict(channelParams.Proxy); err != nil {
+		return fmt.Errorf("invalid channel proxy: %w", err)
 	}
 	channelOtherSettings := &dto.ChannelOtherSettings{}
 	if channel.OtherSettings != "" {

@@ -225,7 +225,7 @@ func buildOpField(action string, params map[string]interface{}) map[string]inter
 
 // RecordLoginLog 记录用户登录成功的审计日志（type=LogTypeLogin）。
 // username 由调用方传入（登录流程已持有用户对象），避免额外的数据库查询。
-// content 为英文兜底文本（用于导出/经典前端）；action+params 供前端本地化渲染。
+// content 为英文兜底文本（用于导出）；action+params 供前端本地化渲染。
 // extra 可携带 login_method、user_agent 等附加信息（普通用户可见）。
 func RecordLoginLog(userId int, username string, content string, ip string, action string, params map[string]interface{}, extra map[string]interface{}) {
 	other := map[string]interface{}{}
@@ -249,7 +249,7 @@ func RecordLoginLog(userId int, username string, content string, ip string, acti
 
 // RecordOperationAuditLog 记录管理/高危操作审计日志（type=LogTypeManage）。
 // logUserId 为日志归属者，管理审计日志应归属实际操作者；目标资源/用户放入
-// action params。username 内部按 logUserId 查询。content 为英文兜底文本（导出/经典前端用）。
+// action params。username 内部按 logUserId 查询。content 为英文兜底文本（供导出使用）。
 // action+params 写入 Other.op，供前端本地化渲染（普通用户可见，不含敏感信息）。
 // adminInfo 存放操作者身份（写入 Other.admin_info，普通用户查询时剥离）；
 // auditInfo 存放路由/方法/结果等中间件兜底信息（写入 Other.audit_info，普通用户查询时剥离）。
@@ -353,24 +353,24 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 }
 
 type RecordConsumeLogParams struct {
-	ChannelId        int                    `json:"channel_id"`
-	PromptTokens     int                    `json:"prompt_tokens"`
-	CompletionTokens int                    `json:"completion_tokens"`
+	ChannelId        int `json:"channel_id"`
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
 	// TotalTokens 用于汇总统计(quota_data.token_used)。Anthropic 语义下
 	// PromptTokens 不含缓存 token，需把 cache_read/cache_creation 加回后写入此处，
 	// 避免数据看板总 TOKEN 数漏算缓存；OpenAI 语义下与 Prompt+Completion 相同。
 	// 缺省 0 时 RecordConsumeLog 回退 Prompt+Completion，保持旧调用点兼容。
-	TotalTokens      int                    `json:"total_tokens"`
-	ModelName        string                 `json:"model_name"`
-	TokenName        string                 `json:"token_name"`
-	Quota            int                    `json:"quota"`
-	Content          string                 `json:"content"`
-	TokenId          int                    `json:"token_id"`
-	UseTimeSeconds   int                    `json:"use_time_seconds"`
-	IsStream         bool                   `json:"is_stream"`
-	Group            string                 `json:"group"`
-	Other            map[string]interface{} `json:"other"`
-	ParentId         int                    `json:"parent_id"` // >>> jzlh-sub >0=子号消费,归属主号聚合 + 排除代理分润
+	TotalTokens    int                    `json:"total_tokens"`
+	ModelName      string                 `json:"model_name"`
+	TokenName      string                 `json:"token_name"`
+	Quota          int                    `json:"quota"`
+	Content        string                 `json:"content"`
+	TokenId        int                    `json:"token_id"`
+	UseTimeSeconds int                    `json:"use_time_seconds"`
+	IsStream       bool                   `json:"is_stream"`
+	Group          string                 `json:"group"`
+	Other          map[string]interface{} `json:"other"`
+	ParentId       int                    `json:"parent_id"` // >>> jzlh-sub >0=子号消费,归属主号聚合 + 排除代理分润
 
 	// CommissionSourceKey links asynchronous task refunds to the exact initial
 	// commission owner. Empty keeps the request-id source used by sync relays.
@@ -898,33 +898,6 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 		return 0, result.Error
 	}
 	return result.RowsAffected, nil
-}
-
-func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64, error) {
-	if limit <= 0 {
-		limit = 100
-	}
-
-	var total int64 = 0
-
-	for {
-		if nil != ctx.Err() {
-			return total, ctx.Err()
-		}
-
-		rowsAffected, err := DeleteOldLogBatch(ctx, targetTimestamp, limit)
-		if nil != err {
-			return total, err
-		}
-
-		total += rowsAffected
-
-		if rowsAffected < int64(limit) {
-			break
-		}
-	}
-
-	return total, nil
 }
 
 // ---- 蓝图A 渠道消耗聚合（余额告警 / 剩余天数估算，参考 feitianbubu）----

@@ -145,8 +145,8 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
-	common.OptionMap["AgentEnabled"] = strconv.FormatBool(common.AgentEnabled)                                       // jzlh v2 P2
-	common.OptionMap["SupplierEnabled"] = strconv.FormatBool(common.SupplierEnabled)                                 // jzlh v2 P2
+	common.OptionMap["AgentEnabled"] = strconv.FormatBool(common.AgentEnabled)       // jzlh v2 P2
+	common.OptionMap["SupplierEnabled"] = strconv.FormatBool(common.SupplierEnabled) // jzlh v2 P2
 	// >>> jzlh-sub 子账号站点配置
 	common.OptionMap["SubAccountEnabled"] = strconv.FormatBool(SubAccountEnabled)
 	common.OptionMap["SubAccountShowInitialPassword"] = strconv.FormatBool(SubAccountShowInitialPassword)
@@ -342,6 +342,12 @@ func updateOptionMap(key string, value string) (err error) {
 }
 
 func updateOptionMapLocked(key string, value string) (err error) {
+	// retired 前端选项只落库不发布（theme 已随多主题下线）；
+	// 守卫必须在底层：UpdateOption/UpdateOptionsBulk 自持锁直调本函数，不经包装层。
+	if key == retiredThemeOptionKey {
+		delete(common.OptionMap, key)
+		return nil
+	}
 	common.OptionMap[key] = value
 
 	// >>> jzlh-sub 子账号站点配置同步（含非 Enabled 后缀的字符串/整型项）
@@ -774,8 +780,6 @@ func handleConfigUpdate(key, value string) bool {
 	} else if configName == "billing_setting" {
 		InvalidatePricingCache()
 		ratio_setting.InvalidateExposedDataCache()
-	} else if configName == "theme" {
-		system_setting.UpdateAndSyncTheme()
 	}
 
 	return true // 已处理

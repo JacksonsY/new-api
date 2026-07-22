@@ -1,322 +1,251 @@
 package middleware
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
-func setupTokenOrUserAuthTestDB(t *testing.T) *gorm.DB {
+func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	t.Helper()
-
-	originalDB := model.DB
-	originalRedisEnabled := common.RedisEnabled
-	common.RedisEnabled = false
-
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	previousDB := model.DB
+	previousType := common.MainDatabaseType()
+	previousRedis := common.RedisEnabled
+	previousSecret := common.SessionSecret
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
 	model.DB = db
-
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+	common.RedisEnabled = false
+	common.SessionSecret = "middleware-auth-test-secret"
 	t.Cleanup(func() {
-		model.DB = originalDB
-		common.RedisEnabled = originalRedisEnabled
-		if sqlDB, err := db.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
+		model.DB = previousDB
+		common.SetMainDatabaseType(previousType)
+		common.RedisEnabled = previousRedis
+		common.SessionSecret = previousSecret
 	})
-
-	return db
 }
 
-func tokenOrUserAuthSessionCookies(t *testing.T, router *gin.Engine) []*http.Cookie {
+func issueExpiredDashboardAccessToken(t *testing.T, identity service.AuthIdentity) string {
 	t.Helper()
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/login", nil)
-	router.ServeHTTP(recorder, request)
-	require.Equal(t, http.StatusNoContent, recorder.Code)
-	return recorder.Result().Cookies()
+	claims := jwt.MapClaims{
+		"iss":       "new-api",
+		"aud":       []string{"new-api-dashboard"},
+		"sub":       fmt.Sprintf("%d", identity.UserID),
+		"token_use": "access",
+		"sid":       identity.SessionID,
+		"uv":        identity.UserAuthVersion,
+		"sv":        identity.SessionVersion,
+		"exp":       time.Now().Add(-time.Minute).Unix(),
+		"nbf":       time.Now().Add(-2 * time.Minute).Unix(),
+		"iat":       time.Now().Add(-2 * time.Minute).Unix(),
+	}
+	mac := hmac.New(sha256.New, []byte(common.SessionSecret))
+	_, err := mac.Write([]byte("new-api/auth/access/v1"))
+	require.NoError(t, err)
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(mac.Sum(nil))
+	require.NoError(t, err)
+	return token
 }
 
-func newTokenOrUserAuthTestRouter(t *testing.T, userID int, handler gin.HandlerFunc) *gin.Engine {
-	t.Helper()
+func tamperDashboardToken(token string) string {
+	tamperAt := len(token) - 2
+	replacement := "x"
+	if token[tamperAt] == 'x' {
+		replacement = "y"
+	}
+	return token[:tamperAt] + replacement + token[tamperAt+1:]
+}
 
-	gin.SetMode(gin.TestMode)
+func createMiddlewarePATUser(t *testing.T, username, token string) *model.User {
+	t.Helper()
+	user := &model.User{
+		Username: username, Password: "password-placeholder", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AccessToken: &token, AuthVersion: 1,
+		AffCode: "middleware-aff-" + username,
+	}
+	require.NoError(t, model.DB.Create(user).Error)
+	return user
+}
+
+func TestUserAuthAllowsOpaqueDottedPAT(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	user := createMiddlewarePATUser(t, "dotted-pat-user", "opaque.key.with-dots")
 	router := gin.New()
-	router.Use(sessions.Sessions("session", cookie.NewStore([]byte("token-or-user-auth-test"))))
-	router.GET("/login", func(c *gin.Context) {
-		session := sessions.Default(c)
-		session.Set("id", userID)
-		session.Set("username", "stale-user")
-		session.Set("role", common.RoleCommonUser)
-		session.Set("status", common.UserStatusEnabled)
-		session.Set("group", "default")
-		require.NoError(t, session.Save())
-		c.Status(http.StatusNoContent)
+	router.GET("/protected", UserAuth(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"id": c.GetInt("id")})
 	})
-	router.GET("/protected", TokenOrUserAuth(), handler)
-	return router
-}
-
-// 被禁用的会话用户不再硬拒，而是回落 TokenAuth（保留双鉴权语义）。
-// 请求未带令牌 → TokenAuth 以「未提供令牌」401 拒绝；关键是禁用会话
-// 本身既不放行也不再挡住令牌路径。
-func TestTokenOrUserAuthFallsThroughForDisabledSessionUser(t *testing.T) {
-	db := setupTokenOrUserAuthTestDB(t)
-	user := &model.User{
-		Id:       101,
-		Username: "disabled-user",
-		Password: "not-used-in-test",
-		Role:     common.RoleCommonUser,
-		Status:   common.UserStatusDisabled,
-		Group:    "default",
-	}
-	require.NoError(t, db.Create(user).Error)
-
-	handlerCalled := false
-	router := newTokenOrUserAuthTestRouter(t, user.Id, func(c *gin.Context) {
-		handlerCalled = true
-		c.Status(http.StatusNoContent)
-	})
-	cookies := tokenOrUserAuthSessionCookies(t, router)
-
-	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	for _, sessionCookie := range cookies {
-		request.AddCookie(sessionCookie)
-	}
-	router.ServeHTTP(recorder, request)
+	request.Header.Set("Authorization", "Bearer opaque.key.with-dots")
+	response := httptest.NewRecorder()
 
-	require.Equal(t, http.StatusUnauthorized, recorder.Code)
-	require.False(t, handlerCalled)
+	router.ServeHTTP(response, request)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	var body struct {
+		ID int `json:"id"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, user.Id, body.ID)
 }
 
-func TestTokenOrUserAuthRefreshesSessionContextFromDB(t *testing.T) {
-	db := setupTokenOrUserAuthTestDB(t)
-	user := &model.User{
-		Id:       102,
-		Username: "fresh-user",
-		Password: "not-used-in-test",
-		Role:     common.RoleAdminUser,
-		Status:   common.UserStatusEnabled,
-		Group:    "premium",
-	}
-	require.NoError(t, db.Create(user).Error)
-
-	router := newTokenOrUserAuthTestRouter(t, user.Id, func(c *gin.Context) {
-		require.Equal(t, user.Username, c.GetString("username"))
-		require.Equal(t, user.Role, c.GetInt("role"))
-		require.Equal(t, user.Group, c.GetString("user_group"))
+func TestUserAuthNeverFallsBackForRecognizedInvalidInternalJWT(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	identity := service.AuthIdentity{UserID: 42, SessionID: "session-42", UserAuthVersion: 1, SessionVersion: 1}
+	token, _, err := service.IssueAccessToken(identity)
+	require.NoError(t, err)
+	tampered := tamperDashboardToken(token)
+	createMiddlewarePATUser(t, "jwt-fallback-user", tampered)
+	router := gin.New()
+	router.GET("/protected", UserAuth(), func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
-	cookies := tokenOrUserAuthSessionCookies(t, router)
-
-	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	for _, sessionCookie := range cookies {
-		request.AddCookie(sessionCookie)
-	}
-	router.ServeHTTP(recorder, request)
+	request.Header.Set("Authorization", "Bearer "+tampered)
+	response := httptest.NewRecorder()
 
-	require.Equal(t, http.StatusNoContent, recorder.Code)
+	router.ServeHTTP(response, request)
+
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
+	assert.Contains(t, response.Body.String(), "AUTH_UNAUTHORIZED")
 }
 
-func TestTokenOrUserAuthRejectsMissingSessionUser(t *testing.T) {
-	setupTokenOrUserAuthTestDB(t)
-	const missingUserID = 103
+func TestTryUserAuthCredentialClassification(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	gin.SetMode(gin.TestMode)
 
-	handlerCalled := false
-	router := newTokenOrUserAuthTestRouter(t, missingUserID, func(c *gin.Context) {
-		handlerCalled = true
-		c.Status(http.StatusNoContent)
-	})
-	cookies := tokenOrUserAuthSessionCookies(t, router)
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	for _, sessionCookie := range cookies {
-		request.AddCookie(sessionCookie)
+	patUser := createMiddlewarePATUser(t, "optional-pat-user", "optional.pat.with-dots")
+	internalUser := createMiddlewarePATUser(t, "optional-session-user", "unrelated-pat")
+	now := time.Now().Unix()
+	session := &model.UserSession{
+		SID:             "optional-auth-session",
+		UserID:          internalUser.Id,
+		Version:         1,
+		UserAuthVersion: internalUser.AuthVersion,
+		Status:          model.UserSessionStatusActive,
+		RefreshHash:     "refresh-hash",
+		LoginMethod:     "password",
+		LastActiveAt:    now,
+		ExpiresAt:       now + 3600,
 	}
-	router.ServeHTTP(recorder, request)
-
-	require.Equal(t, http.StatusUnauthorized, recorder.Code)
-	require.False(t, handlerCalled)
-}
-
-// DB 故障时无法核实会话用户：回落 TokenAuth，请求未带令牌 → 401。
-// 关键是无论如何都不放行（handler 不被调用），fail-closed 成立。
-func TestTokenOrUserAuthDeniesWhenSessionUnverifiableAndNoToken(t *testing.T) {
-	db := setupTokenOrUserAuthTestDB(t)
-	user := &model.User{
-		Id:       104,
-		Username: "db-error-user",
-		Password: "not-used-in-test",
-		Role:     common.RoleCommonUser,
-		Status:   common.UserStatusEnabled,
-		Group:    "default",
+	require.NoError(t, model.CreateUserSession(session))
+	identity := service.AuthIdentity{
+		UserID:          internalUser.Id,
+		SessionID:       session.SID,
+		UserAuthVersion: session.UserAuthVersion,
+		SessionVersion:  session.Version,
 	}
-	require.NoError(t, db.Create(user).Error)
+	accessToken, _, err := service.IssueAccessToken(identity)
+	require.NoError(t, err)
+	securityProof, _, err := service.IssueSecurityProof(identity, "2fa", []string{"channel.key.read"})
+	require.NoError(t, err)
+	externalToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iss": "external-issuer",
+		"aud": "external-audience",
+		"exp": time.Now().Add(time.Minute).Unix(),
+	}).SignedString([]byte("external-secret"))
+	require.NoError(t, err)
 
-	handlerCalled := false
-	router := newTokenOrUserAuthTestRouter(t, user.Id, func(c *gin.Context) {
-		handlerCalled = true
-		c.Status(http.StatusNoContent)
+	router := gin.New()
+	router.GET("/optional", TryUserAuth(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"id":               c.GetInt("id"),
+			"use_access_token": c.GetBool("use_access_token"),
+		})
 	})
-	cookies := tokenOrUserAuthSessionCookies(t, router)
 
-	sqlDB, err := db.DB()
+	tests := []struct {
+		name          string
+		token         string
+		wantStatus    int
+		wantUserID    int
+		wantPAT       bool
+		wantErrorCode string
+	}{
+		{name: "no authorization header", wantStatus: http.StatusOK},
+		{name: "opaque unmatched credential", token: "opaque-relay-key", wantStatus: http.StatusOK},
+		{name: "dotted unmatched credential", token: "ordinary.key.with-dots", wantStatus: http.StatusOK},
+		{name: "third party jwt", token: externalToken, wantStatus: http.StatusOK},
+		{name: "valid pat", token: "optional.pat.with-dots", wantStatus: http.StatusOK, wantUserID: patUser.Id, wantPAT: true},
+		{name: "valid internal access jwt", token: accessToken, wantStatus: http.StatusOK, wantUserID: internalUser.Id},
+		{name: "expired internal access jwt", token: issueExpiredDashboardAccessToken(t, identity), wantStatus: http.StatusUnauthorized, wantErrorCode: "AUTH_TOKEN_EXPIRED"},
+		{name: "tampered internal access jwt", token: tamperDashboardToken(accessToken), wantStatus: http.StatusUnauthorized, wantErrorCode: "AUTH_UNAUTHORIZED"},
+		{name: "security proof used as access", token: securityProof, wantStatus: http.StatusUnauthorized, wantErrorCode: "AUTH_UNAUTHORIZED"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/optional", nil)
+			if test.token != "" {
+				request.Header.Set("Authorization", "Bearer "+test.token)
+			}
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			assert.Equal(t, test.wantStatus, response.Code)
+			if test.wantErrorCode != "" {
+				assert.Contains(t, response.Body.String(), test.wantErrorCode)
+				return
+			}
+			var body struct {
+				ID             int  `json:"id"`
+				UseAccessToken bool `json:"use_access_token"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+			assert.Equal(t, test.wantUserID, body.ID)
+			assert.Equal(t, test.wantPAT, body.UseAccessToken)
+		})
+	}
+
+	requiredRouter := gin.New()
+	requiredRouter.GET("/required", UserAuth(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	requiredRequest := httptest.NewRequest(http.MethodGet, "/required", nil)
+	requiredRequest.Header.Set("Authorization", "Bearer ordinary-unmatched-key")
+	requiredResponse := httptest.NewRecorder()
+	requiredRouter.ServeHTTP(requiredResponse, requiredRequest)
+	assert.Equal(t, http.StatusUnauthorized, requiredResponse.Code, "required dashboard authentication must not adopt optional-auth fallback semantics")
+
+	var patUserQueries int
+	forcedCacheError := errors.New("forced PAT user cache lookup failure")
+	const callbackName = "test:optional-auth-pat-user-cache-failure"
+	require.NoError(t, model.DB.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table != "users" {
+			return
+		}
+		patUserQueries++
+		if patUserQueries == 2 {
+			tx.AddError(forcedCacheError)
+		}
+	}))
+	cacheFailureRequest := httptest.NewRequest(http.MethodGet, "/optional", nil)
+	cacheFailureRequest.Header.Set("Authorization", "Bearer optional.pat.with-dots")
+	cacheFailureResponse := httptest.NewRecorder()
+	router.ServeHTTP(cacheFailureResponse, cacheFailureRequest)
+	model.DB.Callback().Query().Remove(callbackName)
+	assert.Equal(t, http.StatusInternalServerError, cacheFailureResponse.Code)
+	assert.Contains(t, cacheFailureResponse.Body.String(), "AUTH_INTERNAL_ERROR")
+
+	sqlDB, err := model.DB.DB()
 	require.NoError(t, err)
 	require.NoError(t, sqlDB.Close())
-
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	for _, sessionCookie := range cookies {
-		request.AddCookie(sessionCookie)
-	}
-	router.ServeHTTP(recorder, request)
-
-	require.Equal(t, http.StatusUnauthorized, recorder.Code)
-	require.False(t, handlerCalled)
-}
-
-func TestAdminAuthRejectsDeletedSessionUser(t *testing.T) {
-	setupTokenOrUserAuthTestDB(t)
-	const missingUserID = 105
-
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(sessions.Sessions("session", cookie.NewStore([]byte("admin-auth-test"))))
-	router.GET("/login", func(c *gin.Context) {
-		session := sessions.Default(c)
-		session.Set("id", missingUserID)
-		session.Set("username", "deleted-admin")
-		session.Set("role", common.RoleAdminUser)
-		session.Set("status", common.UserStatusEnabled)
-		session.Set("group", "default")
-		require.NoError(t, session.Save())
-		c.Status(http.StatusNoContent)
-	})
-	handlerCalled := false
-	router.GET("/admin", AdminAuth(), func(c *gin.Context) {
-		handlerCalled = true
-		c.Status(http.StatusNoContent)
-	})
-
-	cookies := tokenOrUserAuthSessionCookies(t, router)
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/admin", nil)
-	request.Header.Set("New-Api-User", fmt.Sprintf("%d", missingUserID))
-	for _, sessionCookie := range cookies {
-		request.AddCookie(sessionCookie)
-	}
-	router.ServeHTTP(recorder, request)
-
-	require.Equal(t, http.StatusUnauthorized, recorder.Code)
-	require.False(t, handlerCalled)
-}
-
-func TestAdminAuthRejectsDemotedSessionRole(t *testing.T) {
-	// Cookie 声称 admin，DB 已降为普通用户：鉴权必须以 DB 快照为准拒绝，
-	// 绝不回读 cookie 里被抬高的角色。
-	db := setupTokenOrUserAuthTestDB(t)
-	user := &model.User{
-		Id:       106,
-		Username: "demoted-user",
-		Password: "not-used-in-test",
-		Role:     common.RoleCommonUser,
-		Status:   common.UserStatusEnabled,
-		Group:    "default",
-	}
-	require.NoError(t, db.Create(user).Error)
-
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(sessions.Sessions("session", cookie.NewStore([]byte("admin-auth-role-test"))))
-	router.GET("/login", func(c *gin.Context) {
-		session := sessions.Default(c)
-		session.Set("id", user.Id)
-		session.Set("username", user.Username)
-		session.Set("role", common.RoleAdminUser) // stale elevated cookie
-		session.Set("status", common.UserStatusEnabled)
-		session.Set("group", "default")
-		require.NoError(t, session.Save())
-		c.Status(http.StatusNoContent)
-	})
-	handlerCalled := false
-	router.GET("/admin", AdminAuth(), func(c *gin.Context) {
-		handlerCalled = true
-		c.Status(http.StatusNoContent)
-	})
-
-	cookies := tokenOrUserAuthSessionCookies(t, router)
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/admin", nil)
-	request.Header.Set("New-Api-User", fmt.Sprintf("%d", user.Id))
-	for _, sessionCookie := range cookies {
-		request.AddCookie(sessionCookie)
-	}
-	router.ServeHTTP(recorder, request)
-
-	// authHelper 对权限不足返回 200 + success:false
-	require.Equal(t, http.StatusOK, recorder.Code)
-	require.False(t, handlerCalled)
-	require.Contains(t, recorder.Body.String(), "false")
-}
-
-func TestUserAuthPropagatesStatusIntoContext(t *testing.T) {
-	db := setupTokenOrUserAuthTestDB(t)
-	user := &model.User{
-		Id:       107,
-		Username: "status-user",
-		Password: "not-used-in-test",
-		Role:     common.RoleCommonUser,
-		Status:   common.UserStatusEnabled,
-		Group:    "premium",
-	}
-	require.NoError(t, db.Create(user).Error)
-
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(sessions.Sessions("session", cookie.NewStore([]byte("user-auth-status-test"))))
-	router.GET("/login", func(c *gin.Context) {
-		session := sessions.Default(c)
-		session.Set("id", user.Id)
-		session.Set("username", "stale-name")
-		session.Set("role", common.RoleCommonUser)
-		session.Set("status", common.UserStatusEnabled)
-		session.Set("group", "default")
-		require.NoError(t, session.Save())
-		c.Status(http.StatusNoContent)
-	})
-	router.GET("/me", UserAuth(), func(c *gin.Context) {
-		require.Equal(t, user.Username, c.GetString("username"))
-		require.Equal(t, user.Role, c.GetInt("role"))
-		require.Equal(t, user.Status, c.GetInt("status"))
-		require.Equal(t, user.Group, c.GetString("user_group"))
-		c.Status(http.StatusNoContent)
-	})
-
-	cookies := tokenOrUserAuthSessionCookies(t, router)
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/me", nil)
-	request.Header.Set("New-Api-User", fmt.Sprintf("%d", user.Id))
-	for _, sessionCookie := range cookies {
-		request.AddCookie(sessionCookie)
-	}
-	router.ServeHTTP(recorder, request)
-
-	require.Equal(t, http.StatusNoContent, recorder.Code)
+	databaseFailureRequest := httptest.NewRequest(http.MethodGet, "/optional", nil)
+	databaseFailureRequest.Header.Set("Authorization", "Bearer database-failure-key")
+	databaseFailureResponse := httptest.NewRecorder()
+	router.ServeHTTP(databaseFailureResponse, databaseFailureRequest)
+	assert.Equal(t, http.StatusInternalServerError, databaseFailureResponse.Code)
+	assert.Contains(t, databaseFailureResponse.Body.String(), "AUTH_INTERNAL_ERROR")
 }

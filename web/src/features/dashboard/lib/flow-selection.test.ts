@@ -1,0 +1,91 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
+
+import {
+  compactFlowSelectionLabel,
+  flowDisplayState,
+  requireSuccessfulFlowRows,
+} from './flow-selection'
+
+describe('dashboard flow selection helpers', () => {
+  test('formats compact selected counts for flow multiselect summaries', () => {
+    assert.equal(compactFlowSelectionLabel(0), '*')
+    assert.equal(compactFlowSelectionLabel(1), '1')
+    assert.equal(compactFlowSelectionLabel(23), '23')
+  })
+
+  test('prioritizes loading and error states before empty flow data', () => {
+    assert.equal(
+      flowDisplayState({
+        isLoading: true,
+        isError: true,
+        linkCount: 0,
+        themeReady: true,
+      }),
+      'loading'
+    )
+    assert.equal(
+      flowDisplayState({
+        isLoading: false,
+        isError: true,
+        linkCount: 0,
+        themeReady: true,
+      }),
+      'error'
+    )
+    assert.equal(
+      flowDisplayState({
+        isLoading: false,
+        isError: false,
+        linkCount: 0,
+        themeReady: true,
+      }),
+      'empty'
+    )
+    assert.equal(
+      flowDisplayState({
+        isLoading: false,
+        isError: false,
+        linkCount: 1,
+        themeReady: false,
+      }),
+      'loading'
+    )
+  })
+
+  test('throws unsuccessful flow responses instead of treating them as empty data', () => {
+    assert.throws(
+      () =>
+        requireSuccessfulFlowRows(
+          { success: false, data: [], message: 'database unavailable' },
+          'Failed to load'
+        ),
+      /database unavailable/
+    )
+    assert.deepEqual(
+      requireSuccessfulFlowRows(
+        { success: true, data: [{ user_id: 1, quota: 10 }] },
+        'Failed to load'
+      ),
+      [{ user_id: 1, quota: 10 }]
+    )
+  })
+})

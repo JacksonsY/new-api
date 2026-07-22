@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -35,25 +34,17 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
 	_ "net/http/pprof"
 )
 
-//go:embed web/default/dist
+//go:embed web/dist
 var buildFS embed.FS
 
-//go:embed web/default/dist/index.html
+//go:embed web/dist/index.html
 var indexPage []byte
-
-//go:embed web/classic/dist
-var classicBuildFS embed.FS
-
-//go:embed web/classic/dist/index.html
-var classicIndexPage []byte
 
 func main() {
 	startTime := time.Now()
@@ -187,39 +178,9 @@ func main() {
 
 	// Initialize HTTP server
 	server := gin.New()
-	// 安全加固：限制受信任的反向代理，使 c.ClientIP() 只采信可信代理设置的
-	// X-Forwarded-For，防止公网客户端伪造 XFF 绕过基于 IP 的限流/注册防刷/
-	// 支付回调审计（本 fork 大量以 ClientIP 做反欺诈）。
-	// 默认信任本机+私网段（覆盖 nginx 经 docker 网桥接入的标准部署）；
-	// 反代持公网 IP 时用 TRUSTED_PROXY_CIDRS 覆盖（逗号分隔的 CIDR 列表）。
-	trustedProxyCIDRs := []string{
-		"127.0.0.1/8", "::1/128",
-		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7",
-	}
-	if custom := common.GetEnvOrDefaultString("TRUSTED_PROXY_CIDRS", ""); custom != "" {
-		valid := make([]string, 0)
-		for _, cidr := range strings.Split(custom, ",") {
-			cidr = strings.TrimSpace(cidr)
-			if cidr == "" {
-				continue
-			}
-			if _, _, err := net.ParseCIDR(cidr); err != nil {
-				common.SysError(fmt.Sprintf("TRUSTED_PROXY_CIDRS 忽略非法条目 %q: %v", cidr, err))
-				continue
-			}
-			valid = append(valid, cidr)
-		}
-		// 仅当自定义值解析出至少一条合法 CIDR 才覆盖默认；否则保留私网默认，
-		// 避免因配置笔误落到空列表→ gin 不信任任何代理→所有用户塌缩成反代 IP，
-		// 静默击穿基于 ClientIP 的注册防刷/限流。
-		if len(valid) > 0 {
-			trustedProxyCIDRs = valid
-		} else {
-			common.SysError("TRUSTED_PROXY_CIDRS 未解析出任何合法 CIDR，回退到私网默认段")
-		}
-	}
-	if err := server.SetTrustedProxies(trustedProxyCIDRs); err != nil {
-		common.SysError("failed to set trusted proxies: " + err.Error())
+	if err := configureTrustedProxies(server); err != nil {
+		common.FatalLog("failed to configure trusted proxies: " + err.Error())
+		return
 	}
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
 		common.SysLog(fmt.Sprintf("panic detected: %v", err))
@@ -237,26 +198,13 @@ func main() {
 	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
-	// Initialize session store
-	store := cookie.NewStore([]byte(common.SessionSecret))
-	store.Options(sessions.Options{
-		Path:     "/",
-		MaxAge:   2592000, // 30 days
-		HttpOnly: true,
-		Secure:   common.SessionCookieSecure,
-		SameSite: http.SameSiteStrictMode,
-	})
-	server.Use(sessions.Sessions("session", store))
-
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
 
 	// 设置路由
-	router.SetRouter(server, router.ThemeAssets{
-		DefaultBuildFS:   buildFS,
-		DefaultIndexPage: indexPage,
-		ClassicBuildFS:   classicBuildFS,
-		ClassicIndexPage: classicIndexPage,
+	router.SetRouter(server, router.WebAssets{
+		BuildFS:   buildFS,
+		IndexPage: indexPage,
 	})
 	var port = os.Getenv("PORT")
 	if port == "" {
@@ -315,7 +263,6 @@ func InjectUmamiAnalytics() {
 	analyticsInject := []byte(analyticsInjectBuilder.String())
 	placeholder := []byte("<!--umami-->\n")
 	indexPage = bytes.ReplaceAll(indexPage, placeholder, analyticsInject)
-	classicIndexPage = bytes.ReplaceAll(classicIndexPage, placeholder, analyticsInject)
 }
 
 func InjectGoogleAnalytics() {
@@ -339,7 +286,6 @@ func InjectGoogleAnalytics() {
 	analyticsInject := []byte(analyticsInjectBuilder.String())
 	placeholder := []byte("<!--Google Analytics-->\n")
 	indexPage = bytes.ReplaceAll(indexPage, placeholder, analyticsInject)
-	classicIndexPage = bytes.ReplaceAll(classicIndexPage, placeholder, analyticsInject)
 }
 
 func InitResources() error {
@@ -378,6 +324,11 @@ func InitResources() error {
 	model.CheckSetup()
 
 	// Initialize options, should after model.InitDB()
+	if common.IsMasterNode {
+		if err := model.MigrateRetiredFrontendOptions(); err != nil {
+			common.SysError("failed to migrate retired frontend options: " + err.Error())
+		}
+	}
 	model.InitOptionMap()
 
 	// 清理旧的磁盘缓存文件
@@ -420,6 +371,8 @@ func InitResources() error {
 		common.SysError("failed to load custom OAuth providers: " + err.Error())
 		// Don't return error, custom OAuth is not critical
 	}
+
+	service.StartAuthArtifactCleanup()
 
 	return nil
 }

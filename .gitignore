@@ -9,10 +9,8 @@ build
 *.db-journal
 # 锚定根目录:裸 `logs` 会误伤 web/**/src/routes/**/logs 等源码目录
 /logs
-web/default/dist
-web/classic/dist
-web/node_modules
 web/dist
+web/node_modules
 .env
 one-api
 new-api
@@ -29,7 +27,7 @@ plans
 
 electron/node_modules
 electron/dist
-data/
+/data/
 .gomodcache/
 .gocache-temp
 .gopath

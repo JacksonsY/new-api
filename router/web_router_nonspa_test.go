@@ -48,9 +48,8 @@ func TestIsNonSPARequestPath(t *testing.T) {
 
 func TestSetWebRouterDoesNotServeSPAForMetrics(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	assets := ThemeAssets{
-		DefaultIndexPage: []byte("<html>default</html>"),
-		ClassicIndexPage: []byte("<html>classic</html>"),
+	assets := WebAssets{
+		IndexPage: []byte("<html>index</html>"),
 	}
 	engine := gin.New()
 	SetWebRouter(engine, assets)
@@ -59,12 +58,11 @@ func TestSetWebRouterDoesNotServeSPAForMetrics(t *testing.T) {
 	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	require.Equal(t, http.StatusNotFound, recorder.Code)
 	require.NotContains(t, recorder.Header().Get("Content-Type"), "text/html")
-	require.NotContains(t, recorder.Body.String(), "<html>default</html>")
+	require.NotContains(t, recorder.Body.String(), "<html>index</html>")
 
-	// Console SPA routes still fall back to index (theme-dependent).
+	// Console SPA routes still fall back to index.
 	home := httptest.NewRecorder()
 	engine.ServeHTTP(home, httptest.NewRequest(http.MethodGet, "/dashboard/overview", nil))
 	require.Equal(t, http.StatusOK, home.Code)
-	body := home.Body.String()
-	require.True(t, body == "<html>default</html>" || body == "<html>classic</html>", "body=%q", body)
+	require.Equal(t, "<html>index</html>", home.Body.String())
 }
