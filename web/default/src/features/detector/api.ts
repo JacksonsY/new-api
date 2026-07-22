@@ -58,12 +58,13 @@ export async function getLeaderboard(
 
 export async function verifyChannel(
   channelId: number,
-  mode = 'standard'
+  mode = 'standard',
+  model?: string
 ): Promise<ApiEnvelope<DetectJobResponse>> {
   const res = await api.post(
     `/api/detector/channel/${channelId}`,
     {},
-    { params: { mode } }
+    { params: model ? { mode, model } : { mode } }
   )
   return res.data
 }

@@ -112,13 +112,17 @@ export interface LeaderboardResult {
   page_size: number
 }
 
-// 管理端渠道检测记录。
+// 管理端渠道检测记录（对齐后端 detectionRecordView：results JSON 串已解析为 report）。
 export interface DetectionRecord {
   id: number
   channel_id: number
+  protocol: string
+  model: string
   verdict: DetectorVerdict
-  total_score: number
+  score: number
   critical_count: number
+  source: string
+  api_key_masked?: string
   report?: DetectionReport
   created_at: number
 }

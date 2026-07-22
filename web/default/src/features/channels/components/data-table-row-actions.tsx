@@ -436,6 +436,8 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
       <ChannelVerifyDialog
         channelId={verifyOpen ? channel.id : null}
         channelName={channel.name}
+        channelModels={channel.models}
+        defaultModel={channel.test_model ?? undefined}
         open={verifyOpen}
         onOpenChange={setVerifyOpen}
       />

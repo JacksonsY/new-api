@@ -184,6 +184,15 @@ func DetectChannel(c *gin.Context) {
 	if testModel == "" {
 		testModel = firstModel(channel.Models)
 	}
+	// 管理员可显式指定检测哪个模型;为空则沿用渠道 test_model/首个模型。
+	// 指定的模型必须在渠道模型列表内,防止越权探测渠道未挂载的模型。
+	if requested := strings.TrimSpace(c.Query("model")); requested != "" {
+		if !channelServesModel(channel.Models, requested) {
+			common.ApiErrorMsg(c, "model not in channel model list")
+			return
+		}
+		testModel = requested
+	}
 	cfg := detector.Config{
 		BaseURL: baseURL,
 		APIKey:  channel.Key,
@@ -207,6 +216,57 @@ func firstModel(models string) string {
 	return models
 }
 
+// channelServesModel 报告 model 是否在渠道逗号分隔的模型列表内(去空白精确匹配)。
+func channelServesModel(models string, model string) bool {
+	for _, m := range strings.Split(models, ",") {
+		if strings.TrimSpace(m) == model {
+			return true
+		}
+	}
+	return false
+}
+
+// detectionRecordView 是检测记录的对外视图:在原始记录字段之外,把 Results(完整
+// DetectionReport 的 JSON 字符串)解析成 report 对象,供前端「上次记录/历史」直接渲染
+// 证据卡。Results 字符串本身不再回传,避免与 report 重复膨胀载荷。
+type detectionRecordView struct {
+	Id            int              `json:"id"`
+	ChannelId     int              `json:"channel_id"`
+	Domain        string           `json:"domain,omitempty"`
+	Protocol      string           `json:"protocol"`
+	Model         string           `json:"model"`
+	Verdict       string           `json:"verdict"`
+	Score         float64          `json:"score"`
+	CriticalCount int              `json:"critical_count"`
+	Source        string           `json:"source"`
+	ApiKeyMasked  string           `json:"api_key_masked"`
+	CreatedAt     int64            `json:"created_at"`
+	Report        *detector.Report `json:"report,omitempty"`
+}
+
+func newDetectionRecordView(r *model.DetectionRecord) detectionRecordView {
+	v := detectionRecordView{
+		Id:            r.Id,
+		ChannelId:     r.ChannelId,
+		Domain:        r.Domain,
+		Protocol:      r.Protocol,
+		Model:         r.Model,
+		Verdict:       r.Verdict,
+		Score:         r.Score,
+		CriticalCount: r.CriticalCount,
+		Source:        r.Source,
+		ApiKeyMasked:  r.ApiKeyMasked,
+		CreatedAt:     r.CreatedAt,
+	}
+	if r.Results != "" {
+		var rep detector.Report
+		if err := common.UnmarshalJsonStr(r.Results, &rep); err == nil {
+			v.Report = &rep
+		}
+	}
+	return v
+}
+
 // ChannelLatestDetection 返回某渠道最近一次检测记录。
 func ChannelLatestDetection(c *gin.Context) {
 	channelId, _ := strconv.Atoi(c.Param("id"))
@@ -215,7 +275,7 @@ func ChannelLatestDetection(c *gin.Context) {
 		common.ApiSuccess(c, nil) // 无记录不算错误
 		return
 	}
-	common.ApiSuccess(c, record)
+	common.ApiSuccess(c, newDetectionRecordView(record))
 }
 
 // DetectorRecords 检测历史（管理端；?channel_id= 过滤）。
@@ -227,7 +287,11 @@ func DetectorRecords(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"items": records, "total": total, "page": page, "page_size": pageSize})
+	items := make([]detectionRecordView, 0, len(records))
+	for _, r := range records {
+		items = append(items, newDetectionRecordView(r))
+	}
+	common.ApiSuccess(c, gin.H{"items": items, "total": total, "page": page, "page_size": pageSize})
 }
 
 // ---- 公开检测页 ----
