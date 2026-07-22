@@ -185,7 +185,16 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
 	}
 
-	err = PostConsumeQuota(relayInfo, quota, 0, false)
+	// 中间轮扣款必须走计费会话的累进预留(把预扣水位抬高 quota)，收尾
+	// SettleBilling(整场量) 只结差额。绕过会话直扣钱包会让整场消耗在收尾
+	// Settle 时被再收一次——实测 100% 双扣；订阅会话则更是「轮次扣钱包 +
+	// 收尾结订阅」两头出账。无会话时兜底直扣并累计 FinalPreConsumedQuota，
+	// 与 SettleBilling 的回退路径(actual - FinalPreConsumedQuota)对齐。
+	if relayInfo.Billing != nil {
+		err = relayInfo.Billing.Reserve(relayInfo.Billing.GetPreConsumedQuota() + quota)
+	} else if err = PostConsumeQuota(relayInfo, quota, 0, false); err == nil {
+		relayInfo.FinalPreConsumedQuota += quota
+	}
 	if err != nil {
 		return err
 	}
