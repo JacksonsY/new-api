@@ -49,6 +49,8 @@ import type {
   CreemProduct,
   WaffoPayMethod,
 } from '../types'
+import { useAuthStore } from '@/stores/auth-store'
+
 import { AutoGroupTiersCard } from './auto-group-tiers-card'
 import { CreemProductsSection } from './creem-products-section'
 
@@ -159,6 +161,7 @@ export function RechargeFormCard({
   enableWaffoPancakeTopup,
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
+  const isSubAccount = Boolean(useAuthStore((s) => s.auth.user?.parent_id)) // jzlh-sub
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
 
   useEffect(() => {
@@ -247,6 +250,15 @@ export function RechargeFormCard({
       }
       contentClassName='space-y-5 sm:space-y-6'
     >
+      {/* jzlh-sub 子账号充值入账到主账号池（共享池），提示不进入子号个人钱包 */}
+      {isSubAccount && (
+        <Alert>
+          <AlertDescription>
+            {t('Top-ups are credited to the main account pool (shared).')}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* 蓝图C 充值自动升级档位（营销展示） */}
       {topupInfo?.auto_group?.enabled && (
         <AutoGroupTiersCard info={topupInfo.auto_group} />

@@ -147,6 +147,12 @@ func InitOptionMap() {
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["AgentEnabled"] = strconv.FormatBool(common.AgentEnabled)                                       // jzlh v2 P2
 	common.OptionMap["SupplierEnabled"] = strconv.FormatBool(common.SupplierEnabled)                                 // jzlh v2 P2
+	// >>> jzlh-sub 子账号站点配置
+	common.OptionMap["SubAccountEnabled"] = strconv.FormatBool(SubAccountEnabled)
+	common.OptionMap["SubAccountShowInitialPassword"] = strconv.FormatBool(SubAccountShowInitialPassword)
+	common.OptionMap["SubAccountEmailDomain"] = SubAccountEmailDomain
+	common.OptionMap["MaxSubAccounts"] = strconv.Itoa(MaxSubAccounts)
+	// <<< jzlh-sub
 	common.OptionMap["AgentDefaultProfitRate"] = strconv.FormatFloat(common.AgentDefaultProfitRate, 'f', -1, 64)     // jzlh v2 P2
 	common.OptionMap["SupplierMatureDays"] = strconv.Itoa(common.SupplierMatureDays)                                 // jzlh v2 P2
 	common.OptionMap["SupplierMaxRate"] = strconv.FormatFloat(common.SupplierMaxRate, 'f', -1, 64)                   // jzlh v2 P2
@@ -337,6 +343,27 @@ func updateOptionMap(key string, value string) (err error) {
 
 func updateOptionMapLocked(key string, value string) (err error) {
 	common.OptionMap[key] = value
+
+	// >>> jzlh-sub 子账号站点配置同步（含非 Enabled 后缀的字符串/整型项）
+	switch key {
+	case "SubAccountEnabled":
+		SubAccountEnabled = value == "true"
+		return nil
+	case "SubAccountShowInitialPassword":
+		SubAccountShowInitialPassword = value == "true"
+		return nil
+	case "SubAccountEmailDomain":
+		if strings.TrimSpace(value) != "" {
+			SubAccountEmailDomain = value
+		}
+		return nil
+	case "MaxSubAccounts":
+		if n, e := strconv.Atoi(value); e == nil && n >= 0 {
+			MaxSubAccounts = n
+		}
+		return nil
+	}
+	// <<< jzlh-sub
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
 	if handleConfigUpdate(key, value) {

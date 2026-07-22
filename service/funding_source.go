@@ -29,6 +29,10 @@ type FundingSource interface {
 type WalletFunding struct {
 	userId   int
 	consumed int // 实际预扣的用户额度
+	// strict：预扣用原子 DecreaseUserQuotaIfEnough(超额原子拒绝)。子账号共享池(多子号
+	// 并发命中主号钱包)必须置 true——否则"读余额→判够→非原子扣减"的 TOCTOU 会被并发放大，
+	// 把主号池扣成负(方案 §5.2-①)。个人钱包路径 strict=false，沿用旧的读-判-扣(单用户可容)。
+	strict bool
 }
 
 func (w *WalletFunding) Source() string { return BillingSourceWallet }
@@ -37,7 +41,11 @@ func (w *WalletFunding) PreConsume(amount int) error {
 	if amount <= 0 {
 		return nil
 	}
-	if err := model.DecreaseUserQuota(w.userId, amount, false); err != nil {
+	if w.strict {
+		if err := model.DecreaseUserQuotaIfEnough(w.userId, amount); err != nil {
+			return err
+		}
+	} else if err := model.DecreaseUserQuota(w.userId, amount, false); err != nil {
 		return err
 	}
 	w.consumed = amount

@@ -499,9 +499,26 @@ func GetSelf(c *gin.Context) {
 		}
 	}
 
+	// >>> jzlh-sub 子账号身份随 self 下发：前端路由守卫/侧栏/钱包区块依赖 parent_id + 权限白名单。
+	var subAccountInfo map[string]interface{}
+	if user.ParentId != 0 {
+		perms := map[string]bool{}
+		preset := ""
+		if sa := userSetting.SubAccount; sa != nil {
+			if sa.Permissions != nil {
+				perms = sa.Permissions
+			}
+			preset = sa.RolePreset
+		}
+		subAccountInfo = map[string]interface{}{"permissions": perms, "role_preset": preset}
+	}
+	// <<< jzlh-sub
+
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
 		"id":                user.Id,
+		"parent_id":         user.ParentId,  // jzlh-sub >0=子号
+		"sub_account":       subAccountInfo, // jzlh-sub 子号权限白名单(nil=非子号)
 		"username":          user.Username,
 		"display_name":      user.DisplayName,
 		"role":              user.Role,
@@ -968,6 +985,15 @@ func DeleteSelf(c *gin.Context) {
 		return
 	}
 
+	// jzlh-sub 主号名下还有子号时不得自助注销：注销后子号成悬挂孤儿
+	// (仍可登录但所有计费 fail-closed)，且主号余额被困。先删清子号再注销。
+	if user.ParentId == 0 {
+		if _, subCount, err := model.ListSubAccounts(user.Id, "", 0, 0, 0, 1); err == nil && subCount > 0 {
+			common.ApiErrorMsg(c, "请先删除名下全部子账号后再注销")
+			return
+		}
+	}
+
 	err := model.DeleteUserById(id)
 	if err != nil {
 		common.ApiError(c, err)
@@ -1121,6 +1147,12 @@ func ManageUser(c *gin.Context) {
 		}
 		if user.Role >= common.RoleAdminUser {
 			common.ApiErrorI18n(c, i18n.MsgUserAlreadyAdmin)
+			return
+		}
+		// jzlh-sub 子号(parent_id>0)不得提为站点管理员：会造出
+		// 「站点管理权限 + 花主号钱包 + 仍受子号功能白名单」的矛盾混合态。
+		if user.ParentId != 0 {
+			common.ApiErrorMsg(c, "子账号不能被提升为管理员")
 			return
 		}
 		user.Role = common.RoleAdminUser
@@ -1335,7 +1367,8 @@ func TopUp(c *gin.Context) {
 		return
 	}
 
-	id := c.GetInt("id")
+	// jzlh-sub: wallet 管理员子号兑换入账到主号钱包（共享池）；主号/普通用户入账自己。
+	id := ResolveTopupUserId(c)
 	lock := getTopUpLock(id)
 	if !lock.TryLock() {
 		common.ApiErrorI18n(c, i18n.MsgUserTopUpProcessing)
@@ -1508,6 +1541,17 @@ func UpdateUserSetting(c *gin.Context) {
 			settings.GotifyPriority = req.GotifyPriority
 		}
 	}
+
+	// 保留非通知类设置字段：此接口从请求重建整个 settings，若不回填会擦掉这些字段。
+	// >>> jzlh-sub 子账号权限配置(permissions/role_preset/初始密码密文)必须保留，否则
+	// 子号自助改通知设置会把自己锁死、主号管理视图丢失。顺带保留边栏/存储/语言/计费偏好
+	// (原逻辑同样会误擦，属既有数据丢失，一并修正)。
+	settings.SubAccount = existingSettings.SubAccount
+	settings.SidebarModules = existingSettings.SidebarModules
+	settings.Storage = existingSettings.Storage
+	settings.Language = existingSettings.Language
+	settings.BillingPreference = existingSettings.BillingPreference
+	// <<< jzlh-sub
 
 	// 更新用户设置
 	if err := model.UpdateUserSetting(user.Id, settings); err != nil {

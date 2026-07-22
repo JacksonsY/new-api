@@ -14,6 +14,7 @@ type Midjourney struct {
 	Id            int    `json:"id"`
 	Code          int    `json:"code"`
 	UserId        int    `json:"user_id" gorm:"index"`
+	ParentId      int    `json:"parent_id" gorm:"type:int;default:0"` // >>> jzlh-sub 子账号计费快照：MJ 退款回主号钱包判据（0=非子号）
 	Action        string `json:"action" gorm:"type:varchar(40);index"`
 	MjId          string `json:"mj_id" gorm:"index"`
 	Prompt        string `json:"prompt"`

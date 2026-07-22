@@ -150,6 +150,18 @@ type User struct {
 	SupplierName  string `json:"supplier_name,omitempty" gorm:"type:varchar(64);default:'';column:supplier_name"`    // 商户名称/品牌名
 	SupplierIntro string `json:"supplier_intro,omitempty" gorm:"type:varchar(255);default:'';column:supplier_intro"` // 商户简介
 	// <<< jzlh-supplier
+	// >>> jzlh-sub 子账号：与全局 role/AgentType/SupplierStatus 正交的从属维度
+	ParentId int `json:"parent_id" gorm:"type:int;default:0;index"` // >0=子号,指向主号 users.id（0=主号/普通用户）
+	// 三档额度上限（-1=无限）；仅子号(parent_id>0)生效。不设 type:int，让 GORM 按方言映射 BIGINT。
+	TotalQuotaLimit int `json:"total_quota_limit" gorm:"default:-1;column:total_quota_limit"`
+	MonthQuotaLimit int `json:"month_quota_limit" gorm:"default:-1;column:month_quota_limit"`
+	DayQuotaLimit   int `json:"day_quota_limit" gorm:"default:-1;column:day_quota_limit"`
+	// 周期已用（惰性重置）+ 周期锚点（当前周期起点 unix 秒，判是否跨期）。
+	MonthUsedQuota int   `json:"month_used_quota" gorm:"default:0;column:month_used_quota"`
+	DayUsedQuota   int   `json:"day_used_quota" gorm:"default:0;column:day_used_quota"`
+	MonthAnchor    int64 `json:"month_anchor" gorm:"bigint;default:0;column:month_anchor"`
+	DayAnchor      int64 `json:"day_anchor" gorm:"bigint;default:0;column:day_anchor"`
+	// <<< jzlh-sub
 	DeletedAt        gorm.DeletedAt             `gorm:"index"`
 	LinuxDOId        string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting          string                     `json:"setting" gorm:"type:text;column:setting"`
@@ -170,6 +182,7 @@ func (user *User) ToBaseUser() *UserBase {
 		Role:     user.Role,
 		Setting:  user.Setting,
 		Email:    user.Email,
+		ParentId: user.ParentId, // >>> jzlh-sub 计费热路径解析付款人
 	}
 	return cache
 }

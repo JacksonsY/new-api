@@ -52,6 +52,7 @@ const (
 	ContextKeyUserStatus  ContextKey = "user_status"
 	ContextKeyUserEmail   ContextKey = "user_email"
 	ContextKeyUserGroup   ContextKey = "user_group"
+	ContextKeyUserParentId ContextKey = "user_parent_id" // >>> jzlh-sub 子账号计费付款人解析（=主号 id，0=非子号）
 	ContextKeyUsingGroup  ContextKey = "group"
 	ContextKeyUserName    ContextKey = "username"
 

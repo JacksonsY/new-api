@@ -111,7 +111,13 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if relayInfo.UsePrice {
 		return nil
 	}
-	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
+	// jzlh-sub 子号余额预检必须看付款人(主号)钱包——子号自己钱包恒 0，
+	// 否则首轮 response.done 即报余额不足杀掉整个 realtime 会话。
+	payerUserId := relayInfo.UserId
+	if relayInfo.ParentId != 0 {
+		payerUserId = relayInfo.ParentId
+	}
+	userQuota, err := model.GetUserQuota(payerUserId, false)
 	if err != nil {
 		return err
 	}
@@ -162,6 +168,14 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 
 	quota, clamp := calculateAudioQuota(quotaInfo)
 	noteQuotaClamp(relayInfo, clamp)
+
+	// jzlh-sub 中间轮扣款绕过 BillingSession，三档额度必须在此单独校验，
+	// 否则长 realtime 会话可无视子号总/月/日上限持续烧主号池。
+	if relayInfo.ParentId != 0 {
+		if err := model.CheckSubAccountQuota(relayInfo.UserId, quota); err != nil {
+			return err
+		}
+	}
 
 	if userQuota < quota {
 		return fmt.Errorf("user quota is not enough, user quota: %s, need quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(quota))
@@ -270,6 +284,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	}
 	attachQuotaSaturation(ctx, relayInfo, other)
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
+		ParentId:         relayInfo.ParentId, // >>> jzlh-sub
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     usage.InputTokens,
 		CompletionTokens: usage.OutputTokens,
@@ -396,6 +411,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 	attachQuotaSaturation(ctx, relayInfo, other)
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
+		ParentId:         relayInfo.ParentId, // >>> jzlh-sub
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
@@ -443,6 +459,12 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 		return errors.New("relay info is missing")
 	}
 
+	// >>> jzlh-sub 子号：钱包扣/退对象=主号钱包（付款人），日志/统计仍归子号（relayInfo.UserId）
+	payerUserId := relayInfo.UserId
+	if relayInfo.ParentId != 0 {
+		payerUserId = relayInfo.ParentId
+	}
+	// <<< jzlh-sub
 	// 1) Consume from wallet quota OR subscription item
 	usingSubscription := relayInfo.BillingSource == BillingSourceSubscription
 	if usingSubscription {
@@ -459,9 +481,9 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 	} else {
 		// Wallet
 		if quota > 0 {
-			err = model.DecreaseUserQuotaIfEnough(relayInfo.UserId, quota)
+			err = model.DecreaseUserQuotaIfEnough(payerUserId, quota)
 		} else {
-			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
+			err = model.IncreaseUserQuota(payerUserId, -quota, false)
 		}
 		if err != nil {
 			return err
@@ -486,9 +508,9 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 			} else if quota > 0 {
 				// A failed token debit must restore the wallet durably. Queueing this
 				// compensation would lose it if the process exits before the batch flush.
-				rollbackErr = model.IncreaseUserQuota(relayInfo.UserId, quota, true)
+				rollbackErr = model.IncreaseUserQuota(payerUserId, quota, true)
 			} else if quota < 0 {
-				rollbackErr = model.DecreaseUserQuotaIfEnough(relayInfo.UserId, -quota)
+				rollbackErr = model.DecreaseUserQuotaIfEnough(payerUserId, -quota)
 			}
 			if rollbackErr != nil {
 				return &quotaRollbackError{operationErr: err, rollbackErr: rollbackErr}
@@ -497,7 +519,8 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 		}
 	}
 
-	if sendEmail {
+	// jzlh-sub: 子号(parent_id>0)个人钱包不参与计费,跳过个人低额通知(否则每请求误报)
+	if sendEmail && relayInfo.ParentId == 0 {
 		if (quota + preConsumedQuota) != 0 {
 			checkAndSendQuotaNotify(relayInfo, quota, preConsumedQuota)
 		}

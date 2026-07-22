@@ -250,6 +250,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 	}
 	midjourneyTask := &model.Midjourney{
 		UserId:        info.UserId,
+		ParentId:      info.ParentId, // >>> jzlh-sub 付款人快照(失败退款回主号钱包)
 		Code:          midjResponse.Code,
 		Action:        constant.MjActionSwapFace,
 		MjId:          midjResponse.Result,
@@ -550,6 +551,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 	// other: 提交错误，description为错误描述
 	midjourneyTask := &model.Midjourney{
 		UserId:      relayInfo.UserId,
+		ParentId:    relayInfo.ParentId, // >>> jzlh-sub 付款人快照(失败退款回主号钱包)
 		Code:        midjResponse.Code,
 		Action:      midjRequest.Action,
 		MjId:        midjResponse.Result,

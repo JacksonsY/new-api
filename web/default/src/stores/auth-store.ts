@@ -51,6 +51,13 @@ export interface AuthUser {
   // 供应商中心：0=未申请 1=待审核 2=已通过 3=已暂停
   supplier_status?: number
   supplier_payable_quota?: number
+  // jzlh-sub 子账号：>0=子号(隶属主号),0/undefined=主号/普通用户
+  parent_id?: number
+  // 子号功能权限白名单(nil=非子号)：前端据此门控菜单(钱包/Playground/API Keys 等)
+  sub_account?: {
+    permissions?: Record<string, boolean>
+    role_preset?: string
+  }
   github_id?: string
   oidc_id?: string
   wechat_id?: string

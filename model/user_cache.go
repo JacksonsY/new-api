@@ -25,6 +25,7 @@ type UserBase struct {
 	Username string `json:"username"`
 	Role     int    `json:"role"`
 	Setting  string `json:"setting"`
+	ParentId int    `json:"parent_id"` // >>> jzlh-sub >0=子号,计费付款人=主号；随用户缓存 O(1) 读
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -34,6 +35,7 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
+	common.SetContextKey(c, constant.ContextKeyUserParentId, user.ParentId) // >>> jzlh-sub 计费付款人=主号
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {
@@ -133,17 +135,10 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 		return nil, err // Return nil and error if DB lookup fails
 	}
 
-	// Create cache object from user data
-	userCache = &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Role:     user.Role,
-		Setting:  user.Setting,
-		Email:    user.Email,
-	}
+	// 用 ToBaseUser 统一构造，避免手工列表漏字段（如 jzlh-sub 的 ParentId：
+	// 漏了会让 GetUserCache 的 DB 兜底路径返回 ParentId=0，进而 relay 计费扣错
+	// 钱包、子账号权限门 fail-open）。
+	userCache = user.ToBaseUser()
 
 	return userCache, nil
 }

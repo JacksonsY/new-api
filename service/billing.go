@@ -76,7 +76,8 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 		}
 
 		// 发送额度通知（订阅计费使用订阅剩余额度）
-		if actualQuota != 0 {
+		// jzlh-sub: 子号(parent_id>0)个人钱包不参与计费,跳过个人低额通知
+		if actualQuota != 0 && relayInfo.ParentId == 0 {
 			if relayInfo.BillingSource == BillingSourceSubscription {
 				checkAndSendSubscriptionQuotaNotify(relayInfo)
 			} else {

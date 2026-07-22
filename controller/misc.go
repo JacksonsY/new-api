@@ -94,6 +94,7 @@ func GetStatus(c *gin.Context) {
 		// jzlh v2 P2 招商模块开关:前端据此显隐"成为代理/供应商入驻"入口
 		"agent_enabled":             common.AgentEnabled,
 		"supplier_enabled":          common.SupplierEnabled,
+		"sub_account_enabled":       model.SubAccountEnabled, // jzlh-sub 前端据此显隐团队管理入口
 		"password_login_enabled":    common.PasswordLoginEnabled,
 		"password_register_enabled": common.PasswordRegisterEnabled,
 		"default_use_auto_group":    setting.DefaultUseAutoGroup,

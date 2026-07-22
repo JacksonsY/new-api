@@ -207,7 +207,9 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 
-	id := c.GetInt("id")
+	// jzlh-sub: wallet 管理员子号充值入账到主号钱包（订单 UserId=主号，分组按主号计价）。
+	// 主号/普通用户不变（ResolveTopupUserId 返回自身）。
+	id := ResolveTopupUserId(c)
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
@@ -416,7 +418,9 @@ func RequestAmount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
 		return
 	}
-	id := c.GetInt("id")
+	// jzlh-sub: wallet 管理员子号充值入账到主号钱包（订单 UserId=主号，分组按主号计价）。
+	// 主号/普通用户不变（ResolveTopupUserId 返回自身）。
+	id := ResolveTopupUserId(c)
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})

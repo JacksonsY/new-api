@@ -51,6 +51,11 @@ const partnerModulesSchema = z.object({
   AgentDefaultProfitRate: z.string(),
   SupplierMatureDays: z.string(),
   SupplierMaxRate: z.string(),
+  // jzlh-sub 子账号站点配置
+  SubAccountEnabled: z.boolean(),
+  SubAccountShowInitialPassword: z.boolean(),
+  SubAccountEmailDomain: z.string(),
+  MaxSubAccounts: z.string(),
 })
 
 type PartnerModulesFormValues = z.infer<typeof partnerModulesSchema>
@@ -61,6 +66,10 @@ type RawPartnerModulesSettings = {
   AgentDefaultProfitRate: string
   SupplierMatureDays: string
   SupplierMaxRate: string
+  SubAccountEnabled: boolean
+  SubAccountShowInitialPassword: boolean
+  SubAccountEmailDomain: string
+  MaxSubAccounts: string
 }
 
 // 原始 option(0-1 费率)→ 表单展示(百分比)。
@@ -77,6 +86,10 @@ function toDisplay(
     SupplierMaxRate: String(
       Number(((Number(raw.SupplierMaxRate) || 1) * 100).toFixed(1))
     ),
+    SubAccountEnabled: raw.SubAccountEnabled,
+    SubAccountShowInitialPassword: raw.SubAccountShowInitialPassword,
+    SubAccountEmailDomain: raw.SubAccountEmailDomain || 'sub.local',
+    MaxSubAccounts: raw.MaxSubAccounts || '0',
   }
 }
 
@@ -110,6 +123,12 @@ export function PartnerModulesSection({
       SupplierMaxRate: String(
         Math.min(1, Math.max(0.01, maxRatePercent / 100))
       ),
+      SubAccountEnabled: data.SubAccountEnabled,
+      SubAccountShowInitialPassword: data.SubAccountShowInitialPassword,
+      SubAccountEmailDomain: data.SubAccountEmailDomain.trim() || 'sub.local',
+      MaxSubAccounts: String(
+        Math.max(0, Math.round(Number(data.MaxSubAccounts) || 0))
+      ),
     }
     for (const [key, value] of Object.entries(raw)) {
       await updateOption.mutateAsync({ key, value })
@@ -138,6 +157,20 @@ export function PartnerModulesSection({
                 label: t('Supplier module'),
                 desc: t(
                   'Off: no new supplier onboarding. Existing supplier channels and settlement continue.'
+                ),
+              },
+              {
+                name: 'SubAccountEnabled',
+                label: t('Sub-account module'),
+                desc: t(
+                  'Off: no new sub-accounts. Existing sub-accounts keep billing to the main wallet.'
+                ),
+              },
+              {
+                name: 'SubAccountShowInitialPassword',
+                label: t('Show sub-account initial password'),
+                desc: t(
+                  'Allow the main account to view/copy the generated initial password.'
                 ),
               },
             ] as const
@@ -211,6 +244,40 @@ export function PartnerModulesSection({
                   {t(
                     'Hard cap for channel quote rates (approval and price-change requests). 100% means supplier cost equals list price — platform margin zero.'
                   )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='SubAccountEmailDomain'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Sub-account email domain')}</FormLabel>
+                <FormControl>
+                  <Input placeholder='sub.example.com' {...field} />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Generated sub-account login emails use this domain (login identifier only, not real mail).'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='MaxSubAccounts'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Max sub-accounts per main account')}</FormLabel>
+                <FormControl>
+                  <Input inputMode='numeric' {...field} />
+                </FormControl>
+                <FormDescription>
+                  {t('0 means unlimited.')}
                 </FormDescription>
                 <FormMessage />
               </FormItem>

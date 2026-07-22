@@ -64,7 +64,8 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter := router.Group("/pg")
 	playgroundRouter.Use(middleware.RouteTag("relay"))
 	playgroundRouter.Use(middleware.SystemPerformanceCheck())
-	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
+	// jzlh-sub: 子账号需被授予 playground 权限才能用 Playground（主号放行）。
+	playgroundRouter.Use(middleware.UserAuth(), middleware.SubPermission("playground"), middleware.Distribute())
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 	}

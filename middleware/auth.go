@@ -288,6 +288,52 @@ func RootAuth() func(c *gin.Context) {
 	}
 }
 
+// SubPermission 对子账号(parent_id>0)做功能权限硬校验：未被授予 perm 的子号一律 403。
+// 主号/普通用户(parent_id==0)放行。必须挂在 UserAuth 之后（依赖其写入的 "id"）。
+// 自行按 id 解析用户(GetUserCache 缓存优先+DB 兜底)——**不能依赖 user_parent_id/
+// user_setting 上下文键**：authHelper(UserAuth) 并不写这两个键，读它们会恒得 0 →
+// 把子号误判为主号而放行(fail-open)。jzlh-sub。
+func SubPermission(perm string) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		base, err := model.GetUserCache(c.GetInt("id"))
+		if err != nil || base == nil {
+			common.ApiErrorMsg(c, "failed to resolve current user")
+			c.Abort()
+			return
+		}
+		if base.ParentId == 0 {
+			c.Next() // 主号/普通用户不受功能白名单限制
+			return
+		}
+		if sa := base.GetSetting().SubAccount; sa != nil && sa.Permissions[perm] {
+			c.Next()
+			return
+		}
+		common.ApiErrorMsg(c, "sub-account has no permission for this feature")
+		c.Abort()
+	}
+}
+
+// RejectSubAccount 拦截任何子账号(parent_id>0)访问。用于子号不支持的入口（如非 epay
+// 的充值 provider）。主号/普通用户放行。必须挂在 UserAuth 之后。自行解析用户，理由同
+// SubPermission(避免 fail-open)。jzlh-sub。
+func RejectSubAccount() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		base, err := model.GetUserCache(c.GetInt("id"))
+		if err != nil || base == nil {
+			common.ApiErrorMsg(c, "failed to resolve current user")
+			c.Abort()
+			return
+		}
+		if base.ParentId != 0 {
+			common.ApiErrorMsg(c, "sub-accounts cannot use this entry")
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 // AgentAuth 校验当前登录用户是否为代理（agent_type 非空）。必须挂在 UserAuth 之后使用，
 // 依赖 UserAuth 写入 context 的 "id"。代理身份是与全局 role 正交的独立维度（jzlh-agent）。
 func AgentAuth() func(c *gin.Context) {

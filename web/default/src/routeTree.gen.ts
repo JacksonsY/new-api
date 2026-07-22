@@ -46,6 +46,7 @@ import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_
 import { Route as AuthenticatedSystemInfoIndexRouteImport } from './routes/_authenticated/system-info/index'
 import { Route as AuthenticatedSuppliersIndexRouteImport } from './routes/_authenticated/suppliers/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
+import { Route as AuthenticatedSubAccountIndexRouteImport } from './routes/_authenticated/sub-account/index'
 import { Route as AuthenticatedRiskIndexRouteImport } from './routes/_authenticated/risk/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
@@ -277,6 +278,12 @@ const AuthenticatedSubscriptionsIndexRoute =
   AuthenticatedSubscriptionsIndexRouteImport.update({
     id: '/subscriptions/',
     path: '/subscriptions/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSubAccountIndexRoute =
+  AuthenticatedSubAccountIndexRouteImport.update({
+    id: '/sub-account/',
+    path: '/sub-account/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedRiskIndexRoute = AuthenticatedRiskIndexRouteImport.update({
@@ -565,6 +572,7 @@ export interface FileRoutesByFullPath {
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/risk/': typeof AuthenticatedRiskIndexRoute
+  '/sub-account/': typeof AuthenticatedSubAccountIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/suppliers/': typeof AuthenticatedSuppliersIndexRoute
   '/system-info/': typeof AuthenticatedSystemInfoIndexRoute
@@ -642,6 +650,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
   '/risk': typeof AuthenticatedRiskIndexRoute
+  '/sub-account': typeof AuthenticatedSubAccountIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
   '/suppliers': typeof AuthenticatedSuppliersIndexRoute
   '/system-info': typeof AuthenticatedSystemInfoIndexRoute
@@ -723,6 +732,7 @@ export interface FileRoutesById {
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/_authenticated/risk/': typeof AuthenticatedRiskIndexRoute
+  '/_authenticated/sub-account/': typeof AuthenticatedSubAccountIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/_authenticated/suppliers/': typeof AuthenticatedSuppliersIndexRoute
   '/_authenticated/system-info/': typeof AuthenticatedSystemInfoIndexRoute
@@ -803,6 +813,7 @@ export interface FileRouteTypes {
     | '/profile/'
     | '/redemption-codes/'
     | '/risk/'
+    | '/sub-account/'
     | '/subscriptions/'
     | '/suppliers/'
     | '/system-info/'
@@ -880,6 +891,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/redemption-codes'
     | '/risk'
+    | '/sub-account'
     | '/subscriptions'
     | '/suppliers'
     | '/system-info'
@@ -960,6 +972,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
     | '/_authenticated/risk/'
+    | '/_authenticated/sub-account/'
     | '/_authenticated/subscriptions/'
     | '/_authenticated/suppliers/'
     | '/_authenticated/system-info/'
@@ -1278,6 +1291,13 @@ declare module '@tanstack/react-router' {
       path: '/subscriptions'
       fullPath: '/subscriptions/'
       preLoaderRoute: typeof AuthenticatedSubscriptionsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/sub-account/': {
+      id: '/_authenticated/sub-account/'
+      path: '/sub-account'
+      fullPath: '/sub-account/'
+      preLoaderRoute: typeof AuthenticatedSubAccountIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/risk/': {
@@ -1671,6 +1691,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
   AuthenticatedRiskIndexRoute: typeof AuthenticatedRiskIndexRoute
+  AuthenticatedSubAccountIndexRoute: typeof AuthenticatedSubAccountIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
   AuthenticatedSuppliersIndexRoute: typeof AuthenticatedSuppliersIndexRoute
   AuthenticatedSystemInfoIndexRoute: typeof AuthenticatedSystemInfoIndexRoute
@@ -1711,6 +1732,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
   AuthenticatedRiskIndexRoute: AuthenticatedRiskIndexRoute,
+  AuthenticatedSubAccountIndexRoute: AuthenticatedSubAccountIndexRoute,
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,
   AuthenticatedSuppliersIndexRoute: AuthenticatedSuppliersIndexRoute,
   AuthenticatedSystemInfoIndexRoute: AuthenticatedSystemInfoIndexRoute,

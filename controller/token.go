@@ -207,8 +207,15 @@ func AddToken(c *gin.Context) {
 		common.SysLog("failed to generate token key: " + err.Error())
 		return
 	}
+	// jzlh-sub 子号令牌快照主号(计费绑定单位/审计)。按创建者 id 解析——不能读
+	// user_parent_id 上下文键(authHelper 不写它，恒 0)。
+	tokenParentId := 0
+	if base, e := model.GetUserCache(c.GetInt("id")); e == nil && base != nil {
+		tokenParentId = base.ParentId
+	}
 	cleanToken := model.Token{
 		UserId:             c.GetInt("id"),
+		ParentId:           tokenParentId,
 		Name:               token.Name,
 		Key:                key,
 		CreatedTime:        common.GetTimestamp(),

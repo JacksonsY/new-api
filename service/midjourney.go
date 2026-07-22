@@ -66,6 +66,7 @@ func CommitMidjourneyTaskBilling(
 	}
 
 	model.RecordConsumeLog(c, relayInfo.UserId, model.RecordConsumeLogParams{
+		ParentId:                    relayInfo.ParentId, // >>> jzlh-sub
 		ChannelId:                   task.ChannelId,
 		ModelName:                   modelName,
 		TokenName:                   c.GetString("token_name"),

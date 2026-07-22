@@ -92,6 +92,7 @@ type Log struct {
 	// 同为管理员维度：formatUserLogs 对普通用户清零，omitempty 隐藏字段名。
 	SupplierId        int    `json:"supplier_id,omitempty" gorm:"default:0;index"`
 	TokenId           int    `json:"token_id" gorm:"default:0;index"`
+	ParentId          int    `json:"parent_id" gorm:"type:int;default:0;index"` // >>> jzlh-sub 子账号消费聚合 + 分润排除判据（0=非子号）
 	Group             string `json:"group" gorm:"index"`
 	Ip                string `json:"ip" gorm:"index;default:''"`
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
@@ -369,6 +370,8 @@ type RecordConsumeLogParams struct {
 	IsStream         bool                   `json:"is_stream"`
 	Group            string                 `json:"group"`
 	Other            map[string]interface{} `json:"other"`
+	ParentId         int                    `json:"parent_id"` // >>> jzlh-sub >0=子号消费,归属主号聚合 + 排除代理分润
+
 	// CommissionSourceKey links asynchronous task refunds to the exact initial
 	// commission owner. Empty keeps the request-id source used by sync relays.
 	CommissionSourceKey         string `json:"-"`
@@ -385,9 +388,22 @@ func groupRatioFromLogOther(other map[string]interface{}) float64 {
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
+	// >>> jzlh-sub 子账号周期额度（月/日）累加：总档由 used_quota 天然维护，此处只补周期计数。
+	// parent_id>0 才累加；异步不阻塞主链（月/日是软周期上限，非资金硬顶）。
+	if params.ParentId != 0 && params.Quota != 0 {
+		subUserId := userId
+		delta := params.Quota
+		gopool.Go(func() {
+			if err := AddSubAccountPeriodUsage(subUserId, delta); err != nil {
+				common.SysLog(fmt.Sprintf("failed to add sub-account period usage (user=%d delta=%d): %s", subUserId, delta, err.Error()))
+			}
+		})
+	}
+	// <<< jzlh-sub
 	// >>> jzlh-agent 消费分润（异步，不阻塞主链；独立于日志开关）
 	// 幂等键取 request id；必须在 goroutine 外读取，handler 返回后 c 可能被回收。
-	if params.Quota > 0 {
+	// jzlh-sub: 子号(parent_id>0)消费不计代理分润——钱是主号的（决策 R，与退款冲正对称）。
+	if params.Quota > 0 && params.ParentId == 0 {
 		sourceKey := params.CommissionSourceKey
 		if sourceKey == "" && !params.CommissionSourceKeyRequired {
 			if rid := c.GetString(common.RequestIdKey); rid != "" {
@@ -444,6 +460,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	}
 	log := &Log{
 		UserId:           userId,
+		ParentId:         params.ParentId, // >>> jzlh-sub 子号消费聚合 + 分润排除
 		Username:         username,
 		CreatedAt:        createdAt,
 		Type:             LogTypeConsume,
@@ -512,13 +529,15 @@ type RecordTaskBillingLogParams struct {
 	Other              map[string]interface{}
 	NodeName           string // 任务发起节点；为空时回退当前节点
 	CommissionEventKey string // 同一任务内可重放且唯一的计费状态迁移标识
+	ParentId           int    // >>> jzlh-sub >0=子号任务,归属主号聚合 + 排除代理分润
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	// >>> jzlh-agent 任务消费分润同步结算，保证正差额先于后续全额退款落库；
 	// 退款(任务失败/差额下调)按原始归属回冲，防"刷失败任务套佣金"。
 	// 幂等键取 task_id；差额结算可用状态迁移键区分额度相同的多次合法记账。
-	if params.Quota > 0 {
+	// jzlh-sub: 子号(parent_id>0)任务消费/退款均不计代理分润（决策 R，对称）。
+	if params.Quota > 0 && params.ParentId == 0 {
 		taskKey := ""
 		if tid, ok := params.Other["task_id"].(string); ok && tid != "" {
 			eventKey := params.CommissionEventKey
@@ -569,6 +588,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	channelQuota := channelCostQuota(params.Quota, groupRatioFromLogOther(params.Other), channelRatio)
 	log := &Log{
 		UserId:          params.UserId,
+		ParentId:        params.ParentId, // >>> jzlh-sub
 		Username:        username,
 		CreatedAt:       createdAt,
 		Type:            params.LogType,

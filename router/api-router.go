@@ -84,6 +84,18 @@ func SetApiRouter(router *gin.Engine) {
 		}
 		// <<< jzlh-veridrop
 
+		// >>> jzlh-sub 子账号管理（主号 Owner / team_management 管理员子号；handler 内二次鉴权）
+		subAccountRoute := apiRouter.Group("/sub-account")
+		subAccountRoute.Use(middleware.UserAuth())
+		{
+			subAccountRoute.GET("", controller.ListSubAccounts)
+			subAccountRoute.POST("", middleware.CriticalRateLimit(), controller.CreateSubAccounts)
+			subAccountRoute.PUT("/:id", controller.UpdateSubAccount)
+			subAccountRoute.POST("/:id/disable", controller.DisableSubAccount)
+			subAccountRoute.DELETE("/:id", controller.DeleteSubAccount)
+		}
+		// <<< jzlh-sub
+
 		userRoute := apiRouter.Group("/user")
 		{
 			userRoute.POST("/register", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.Register)
@@ -104,7 +116,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/models", controller.GetUserModels)
 				selfRoute.PUT("/self", middleware.CriticalRateLimit(), controller.UpdateSelf)
-				selfRoute.DELETE("/self", controller.DeleteSelf)
+				// jzlh-sub 子号注销由主号处置（Owner 最终处置权），不得自助注销
+				selfRoute.DELETE("/self", middleware.RejectSubAccount(), controller.DeleteSelf)
 				selfRoute.GET("/token", controller.GenerateAccessToken)
 				selfRoute.GET("/passkey", controller.PasskeyStatus)
 				selfRoute.POST("/passkey/register/begin", controller.PasskeyRegisterBegin)
@@ -115,19 +128,21 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/aff", controller.GetAffCode)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
-				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
-				selfRoute.POST("/pay", middleware.CriticalRateLimit(), controller.RequestEpay)
-				selfRoute.POST("/epay/qr", middleware.CriticalRateLimit(), controller.RequestEpayQR)
+				// jzlh-sub: 子号充值门控——兑换码 + epay 允许 wallet 管理员子号(入账主号钱包);
+				// 其余 provider 及 QR MVP 不支持子号(RejectSubAccount)。非子号一律不受影响。
+				selfRoute.POST("/topup", middleware.CriticalRateLimit(), middleware.SubPermission("wallet"), controller.TopUp)
+				selfRoute.POST("/pay", middleware.CriticalRateLimit(), middleware.SubPermission("wallet"), controller.RequestEpay)
+				selfRoute.POST("/epay/qr", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestEpayQR)
 				selfRoute.GET("/epay/order-status", controller.EpayOrderStatus)
 				selfRoute.POST("/amount", controller.RequestAmount)
-				selfRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.RequestStripePay)
+				selfRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestStripePay)
 				selfRoute.POST("/stripe/amount", controller.RequestStripeAmount)
-				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.RequestCreemPay)
+				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestCreemPay)
 				selfRoute.POST("/waffo/amount", controller.RequestWaffoAmount)
-				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPay)
+				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestWaffoPay)
 				selfRoute.POST("/waffo-pancake/amount", controller.RequestWaffoPancakeAmount)
-				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPancakePay)
-				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
+				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestWaffoPancakePay)
+				selfRoute.POST("/aff_transfer", middleware.RejectSubAccount(), controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 				selfRoute.PUT("/storage_setting", middleware.CriticalRateLimit(), controller.UpdateUserStorageSetting)
 				selfRoute.DELETE("/storage_setting", controller.DeleteUserStorageSetting)
@@ -332,10 +347,11 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
-			tokenRoute.POST("/", controller.AddToken)
-			tokenRoute.PUT("/", controller.UpdateToken)
-			tokenRoute.DELETE("/:id", controller.DeleteToken)
-			tokenRoute.POST("/batch", controller.DeleteTokenBatch)
+			// jzlh-sub: 令牌增删改需子号被授予 api_keys 权限（主号放行）。
+			tokenRoute.POST("/", middleware.SubPermission("api_keys"), controller.AddToken)
+			tokenRoute.PUT("/", middleware.SubPermission("api_keys"), controller.UpdateToken)
+			tokenRoute.DELETE("/:id", middleware.SubPermission("api_keys"), controller.DeleteToken)
+			tokenRoute.POST("/batch", middleware.SubPermission("api_keys"), controller.DeleteTokenBatch)
 			tokenRoute.POST("/batch/keys", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKeysBatch)
 		}
 
@@ -366,11 +382,11 @@ func SetApiRouter(router *gin.Engine) {
 		// TODO: remove once the classic frontend is removed; the default frontend uses /system-task/log-cleanup.
 		logRoute.DELETE("/", middleware.RootAuth(), controller.DeleteHistoryLogs)
 		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
-		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
+		logRoute.GET("/self/stat", middleware.UserAuth(), middleware.SubPermission("usage_logs"), controller.GetLogsSelfStat)
 		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), controller.GetChannelAffinityUsageCacheStats)
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
-		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
-		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
+		logRoute.GET("/self", middleware.UserAuth(), middleware.SubPermission("usage_logs"), controller.GetUserLogs)
+		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SubPermission("usage_logs"), middleware.SearchRateLimit(), controller.SearchUserLogs)
 
 		systemTaskRoute := apiRouter.Group("/system-task")
 		systemTaskRoute.Use(middleware.RootAuth())

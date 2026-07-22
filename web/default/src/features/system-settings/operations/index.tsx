@@ -68,6 +68,11 @@ const defaultOperationsSettings: OperationsSettings = {
   AgentDefaultProfitRate: '0',
   SupplierMatureDays: '3',
   SupplierMaxRate: '1',
+  // jzlh-sub 子账号站点配置
+  SubAccountEnabled: false,
+  SubAccountShowInitialPassword: true,
+  SubAccountEmailDomain: 'sub.local',
+  MaxSubAccounts: '0',
 }
 
 export function OperationsSettings() {

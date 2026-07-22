@@ -16,6 +16,7 @@ var ErrInsufficientTokenQuota = errors.New("insufficient token quota")
 type Token struct {
 	Id                 int            `json:"id"`
 	UserId             int            `json:"user_id" gorm:"index"`
+	ParentId           int            `json:"parent_id" gorm:"type:int;default:0"` // >>> jzlh-sub 子账号计费快照：该令牌计入哪个主号池（0=非子号）
 	Key                string         `json:"key" gorm:"type:varchar(128);uniqueIndex"`
 	Status             int            `json:"status" gorm:"default:1"`
 	Name               string         `json:"name" gorm:"index" `

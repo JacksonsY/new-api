@@ -408,6 +408,11 @@ export type OperationsSettings = {
   AgentDefaultProfitRate: string
   SupplierMatureDays: string
   SupplierMaxRate: string
+  // jzlh-sub 子账号站点配置
+  SubAccountEnabled: boolean
+  SubAccountShowInitialPassword: boolean
+  SubAccountEmailDomain: string
+  MaxSubAccounts: string
 }
 
 export type SecuritySettings = {

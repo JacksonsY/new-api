@@ -217,7 +217,16 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 				// 第二条 preStatus 已是 FAILURE，UpdateWithStatus("FAILURE") 在 PG/SQLite
 				// (matched=affected)或 MySQL(任一字段变化)下仍 won=true，会再退一次款、余额
 				// 凭空增发。与 Suno 轮询退款(967c3132b)同款守卫。
-				err = model.IncreaseUserQuota(task.UserId, task.Quota, false)
+				// >>> jzlh-sub 子号 MJ 失败退款回主号钱包（付款人快照），绝不回子号钱包
+				// （否则是「池→子号钱包」套现通道）；同步回退子号月/日周期计数。
+				refundPayerUserId := task.UserId
+				if task.ParentId != 0 {
+					refundPayerUserId = task.ParentId
+					if e := model.AddSubAccountPeriodUsage(task.UserId, -task.Quota); e != nil {
+						logger.LogError(ctx, "fail to revert sub-account period usage: "+e.Error())
+					}
+				}
+				err = model.IncreaseUserQuota(refundPayerUserId, task.Quota, false)
 				if err != nil {
 					logger.LogError(ctx, "fail to increase user quota: "+err.Error())
 				}
@@ -229,6 +238,7 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 				model.DecreaseUserUsedQuota(task.UserId, task.Quota)
 				model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 					UserId:    task.UserId,
+					ParentId:  task.ParentId, // jzlh-sub 退款日志归属子号链路，缺失会误入分润冲正分支
 					LogType:   model.LogTypeRefund,
 					Content:   "",
 					ChannelId: task.ChannelId,

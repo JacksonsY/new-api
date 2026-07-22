@@ -66,6 +66,11 @@ export function useSidebarData(): SidebarData {
   const isAdmin = (user?.role ?? 0) >= ROLE.ADMIN
   const isRoot = hasRootAccess(user?.role)
   const isSupplier = user?.supplier_status === 2
+  const isSubAccount = Boolean(user?.parent_id) // jzlh-sub 子号不显示管理台
+  const subAccountEnabled = status?.sub_account_enabled === true
+  // jzlh-sub 子号菜单按功能权限白名单门控（非子号恒放行）；普通子号无 wallet 权限则不显示钱包菜单。
+  const subPerms = user?.sub_account?.permissions ?? {}
+  const subCan = (p: string) => !isSubAccount || Boolean(subPerms[p])
   // v2 P2 招商模块开关:关闭时隐藏对应招商入口(存量身份的条目不受影响)。
   const agentEnabled = status?.agent_enabled !== false
   const supplierEnabled = status?.supplier_enabled !== false
@@ -76,18 +81,21 @@ export function useSidebarData(): SidebarData {
       {
         id: 'chat',
         title: t('Chat'),
-        items: [
-          {
-            title: t('Playground'),
-            url: '/playground',
-            icon: FlaskConical,
-          },
-          {
-            title: t('Chat'),
-            icon: MessageSquare,
-            type: 'chat-presets',
-          },
-        ],
+        // jzlh-sub 子号无 playground 权限则整组不显示对话入口
+        items: subCan('playground')
+          ? [
+              {
+                title: t('Playground'),
+                url: '/playground',
+                icon: FlaskConical,
+              },
+              {
+                title: t('Chat'),
+                icon: MessageSquare,
+                type: 'chat-presets' as const,
+              },
+            ]
+          : [],
       },
       {
         id: 'general',
@@ -103,34 +111,47 @@ export function useSidebarData(): SidebarData {
             url: '/dashboard/models',
             icon: LayoutDashboard,
           },
-          {
-            title: t('API Keys'),
-            url: '/keys',
-            icon: Key,
-          },
-          {
-            title: t('Usage Logs'),
-            url: '/usage-logs/common',
-            icon: FileText,
-          },
-          {
-            title: t('Task Logs'),
-            url: '/usage-logs/task',
-            activeUrls: ['/usage-logs/drawing'],
-            configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
-            icon: ListTodo,
-          },
+          ...(subCan('api_keys')
+            ? [
+                {
+                  title: t('API Keys'),
+                  url: '/keys',
+                  icon: Key,
+                },
+              ]
+            : []),
+          ...(subCan('usage_logs')
+            ? [
+                {
+                  title: t('Usage Logs'),
+                  url: '/usage-logs/common',
+                  icon: FileText,
+                },
+                {
+                  title: t('Task Logs'),
+                  url: '/usage-logs/task',
+                  activeUrls: ['/usage-logs/drawing'],
+                  configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
+                  icon: ListTodo,
+                },
+              ]
+            : []),
         ],
       },
       {
         id: 'personal',
         title: t('Personal'),
         items: [
-          {
-            title: t('Wallet'),
-            url: '/wallet',
-            icon: Wallet,
-          },
+          // jzlh-sub 普通子号(无 wallet 权限)不显示钱包菜单
+          ...(subCan('wallet')
+            ? [
+                {
+                  title: t('Wallet'),
+                  url: '/wallet',
+                  icon: Wallet,
+                },
+              ]
+            : []),
           {
             title: t('Profile'),
             url: '/profile',
@@ -274,6 +295,22 @@ export function useSidebarData(): SidebarData {
                   title: t('Relay Leaderboard'),
                   url: '/detection/leaderboard',
                   icon: Trophy,
+                },
+              ],
+            },
+          ]
+        : []),
+      // jzlh-sub 团队管理（子账号）：站点开关开启且非子号（主号/普通用户）可见。
+      ...(subAccountEnabled && !isSubAccount
+        ? [
+            {
+              id: 'sub-account',
+              title: t('Team Management'),
+              items: [
+                {
+                  title: t('Team Management'),
+                  url: '/sub-account',
+                  icon: Users,
                 },
               ],
             },

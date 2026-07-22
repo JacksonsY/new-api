@@ -64,6 +64,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	}
 	attachQuotaSaturation(c, info, other)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
+		ParentId:                    info.ParentId, // >>> jzlh-sub
 		ChannelId:                   info.ChannelId,
 		ModelName:                   info.OriginModelName,
 		TokenName:                   tokenName,
@@ -100,14 +101,24 @@ func taskIsSubscription(task *model.Task) bool {
 }
 
 // taskAdjustFunding 调整任务的资金来源（钱包或订阅），delta > 0 表示扣费，delta < 0 表示退还。
+// >>> jzlh-sub 子号任务：钱包扣/退对象=主号钱包（付款人快照 PrivateData.ParentId），
+// 绝不回子号钱包（否则失败任务退款是「池→子号钱包」套现通道）；同步调整子号月/日周期计数。
 func taskAdjustFunding(task *model.Task, delta int) error {
 	if taskIsSubscription(task) {
 		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
 	}
-	if delta > 0 {
-		return model.DecreaseUserQuota(task.UserId, delta, false)
+	payerUserId := task.UserId
+	if task.PrivateData.ParentId != 0 {
+		payerUserId = task.PrivateData.ParentId
+		// 月/日周期计数按有符号 delta 调整（总档由 UpdateUserUsedQuotaAndRequestCount(子号) 天然维护）
+		if err := model.AddSubAccountPeriodUsage(task.UserId, delta); err != nil {
+			common.SysLog(fmt.Sprintf("failed to adjust sub-account period usage (task user=%d delta=%d): %s", task.UserId, delta, err.Error()))
+		}
 	}
-	return model.IncreaseUserQuota(task.UserId, -delta, false)
+	if delta > 0 {
+		return model.DecreaseUserQuota(payerUserId, delta, false)
+	}
+	return model.IncreaseUserQuota(payerUserId, -delta, false)
 }
 
 // taskAdjustTokenQuota 调整任务的令牌额度，delta > 0 表示扣费，delta < 0 表示退还。
@@ -210,6 +221,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	other["reason"] = reason
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:             task.UserId,
+		ParentId:           task.PrivateData.ParentId, // >>> jzlh-sub
 		LogType:            model.LogTypeRefund,
 		Content:            "",
 		ChannelId:          task.ChannelId,
@@ -293,6 +305,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:             task.UserId,
+		ParentId:           task.PrivateData.ParentId, // >>> jzlh-sub
 		LogType:            logType,
 		Content:            reason,
 		ChannelId:          task.ChannelId,

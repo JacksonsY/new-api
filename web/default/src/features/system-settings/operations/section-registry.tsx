@@ -53,6 +53,10 @@ const OPERATIONS_SECTIONS = [
           AgentDefaultProfitRate: settings.AgentDefaultProfitRate,
           SupplierMatureDays: settings.SupplierMatureDays,
           SupplierMaxRate: settings.SupplierMaxRate,
+          SubAccountEnabled: settings.SubAccountEnabled,
+          SubAccountShowInitialPassword: settings.SubAccountShowInitialPassword,
+          SubAccountEmailDomain: settings.SubAccountEmailDomain,
+          MaxSubAccounts: settings.MaxSubAccounts,
         }}
       />
     ),
