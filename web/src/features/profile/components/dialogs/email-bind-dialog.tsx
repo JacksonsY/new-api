@@ -24,7 +24,9 @@ import { toast } from 'sonner'
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
 import { Dialog } from '@/components/dialog'
+import { Turnstile } from '@/components/turnstile'
 import { Label } from '@/components/ui/label'
+import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import { useCountdown } from '@/hooks/use-countdown'
 
 import { sendEmailVerification, bindEmail } from '../../api'
@@ -51,6 +53,15 @@ export function EmailBindDialog({
   const [sendingCode, setSendingCode] = useState(false)
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
+  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0)
+  const {
+    isTurnstileEnabled,
+    turnstileSiteKey,
+    turnstileToken,
+    setTurnstileToken,
+    validateTurnstile,
+  } = useTurnstile()
+  const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
   const {
     secondsLeft,
     isActive,
@@ -65,10 +76,14 @@ export function EmailBindDialog({
       toast.error(t('Please enter a valid email address'))
       return
     }
+    if (!validateTurnstile()) return
 
     try {
       setSendingCode(true)
-      const response = await sendEmailVerification(email)
+      const response = await sendEmailVerification(
+        email,
+        turnstileToken || undefined
+      )
 
       if (response.success) {
         toast.success(t('Verification code sent! Please check your email.'))
@@ -79,6 +94,9 @@ export function EmailBindDialog({
     } catch {
       toast.error(t('Failed to send verification code'))
     } finally {
+      // token 已被 siteverify 消费(Cloudflare 单次有效),重置 widget 换新 token
+      setTurnstileToken('')
+      setTurnstileWidgetKey((v) => v + 1)
       setSendingCode(false)
     }
   }
@@ -192,12 +210,20 @@ export function EmailBindDialog({
               type='button'
               variant='outline'
               onClick={handleSendCode}
-              disabled={sendingCode || isActive || !email}
+              disabled={sendingCode || isActive || !email || !turnstileReady}
             >
               {sendCodeLabel}
             </Button>
           </div>
         </div>
+
+        {isTurnstileEnabled && (
+          <Turnstile
+            key={turnstileWidgetKey}
+            siteKey={turnstileSiteKey}
+            onVerify={setTurnstileToken}
+          />
+        )}
       </div>
     </Dialog>
   )
