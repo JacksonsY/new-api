@@ -24,6 +24,7 @@ import { StatusBadge } from '@/components/status-badge'
 import { formatQuota } from '@/lib/format'
 
 import type { ApiKey } from '../types'
+import { UnlimitedQuotaBadge } from './api-keys-cells'
 
 function renderApiKeyCell(row: Row<ApiKey>, columnId: string) {
   const cell = row
@@ -117,7 +118,7 @@ export function ApiKeyCard(props: { row: Row<ApiKey> }) {
           {visibleColumnIds.has('quota') && (
             <DataTableCardRow label={t('Quota')} contentMode='full'>
               {apiKey.unlimited_quota ? (
-                <StatusBadge variant='neutral'>{t('Unlimited')}</StatusBadge>
+                <UnlimitedQuotaBadge used={apiKey.used_quota} />
               ) : (
                 <span className='font-medium tabular-nums'>
                   {formatQuota(apiKey.remain_quota)}

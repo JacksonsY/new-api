@@ -182,12 +182,17 @@ export function SignUpForm({
     } catch {
       // Errors are handled by global interceptor
     } finally {
+      setTurnstileToken('')
+      setTurnstileWidgetKey((current) => current + 1)
       setIsLoading(false)
     }
   }
 
   async function handleSendVerificationCode() {
-    if (await sendCode(emailValue || '')) {
+    try {
+      await sendCode(emailValue || '')
+    } finally {
+      // token 已被 siteverify 消费(无论成败),重置 widget 换新 token
       setTurnstileToken('')
       setTurnstileWidgetKey((current) => current + 1)
     }

@@ -90,6 +90,7 @@ export function UserAuthForm({
     setTurnstileToken,
     validateTurnstile,
   } = useTurnstile()
+  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0)
   const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
   const { handleLoginSuccess, redirectTo2FA } = useAuthRedirect()
   const setPending2FAFlowToken = useAuthStore(
@@ -187,6 +188,9 @@ export function UserAuthForm({
       if (axios.isAxiosError(error)) return
       toast.error(error instanceof Error ? error.message : loginFailedMessage)
     } finally {
+      // token 已被 siteverify 消费(Cloudflare 单次有效),重置 widget 换新 token
+      setTurnstileToken('')
+      setTurnstileWidgetKey((v) => v + 1)
       setIsLoading(false)
     }
   }
@@ -409,6 +413,7 @@ export function UserAuthForm({
             {isTurnstileEnabled && (
               <div className='mt-2 flex justify-center'>
                 <Turnstile
+                  key={turnstileWidgetKey}
                   siteKey={turnstileSiteKey}
                   onVerify={setTurnstileToken}
                 />

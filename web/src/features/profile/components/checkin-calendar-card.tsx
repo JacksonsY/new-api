@@ -151,12 +151,16 @@ export function CheckinCalendarCard({
             setTurnstileModalVisible(true)
             return
           }
-          if (token && shouldTriggerTurnstile(res.message)) {
+          if (token) {
+            // token 已被消费(Cloudflare 单次有效),重置 widget 供重试
             setTurnstileWidgetKey((v) => v + 1)
           }
           toast.error(res.message || t('Check-in failed'))
         }
       } catch {
+        if (token) {
+          setTurnstileWidgetKey((v) => v + 1)
+        }
         toast.error(t('Check-in failed'))
       } finally {
         setCheckinLoading(false)

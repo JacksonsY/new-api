@@ -68,6 +68,7 @@ export function ForgotPasswordForm({
     resolver: zodResolver(forgotPasswordFormSchema),
     defaultValues: { email: '' },
   })
+  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0)
   const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
 
   async function onSubmit(data: z.infer<typeof forgotPasswordFormSchema>) {
@@ -86,6 +87,9 @@ export function ForgotPasswordForm({
     } catch (_error) {
       // Errors are handled by global interceptor
     } finally {
+      // token 已被 siteverify 消费(Cloudflare 单次有效),重置 widget 换新 token
+      setTurnstileToken('')
+      setTurnstileWidgetKey((v) => v + 1)
       setIsLoading(false)
     }
   }
@@ -126,6 +130,7 @@ export function ForgotPasswordForm({
         {isTurnstileEnabled && (
           <div className='mt-2'>
             <Turnstile
+              key={turnstileWidgetKey}
               siteKey={turnstileSiteKey}
               onVerify={setTurnstileToken}
             />
