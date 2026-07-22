@@ -314,11 +314,6 @@ For commercial licensing, please contact support@quantumnous.com
     var(--foreground) 5%,
     var(--table-row)
   );
-  --table-disabled: color-mix(
-    in oklch,
-    var(--foreground) 5.5%,
-    var(--table-row)
-  );
   /* Disabled rows: kept subtle so they read as "quiet", not as a colored
      alert state. */
   --table-disabled: color-mix(
@@ -328,13 +323,13 @@ For commercial licensing, please contact support@quantumnous.com
   );
   --table-disabled-hover: color-mix(
     in oklch,
-    var(--foreground) 7%,
-    var(--table-row)
+    var(--foreground) 4.5%,
+    var(--background)
   );
   --table-disabled-border: color-mix(
     in oklch,
-    var(--foreground) 24%,
-    var(--table-row)
+    var(--foreground) 16%,
+    var(--background)
   );
 }
 
@@ -425,17 +420,17 @@ For commercial licensing, please contact support@quantumnous.com
   );
   --table-disabled: color-mix(
     in oklch,
-    var(--foreground) 10%,
+    var(--foreground) 7%,
     var(--background)
   );
   --table-disabled-hover: color-mix(
     in oklch,
-    var(--foreground) 13%,
+    var(--foreground) 9.5%,
     var(--background)
   );
   --table-disabled-border: color-mix(
     in oklch,
-    var(--foreground) 34%,
+    var(--foreground) 24%,
     var(--background)
   );
 }

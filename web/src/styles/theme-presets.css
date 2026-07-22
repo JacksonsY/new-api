@@ -421,9 +421,9 @@ For commercial licensing, please contact support@quantumnous.com
 [data-theme-preset]:not([data-theme-preset='default']):not(
   [data-theme-preset='anthropic']
 ):not([data-theme-preset='simple-large']) {
-  --card: color-mix(in oklch, var(--primary) 6%, var(--background));
-  --popover: color-mix(in oklch, var(--primary) 8%, var(--background));
-  --muted: color-mix(in oklch, var(--primary) 10%, var(--background));
+  --card: color-mix(in oklch, var(--primary) 3%, var(--background));
+  --popover: color-mix(in oklch, var(--primary) 5%, var(--background));
+  --muted: color-mix(in oklch, var(--primary) 7%, var(--background));
   --muted-foreground: color-mix(
     in oklch,
     var(--foreground) 74%,

@@ -82,29 +82,3 @@ export function isValidEmail(email: string): boolean {
 // ============================================================================
 // Redirect Safety
 // ============================================================================
-
-/**
- * Whether a post-login redirect target is a safe same-origin path.
- *
- * A `startsWith('/') && !startsWith('//')` check is not enough: the URL parser
- * normalizes `/\evil.com` (and the percent-encoded `%2F%5Cevil.com`, which
- * `URLSearchParams`/router search parsing decodes before it reaches here) into
- * the protocol-relative `//evil.com`. That slips past a string-prefix check and,
- * once handed to `window.location.replace`, navigates off-origin — an open
- * redirect. Resolve against the current origin and require an exact origin match
- * instead, which also rejects absolute `https://host` targets and non-navigable
- * schemes like `javascript:`.
- */
-export function isSafeInternalRedirect(
-  target: string | null | undefined
-): target is string {
-  if (!target || typeof window === 'undefined') {
-    return false
-  }
-  try {
-    const { origin } = window.location
-    return new URL(target, origin).origin === origin
-  } catch {
-    return false
-  }
-}
