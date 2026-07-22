@@ -24,7 +24,6 @@ import {
   CardStaggerItem,
 } from '@/components/page-transition'
 import { useStatus } from '@/hooks/use-status'
-import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { CheckinCalendarCard } from './components/checkin-calendar-card'
@@ -32,10 +31,12 @@ import { ConnectedAccountsCard } from './components/connected-accounts-card'
 import { LanguagePreferencesCard } from './components/language-preferences-card'
 import { LoginSessionsCard } from './components/login-sessions-card'
 import { NotificationSettingsCard } from './components/notification-settings-card'
+import { PasskeyCard } from './components/passkey-card'
 import { ProfileHeader } from './components/profile-header'
 import { ProfileSecurityCard } from './components/profile-security-card'
 import { SidebarModulesCard } from './components/sidebar-modules-card'
 import { StorageSettingsCard } from './components/storage-settings-card'
+import { TwoFACard } from './components/two-fa-card'
 import { useProfile } from './hooks'
 
 export function Profile() {
@@ -50,8 +51,6 @@ export function Profile() {
   )
   const turnstileSiteKey = status?.turnstile_site_key || ''
   const canConfigureSidebar = permissions?.sidebar_settings !== false
-  // 右侧粘性侧栏(上游布局):签到 + 侧栏配置。两者都关闭时退化为单列,避免空轨占位。
-  const hasSideRail = checkinEnabled || canConfigureSidebar
 
   return (
     <SectionPageLayout>
@@ -63,13 +62,7 @@ export function Profile() {
           </CardStaggerItem>
 
           <CardStaggerItem>
-            <div
-              className={cn(
-                'grid gap-4 sm:gap-5 xl:items-start',
-                hasSideRail &&
-                  'xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.46fr)]'
-              )}
-            >
+            <div className='grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.46fr)] xl:items-start'>
               <div className='space-y-4 sm:space-y-5'>
                 <ConnectedAccountsCard
                   profile={profile}
@@ -94,18 +87,18 @@ export function Profile() {
                 <LoginSessionsCard />
               </div>
 
-              {hasSideRail && (
-                <div className='space-y-4 sm:space-y-5 xl:sticky xl:top-6'>
-                  {checkinEnabled && (
-                    <CheckinCalendarCard
-                      checkinEnabled={checkinEnabled}
-                      turnstileEnabled={turnstileEnabled}
-                      turnstileSiteKey={turnstileSiteKey}
-                    />
-                  )}
-                  {canConfigureSidebar && <SidebarModulesCard />}
-                </div>
-              )}
+              <div className='space-y-4 sm:space-y-5 xl:sticky xl:top-6'>
+                {checkinEnabled && (
+                  <CheckinCalendarCard
+                    checkinEnabled={checkinEnabled}
+                    turnstileEnabled={turnstileEnabled}
+                    turnstileSiteKey={turnstileSiteKey}
+                  />
+                )}
+                {canConfigureSidebar && <SidebarModulesCard />}
+                <PasskeyCard loading={loading} />
+                <TwoFACard loading={loading} />
+              </div>
             </div>
           </CardStaggerItem>
         </CardStaggerContainer>

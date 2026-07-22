@@ -28,8 +28,6 @@ import type { UserProfile } from '../types'
 import { AccessTokenDialog } from './dialogs/access-token-dialog'
 import { ChangePasswordDialog } from './dialogs/change-password-dialog'
 import { DeleteAccountDialog } from './dialogs/delete-account-dialog'
-import { PasskeyRow } from './passkey-row'
-import { TwoFARow } from './two-fa-row'
 
 interface ProfileSecurityCardProps {
   profile: UserProfile | null
@@ -105,10 +103,6 @@ export function ProfileSecurityCard({
               {t('Manage')}
             </Button>
           </div>
-
-          <TwoFARow loading={loading} />
-
-          <PasskeyRow loading={loading} />
         </div>
       </TitledCard>
 
