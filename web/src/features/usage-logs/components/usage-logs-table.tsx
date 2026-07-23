@@ -123,7 +123,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     ],
   })
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError } = useQuery({
     queryKey: [
       'logs',
       logCategory,
@@ -145,8 +145,9 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       })
 
       if (!result?.success) {
-        toast.error(result?.message || t('Failed to load logs'))
-        return DEFAULT_LOGS_DATA
+        const message = result?.message || t('Failed to load logs')
+        toast.error(message)
+        throw new Error(message)
       }
 
       return result.data || DEFAULT_LOGS_DATA
@@ -190,10 +191,14 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       tableLabel={t('Usage Logs')}
       isLoading={isLoadingData}
       isFetching={isFetching}
-      emptyTitle={t('No Logs Found')}
-      emptyDescription={t(
-        'No usage logs available. Logs will appear here once API calls are made.'
-      )}
+      emptyTitle={isError ? t('Failed to load logs') : t('No Logs Found')}
+      emptyDescription={
+        isError
+          ? undefined
+          : t(
+              'No usage logs available. Logs will appear here once API calls are made.'
+            )
+      }
       skeletonKeyPrefix='usage-log-skeleton'
       applyHeaderSize
       tableClassName={cn(

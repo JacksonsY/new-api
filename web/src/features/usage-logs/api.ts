@@ -16,9 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api } from '@/lib/api'
+import { api } from '@/lib/http-client'
 
-import { buildQueryParams } from './lib/utils'
+import { buildQueryParams } from './lib/query-params'
 import type {
   GetLogsParams,
   GetLogsResponse,
@@ -37,6 +37,18 @@ function buildApiPath(endpoint: string, isAdmin: boolean): string {
   return isAdmin ? endpoint : `${endpoint}/self`
 }
 
+export function buildLogsApiPath(endpoint: string, isAdmin: boolean): string {
+  const path = buildApiPath(endpoint, isAdmin)
+  return isAdmin ? `${path}/` : path
+}
+
+export function buildLogStatsApiPath(
+  endpoint: string,
+  isAdmin: boolean
+): string {
+  return `${buildApiPath(endpoint, isAdmin)}/stat`
+}
+
 async function fetchLogs<T>(
   endpoint: string,
   params: T,
@@ -48,7 +60,7 @@ async function fetchLogs<T>(
     page_size: paramRecord.page_size || 20,
     ...params,
   })
-  const path = buildApiPath(endpoint, isAdmin)
+  const path = buildLogsApiPath(endpoint, isAdmin)
   const res = await api.get(`${path}?${queryParams}`)
   return res.data
 }
@@ -61,8 +73,8 @@ async function fetchLogStats<T>(
   const queryParams = buildQueryParams(
     params as unknown as Record<string, unknown>
   )
-  const path = buildApiPath(endpoint, isAdmin)
-  const res = await api.get(`${path}/stat?${queryParams}`)
+  const path = buildLogStatsApiPath(endpoint, isAdmin)
+  const res = await api.get(`${path}?${queryParams}`)
   return res.data
 }
 

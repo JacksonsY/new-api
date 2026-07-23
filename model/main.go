@@ -459,6 +459,7 @@ var clickHouseLogAddColumns = []string{
 	"channel_ratio_set UInt8 DEFAULT 0",
 	"channel_quota Int64 DEFAULT 0",
 	"supplier_id Int64 DEFAULT 0", // jzlh-supplier 渠道 owner 快照
+	"parent_id Int32 DEFAULT 0",
 }
 
 func ensureClickHouseLogColumns() error {
@@ -515,6 +516,7 @@ CREATE TABLE IF NOT EXISTS logs (
 	channel_quota Int64 DEFAULT 0,
 	supplier_id Int64 DEFAULT 0,
 	token_id Int32 DEFAULT 0,
+	parent_id Int32 DEFAULT 0,
 	`+"`group`"+` String DEFAULT '',
 	ip String DEFAULT '',
 	request_id String DEFAULT '',

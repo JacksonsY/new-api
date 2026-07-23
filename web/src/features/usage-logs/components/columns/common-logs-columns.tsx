@@ -801,7 +801,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const [dialogOpen, setDialogOpen] = useState(false)
         const log = row.original
         const other = parseLogOther(log.other)
-        const ip = log.ip.trim()
+        const ip = (log.ip ?? '').trim()
 
         const segments = buildDetailSegments(log, other, t, isAdmin)
         const primary = segments[0]
