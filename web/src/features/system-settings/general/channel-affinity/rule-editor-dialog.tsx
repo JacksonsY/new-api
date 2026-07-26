@@ -24,7 +24,6 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
-import { JsonCodeEditor } from '@/components/json-code-editor'
 import {
   Select,
   SelectContent,
@@ -34,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/design-system/select'
 import { Dialog } from '@/components/dialog'
+import { JsonCodeEditor } from '@/components/json-code-editor'
 import {
   Collapsible,
   CollapsibleContent,

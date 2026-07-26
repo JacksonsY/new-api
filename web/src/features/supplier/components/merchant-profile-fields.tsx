@@ -62,7 +62,9 @@ export function MerchantProfileFields({
       </div>
 
       <div className='grid gap-1.5 sm:col-span-2'>
-        <Label htmlFor={`${idPrefix}-intro`}>{t('Merchant introduction')}</Label>
+        <Label htmlFor={`${idPrefix}-intro`}>
+          {t('Merchant introduction')}
+        </Label>
         <Textarea
           id={`${idPrefix}-intro`}
           value={value.intro}

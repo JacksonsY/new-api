@@ -294,21 +294,21 @@ export function JsonCodeEditor({
             )}
             {statusMessage}
           </span>
-            <Button
-              type='button'
-              variant='ghost'
-              size='xs'
-              onClick={handleCopy}
-              disabled={disabled || !value}
-            >
+          <Button
+            type='button'
+            variant='ghost'
+            size='xs'
+            onClick={handleCopy}
+            disabled={disabled || !value}
+          >
             <Copy className='mr-1 h-3.5 w-3.5' aria-hidden='true' />
             {t('Copy')}
           </Button>
-            <Button
-              type='button'
-              variant='ghost'
-              size='xs'
-              onClick={formatJson}
+          <Button
+            type='button'
+            variant='ghost'
+            size='xs'
+            onClick={formatJson}
             disabled={disabled || !jsonStatus.isValid || !value.trim()}
           >
             <Code2 className='mr-1 h-3.5 w-3.5' aria-hidden='true' />

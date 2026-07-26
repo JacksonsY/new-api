@@ -75,9 +75,7 @@ export function useDetectionHistory() {
   )
 
   const remove = useCallback((id: string) => {
-    const persisted = saveHistory(
-      entriesRef.current.filter((e) => e.id !== id)
-    )
+    const persisted = saveHistory(entriesRef.current.filter((e) => e.id !== id))
     entriesRef.current = persisted
     setEntries(persisted)
   }, [])

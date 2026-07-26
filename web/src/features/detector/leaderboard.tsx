@@ -27,7 +27,9 @@ export function DetectorLeaderboard() {
   const { t } = useTranslation()
   return (
     <SectionPageLayout fixedContent>
-      <SectionPageLayout.Title>{t('Relay Leaderboard')}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>
+        {t('Relay Leaderboard')}
+      </SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <LeaderboardTable />
       </SectionPageLayout.Content>

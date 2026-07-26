@@ -104,7 +104,10 @@ function renderPriceSummaryCell(
     showRechargePrice: options.showRechargePrice,
     priceRate: options.priceRate,
     usdExchangeRate: options.usdExchangeRate,
-    groupRatioMultiplier: getDynamicDisplayGroupRatio(model, options.selectedGroup),
+    groupRatioMultiplier: getDynamicDisplayGroupRatio(
+      model,
+      options.selectedGroup
+    ),
   })
 
   if (dynamicSummary?.isSpecialExpression) {
@@ -185,7 +188,6 @@ function renderPriceSummaryCell(
     </div>
   )
 }
-
 
 export function usePricingColumns(
   options: PricingColumnsOptions = {}
@@ -282,7 +284,10 @@ export function usePricingColumns(
         </div>
       ),
       cell: ({ row }) =>
-        renderPriceSummaryCell({ model: row.original, options: priceOptions }, t),
+        renderPriceSummaryCell(
+          { model: row.original, options: priceOptions },
+          t
+        ),
       size: 170,
       enableSorting: false,
     },

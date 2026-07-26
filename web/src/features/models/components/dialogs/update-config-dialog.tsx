@@ -25,10 +25,10 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
-import { Dialog } from '@/components/dialog'
-import { JsonCodeEditor } from '@/components/json-code-editor'
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
+import { Dialog } from '@/components/dialog'
+import { JsonCodeEditor } from '@/components/json-code-editor'
 import {
   Collapsible,
   CollapsibleContent,

@@ -85,9 +85,7 @@ export function ChannelOfferFields({
           placeholder={t('e.g. acme-01')}
         />
         <p className='text-muted-foreground text-xs'>
-          {t(
-            '1-10 characters, no commas, quotes, or leading/trailing spaces.'
-          )}
+          {t('1-10 characters, no commas, quotes, or leading/trailing spaces.')}
         </p>
       </div>
 

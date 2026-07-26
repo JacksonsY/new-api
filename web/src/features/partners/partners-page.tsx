@@ -139,7 +139,10 @@ function ProgramCard({ program }: { program: Program }) {
               <Check className='size-3 text-white' />
             </span>
             <span className='text-sm' style={{ color: 'var(--pf-ink-2)' }}>
-              <span className='font-semibold' style={{ color: 'var(--pf-ink)' }}>
+              <span
+                className='font-semibold'
+                style={{ color: 'var(--pf-ink)' }}
+              >
                 {f.title}
               </span>{' '}
               — {f.desc}
@@ -197,7 +200,9 @@ export function PartnersPage() {
         },
       ],
       cta: { label: t('Apply to onboard'), href: SUPPLIER_CTA },
-      footnote: t('Payouts are settled by the platform after a maturity period.'),
+      footnote: t(
+        'Payouts are settled by the platform after a maturity period.'
+      ),
     },
     {
       icon: Share2,
@@ -222,7 +227,9 @@ export function PartnersPage() {
         },
       ],
       cta: { label: t('Sign up to start'), href: AGENT_CTA },
-      footnote: t('Agent status is activated by the platform — sign up first, then contact us.'),
+      footnote: t(
+        'Agent status is activated by the platform — sign up first, then contact us.'
+      ),
     },
   ]
 
@@ -329,7 +336,9 @@ export function PartnersPage() {
           style={{ color: 'var(--pf-ink)' }}
         >
           {t('Earn with the platform,')}{' '}
-          <span className='pf-fire-text whitespace-nowrap'>{t('two ways.')}</span>
+          <span className='pf-fire-text whitespace-nowrap'>
+            {t('two ways.')}
+          </span>
         </h1>
         <p className='pf-lead mx-auto mt-5 max-w-2xl'>
           {t(
@@ -343,7 +352,10 @@ export function PartnersPage() {
       <section className='relative z-10 px-6 py-8'>
         <div className='pf-glass mx-auto grid max-w-4xl grid-cols-2 gap-y-6 rounded-[24px] px-6 py-7 md:grid-cols-4 md:py-8'>
           {stats.map((s) => (
-            <div key={s.label} className='flex flex-col items-center text-center'>
+            <div
+              key={s.label}
+              className='flex flex-col items-center text-center'
+            >
               <span className='pf-fire-text text-3xl font-bold tracking-tight md:text-4xl'>
                 {s.value}
               </span>
@@ -427,7 +439,10 @@ export function PartnersPage() {
             {benefits.map((b) => {
               const Icon = b.icon
               return (
-                <div key={b.title} className='pf-card flex flex-col gap-2.5 p-5'>
+                <div
+                  key={b.title}
+                  className='pf-card flex flex-col gap-2.5 p-5'
+                >
                   <span
                     className='inline-flex size-9 items-center justify-center rounded-xl'
                     style={{
@@ -435,7 +450,10 @@ export function PartnersPage() {
                       border: '1px solid var(--pf-line-2)',
                     }}
                   >
-                    <Icon className='size-4' style={{ color: 'var(--pf-fire)' }} />
+                    <Icon
+                      className='size-4'
+                      style={{ color: 'var(--pf-fire)' }}
+                    />
                   </span>
                   <h3
                     className='text-sm font-bold'

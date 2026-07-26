@@ -1,19 +1,11 @@
 // jzlh-sub 团队管理（子账号列表）页——对齐 302 截图1。
-import {
-  Copy,
-  Pencil,
-  Plus,
-  RotateCw,
-  Search,
-  Trash2,
-} from 'lucide-react'
+import { Copy, Pencil, Plus, RotateCw, Search, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/design-system/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/design-system/input'
 import {
   Table,
@@ -23,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/design-system/table'
+import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { deleteSubAccount, listSubAccounts } from './api'
@@ -151,7 +144,7 @@ export function SubAccountPage() {
 
       <div className='flex items-center gap-2'>
         <div className='relative max-w-xs flex-1'>
-          <Search className='text-muted-foreground absolute left-2 top-1/2 size-4 -translate-y-1/2' />
+          <Search className='text-muted-foreground absolute top-1/2 left-2 size-4 -translate-y-1/2' />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}

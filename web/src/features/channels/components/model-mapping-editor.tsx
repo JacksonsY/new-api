@@ -20,7 +20,6 @@ import { Code, Plus, Table, Trash2 } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { JsonCodeEditor } from '@/components/json-code-editor'
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
 import {
@@ -29,6 +28,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/design-system/tabs'
+import { JsonCodeEditor } from '@/components/json-code-editor'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 type ModelMappingEditorProps = {

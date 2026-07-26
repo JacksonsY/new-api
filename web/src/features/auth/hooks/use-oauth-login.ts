@@ -24,13 +24,13 @@ import { clearAuthentication, isAuthBundle } from '@/lib/api'
 
 import { createOAuthFlow, logout, telegramLogin } from '../api'
 import { OAUTH_REDIRECT_STORAGE_KEY } from '../constants'
+import { sanitizeAuthRedirect } from '../lib/auth-redirect'
 import {
   buildGitHubOAuthUrl,
   buildDiscordOAuthUrl,
   buildOIDCOAuthUrl,
   buildLinuxDOOAuthUrl,
 } from '../lib/oauth'
-import { sanitizeAuthRedirect } from '../lib/auth-redirect'
 import { pickTelegramAuthorization } from '../lib/telegram-login'
 import type { SystemStatus, CustomOAuthProviderInfo } from '../types'
 import { useAuthRedirect } from './use-auth-redirect'

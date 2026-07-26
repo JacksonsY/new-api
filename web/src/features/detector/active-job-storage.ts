@@ -58,7 +58,10 @@ export function loadActiveJob(): ActiveDetectionJob | null {
     const raw = sessionStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
-    if (!isValidJob(parsed) || Date.now() - parsed.started_at > MAX_RESUME_AGE_MS) {
+    if (
+      !isValidJob(parsed) ||
+      Date.now() - parsed.started_at > MAX_RESUME_AGE_MS
+    ) {
       sessionStorage.removeItem(STORAGE_KEY)
       return null
     }

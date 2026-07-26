@@ -24,9 +24,9 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { StaticDataTable } from '@/components/data-table'
-import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
+import { Dialog } from '@/components/dialog'
 import { SectionPageLayout } from '@/components/layout'
 import { LongText } from '@/components/long-text'
 import { StatusBadge, type StatusVariant } from '@/components/status-badge'
@@ -35,10 +35,7 @@ import { TitledCard } from '@/components/ui/titled-card'
 import { formatTimestamp } from '@/lib/format'
 
 import { adminListAgentApplications, adminReviewAgentApplication } from './api'
-import {
-  AGENT_APPLICATION_STATUS,
-  type AgentApplicationRow,
-} from './types'
+import { AGENT_APPLICATION_STATUS, type AgentApplicationRow } from './types'
 
 const QUERY_KEY = 'agent-applications'
 
@@ -200,7 +197,9 @@ export function AdminAgentApplications() {
                 header: t('Status'),
                 cell: (r: AgentApplicationRow) => {
                   const s = applicationStatusBadge(t, r.application.status)
-                  return <StatusBadge variant={s.variant}>{s.label}</StatusBadge>
+                  return (
+                    <StatusBadge variant={s.variant}>{s.label}</StatusBadge>
+                  )
                 },
               },
               {

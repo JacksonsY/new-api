@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/design-system/button'
-import { Dialog } from '@/components/dialog'
 import { Input } from '@/components/design-system/input'
+import { Dialog } from '@/components/dialog'
 import { Label } from '@/components/ui/label'
 
 import { updateSubAccount } from './api'
@@ -18,7 +18,9 @@ import {
 } from './types'
 
 function limitFromUsd(usd: number): LimitInput {
-  return usd < 0 ? { unlimited: true, value: 0 } : { unlimited: false, value: usd }
+  return usd < 0
+    ? { unlimited: true, value: 0 }
+    : { unlimited: false, value: usd }
 }
 
 export function EditSubAccountDialog({
@@ -50,7 +52,11 @@ export function EditSubAccountDialog({
       setDisplayName(target.username)
       setNote(target.note)
       setNewPassword('')
-      setPreset(target.role_preset === ROLE_PRESET_ADMIN ? ROLE_PRESET_ADMIN : ROLE_PRESET_USER)
+      setPreset(
+        target.role_preset === ROLE_PRESET_ADMIN
+          ? ROLE_PRESET_ADMIN
+          : ROLE_PRESET_USER
+      )
       setPermissions({ ...target.permissions })
       setTotal(limitFromUsd(target.total_limit_usd))
       setMonth(limitFromUsd(target.month_limit_usd))
@@ -107,7 +113,10 @@ export function EditSubAccountDialog({
       <div className='space-y-4 py-1'>
         <div className='flex items-center gap-3'>
           <Label className='w-24 shrink-0'>{t('Username')}</Label>
-          <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+          <Input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+          />
         </div>
         <div className='flex items-center gap-3'>
           <Label className='w-24 shrink-0'>{t('Note')}</Label>

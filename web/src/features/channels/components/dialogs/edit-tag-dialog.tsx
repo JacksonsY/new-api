@@ -24,7 +24,6 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
-import { JsonCodeEditor } from '@/components/json-code-editor'
 import {
   Select,
   SelectContent,
@@ -35,6 +34,7 @@ import {
 } from '@/components/design-system/select'
 import { Dialog } from '@/components/dialog'
 import { GroupBadge } from '@/components/group-badge'
+import { JsonCodeEditor } from '@/components/json-code-editor'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'

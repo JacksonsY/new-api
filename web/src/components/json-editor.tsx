@@ -20,9 +20,9 @@ import { Code, Table, Plus, Trash2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { JsonCodeEditor } from '@/components/json-code-editor'
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
+import { JsonCodeEditor } from '@/components/json-code-editor'
 
 type JsonEditorProps = {
   value: string

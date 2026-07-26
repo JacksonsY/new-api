@@ -35,7 +35,6 @@ import { toast } from 'sonner'
 
 import { CopyButton } from '@/components/copy-button'
 import { StaticDataTable } from '@/components/data-table'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,6 +61,7 @@ import {
   TabsTrigger,
 } from '@/components/design-system/tabs'
 import { SectionPageLayout } from '@/components/layout'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'

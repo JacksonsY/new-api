@@ -97,7 +97,6 @@ export function SupplierEarnings() {
               供应商可自行核账,不再只能相信平台报的汇总数。 */}
           <DailyEarningsCard />
 
-
           <Card data-card-hover='false'>
             <CardHeader>
               <CardTitle className='text-base'>
@@ -131,7 +130,8 @@ export function SupplierEarnings() {
                       {
                         id: 'type',
                         header: t('Type'),
-                        cell: (l: SupplierLedger) => t(ledgerTypeLabelKey(l.type)),
+                        cell: (l: SupplierLedger) =>
+                          t(ledgerTypeLabelKey(l.type)),
                       },
                       {
                         id: 'amount',

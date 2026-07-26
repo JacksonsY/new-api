@@ -21,23 +21,29 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Button } from '@/components/design-system/button'
 import { Combobox } from '@/components/design-system/combobox'
 import type { ComboboxInputOption } from '@/components/design-system/combobox-input'
-import { Button } from '@/components/design-system/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/design-system/tabs'
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/design-system/tabs'
 import { Dialog } from '@/components/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toIntlLocale } from '@/i18n/languages'
-import {
-  formatTimestampRelative,
-  formatTimestampToDate,
-} from '@/lib/format'
+import { formatTimestampRelative, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { getChannelLatestDetection, getDetectionRecords, verifyChannel } from './api'
+import {
+  getChannelLatestDetection,
+  getDetectionRecords,
+  verifyChannel,
+} from './api'
 import { DetectorReportCard, VerdictBadge } from './detector-report'
-import { useDetectionPoll } from './use-detection-poll'
 import type { DetectionRecord, DetectionReport } from './types'
+import { useDetectionPoll } from './use-detection-poll'
 import { verdictToneClass } from './verdict'
 
 // 管理员渠道验真弹窗：可选模型发起检测（检测/历史双 Tab），历史来自服务端记录。
@@ -323,79 +329,83 @@ function ChannelDetectionHistory({
 
   return (
     <>
-    <ul className='divide-border/60 max-h-[420px] divide-y overflow-y-auto'>
-      {records.map((rec) => {
-        const expanded = expandedId === rec.id
-        const model = rec.report?.target_model || rec.model
-        return (
-          <li key={rec.id} className='overflow-hidden'>
-            <button
-              type='button'
-              onClick={() => setExpandedId(expanded ? null : rec.id)}
-              aria-expanded={expanded}
-              className='hover:bg-muted/40 flex w-full items-center gap-3 px-1 py-3 text-left transition-colors'
-            >
-              <ChevronDown
-                className={cn(
-                  'text-muted-foreground size-4 shrink-0 transition-transform',
-                  expanded && 'rotate-180'
-                )}
-              />
-              <span
-                className={cn(
-                  'w-9 shrink-0 text-lg font-semibold tabular-nums',
-                  verdictToneClass(rec.verdict)
-                )}
+      <ul className='divide-border/60 max-h-[420px] divide-y overflow-y-auto'>
+        {records.map((rec) => {
+          const expanded = expandedId === rec.id
+          const model = rec.report?.target_model || rec.model
+          return (
+            <li key={rec.id} className='overflow-hidden'>
+              <button
+                type='button'
+                onClick={() => setExpandedId(expanded ? null : rec.id)}
+                aria-expanded={expanded}
+                className='hover:bg-muted/40 flex w-full items-center gap-3 px-1 py-3 text-left transition-colors'
               >
-                {Math.round(rec.score)}
-              </span>
-              <span className='min-w-0 flex-1'>
-                <span className='flex flex-wrap items-center gap-x-2 gap-y-1'>
-                  <span className='truncate text-sm font-medium'>{model}</span>
-                  <VerdictBadge verdict={rec.verdict} />
-                  {rec.critical_count > 0 && (
-                    <span className='text-destructive text-xs font-medium'>
-                      {rec.critical_count} {t('Critical Issue')}
-                    </span>
+                <ChevronDown
+                  className={cn(
+                    'text-muted-foreground size-4 shrink-0 transition-transform',
+                    expanded && 'rotate-180'
                   )}
+                />
+                <span
+                  className={cn(
+                    'w-9 shrink-0 text-lg font-semibold tabular-nums',
+                    verdictToneClass(rec.verdict)
+                  )}
+                >
+                  {Math.round(rec.score)}
                 </span>
-                <span className='text-muted-foreground mt-0.5 block truncate text-xs'>
-                  {rec.protocol} · {rec.source} ·{' '}
-                  <span title={formatTimestampToDate(rec.created_at, 'seconds')}>
-                    {formatTimestampRelative(
-                      rec.created_at,
-                      'seconds',
-                      toIntlLocale(i18n.language)
+                <span className='min-w-0 flex-1'>
+                  <span className='flex flex-wrap items-center gap-x-2 gap-y-1'>
+                    <span className='truncate text-sm font-medium'>
+                      {model}
+                    </span>
+                    <VerdictBadge verdict={rec.verdict} />
+                    {rec.critical_count > 0 && (
+                      <span className='text-destructive text-xs font-medium'>
+                        {rec.critical_count} {t('Critical Issue')}
+                      </span>
                     )}
                   </span>
+                  <span className='text-muted-foreground mt-0.5 block truncate text-xs'>
+                    {rec.protocol} · {rec.source} ·{' '}
+                    <span
+                      title={formatTimestampToDate(rec.created_at, 'seconds')}
+                    >
+                      {formatTimestampRelative(
+                        rec.created_at,
+                        'seconds',
+                        toIntlLocale(i18n.language)
+                      )}
+                    </span>
+                  </span>
                 </span>
-              </span>
-            </button>
-            {expanded && rec.report && (
-              <div className='px-1 pb-4'>
-                <DetectorReportCard report={rec.report} />
-              </div>
+              </button>
+              {expanded && rec.report && (
+                <div className='px-1 pb-4'>
+                  <DetectorReportCard report={rec.report} />
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      {hasMore && (
+        <div className='pt-3 text-center'>
+          <Button
+            variant='outline'
+            size='sm'
+            disabled={loading}
+            onClick={() => load(nextPage)}
+          >
+            {loading ? (
+              <Loader2 className='size-4 animate-spin' />
+            ) : (
+              t('Load more')
             )}
-          </li>
-        )
-      })}
-    </ul>
-    {hasMore && (
-      <div className='pt-3 text-center'>
-        <Button
-          variant='outline'
-          size='sm'
-          disabled={loading}
-          onClick={() => load(nextPage)}
-        >
-          {loading ? (
-            <Loader2 className='size-4 animate-spin' />
-          ) : (
-            t('Load more')
-          )}
-        </Button>
-      </div>
-    )}
+          </Button>
+        </div>
+      )}
     </>
   )
 }

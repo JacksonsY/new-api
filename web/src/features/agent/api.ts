@@ -253,6 +253,9 @@ export async function adminReviewAgentApplication(params: {
   usage_profit_rate?: number
   reason?: string
 }): Promise<ApiEnvelope<null>> {
-  const res = await api.post('/api/user/agent/admin/applications/review', params)
+  const res = await api.post(
+    '/api/user/agent/admin/applications/review',
+    params
+  )
   return res.data
 }

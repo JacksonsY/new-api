@@ -41,9 +41,7 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
   const { t } = useTranslation()
   const showFirstToken = props.isStream
   const hasFrt = props.frtMs != null && props.frtMs > 0
-  const firstTokenLabel = hasFrt
-    ? formatUseTime(props.frtMs! / 1000)
-    : t('N/A')
+  const firstTokenLabel = hasFrt ? formatUseTime(props.frtMs! / 1000) : t('N/A')
   const totalTimeLabel = formatUseTime(props.useTimeSec)
 
   return (
@@ -98,9 +96,7 @@ interface StreamTpsCellProps {
 export function StreamTpsCell(props: StreamTpsCellProps) {
   const { t } = useTranslation()
   const showStreamError =
-    props.isStream &&
-    props.streamStatus &&
-    props.streamStatus.status !== 'ok'
+    props.isStream && props.streamStatus && props.streamStatus.status !== 'ok'
   const tpsLabel =
     props.tokensPerSecond != null
       ? `${Math.round(props.tokensPerSecond)} t/s`

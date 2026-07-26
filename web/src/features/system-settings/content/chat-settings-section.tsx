@@ -22,13 +22,13 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
-import { JsonCodeEditor } from '@/components/json-code-editor'
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from '@/components/design-system/tabs'
+import { JsonCodeEditor } from '@/components/json-code-editor'
 import {
   Form,
   FormControl,

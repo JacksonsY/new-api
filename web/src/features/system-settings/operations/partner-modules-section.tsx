@@ -73,9 +73,7 @@ type RawPartnerModulesSettings = {
 }
 
 // 原始 option(0-1 费率)→ 表单展示(百分比)。
-function toDisplay(
-  raw: RawPartnerModulesSettings
-): PartnerModulesFormValues {
+function toDisplay(raw: RawPartnerModulesSettings): PartnerModulesFormValues {
   return {
     AgentEnabled: raw.AgentEnabled,
     SupplierEnabled: raw.SupplierEnabled,
@@ -276,9 +274,7 @@ export function PartnerModulesSection({
                 <FormControl>
                   <Input inputMode='numeric' {...field} />
                 </FormControl>
-                <FormDescription>
-                  {t('0 means unlimited.')}
-                </FormDescription>
+                <FormDescription>{t('0 means unlimited.')}</FormDescription>
                 <FormMessage />
               </FormItem>
             )}

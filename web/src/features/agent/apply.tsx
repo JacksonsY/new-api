@@ -107,9 +107,12 @@ export function AgentApply() {
                 <Alert variant='destructive'>
                   <TriangleAlert className='size-4' />
                   <AlertDescription>
-                    {t('Your application was rejected: {{reason}}. You can revise and resubmit.', {
-                      reason: app?.reason || '-',
-                    })}
+                    {t(
+                      'Your application was rejected: {{reason}}. You can revise and resubmit.',
+                      {
+                        reason: app?.reason || '-',
+                      }
+                    )}
                   </AlertDescription>
                 </Alert>
               )}
@@ -130,7 +133,9 @@ export function AgentApply() {
                       value={contact}
                       maxLength={191}
                       onChange={(e) => setContact(e.target.value)}
-                      placeholder={t('Telegram / WeChat / Email for review contact')}
+                      placeholder={t(
+                        'Telegram / WeChat / Email for review contact'
+                      )}
                     />
                   </div>
                   <div className='space-y-2'>

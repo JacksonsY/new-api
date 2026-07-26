@@ -187,7 +187,9 @@ function IssueList({ issues }: { issues: unknown[] }) {
           </StatusBadge>
           <span className='text-muted-foreground break-words'>
             {issue.message ?? issue.code ?? ''}
-            {count > 1 && <span className='text-muted-foreground/70'> ×{count}</span>}
+            {count > 1 && (
+              <span className='text-muted-foreground/70'> ×{count}</span>
+            )}
           </span>
         </li>
       ))}
@@ -282,7 +284,9 @@ function SimpleEvidence({ item }: { item: DetectorResultItem }) {
   if (item.status === 'skip') {
     const reason = typeof details?.reason === 'string' ? details.reason : null
     return reason ? (
-      <p className='text-muted-foreground mt-0.5 text-xs break-words'>{reason}</p>
+      <p className='text-muted-foreground mt-0.5 text-xs break-words'>
+        {reason}
+      </p>
     ) : null
   }
   return null
@@ -374,8 +378,12 @@ function SegmentedControl<T extends string>({
 
 type ResultFilter = 'all' | 'failed' | 'passed' | 'skipped'
 
-function matchesFilter(item: DetectorResultItem, filter: ResultFilter): boolean {
-  if (filter === 'failed') return item.status === 'fail' || item.status === 'error'
+function matchesFilter(
+  item: DetectorResultItem,
+  filter: ResultFilter
+): boolean {
+  if (filter === 'failed')
+    return item.status === 'fail' || item.status === 'error'
   if (filter === 'passed') return item.status === 'pass'
   if (filter === 'skipped') return item.status === 'skip'
   return true
@@ -407,7 +415,9 @@ export function DetectorReportCard({ report }: { report: DetectionReport }) {
   // Surface the most actionable detectors first (critical failures → … → skips);
   // with full-mode runs now returning 30+ detectors, definition order buries the
   // failures a user most wants to see.
-  const sortedResults = [...results].sort((a, b) => resultRank(a) - resultRank(b))
+  const sortedResults = [...results].sort(
+    (a, b) => resultRank(a) - resultRank(b)
+  )
   const passCount = results.filter((r) => r.status === 'pass').length
   const failCount = results.filter(
     (r) => r.status === 'fail' || r.status === 'error'
@@ -456,7 +466,9 @@ export function DetectorReportCard({ report }: { report: DetectionReport }) {
             {report.backend_origin && (
               <StatusBadge
                 variant={
-                  report.backend_origin.includes('疑似') ? 'destructive' : 'info'
+                  report.backend_origin.includes('疑似')
+                    ? 'destructive'
+                    : 'info'
                 }
               >
                 {report.backend_origin}

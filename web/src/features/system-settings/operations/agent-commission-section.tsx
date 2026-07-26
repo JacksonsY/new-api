@@ -97,7 +97,9 @@ export function AgentCommissionSection({
     const minDollars = Number(data.AgentWithdrawMinQuota) || 0
     // 全量写回:换算后逐项存原始 option 值(与原弹窗一致的口径),显式 Save 触发。
     const raw: RawAgentSettings = {
-      AgentCommissionMatureMinutes: nonNegInt(data.AgentCommissionMatureMinutes),
+      AgentCommissionMatureMinutes: nonNegInt(
+        data.AgentCommissionMatureMinutes
+      ),
       AgentInviteeMinAgeDays: nonNegInt(data.AgentInviteeMinAgeDays),
       AgentWithdrawMinQuota: String(
         Math.round(parseQuotaFromDollars(Math.max(0, minDollars)))
@@ -123,7 +125,9 @@ export function AgentCommissionSection({
             name='AgentCommissionMatureMinutes'
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('Commission maturation window (minutes)')}</FormLabel>
+                <FormLabel>
+                  {t('Commission maturation window (minutes)')}
+                </FormLabel>
                 <FormControl>
                   <Input inputMode='numeric' {...field} />
                 </FormControl>

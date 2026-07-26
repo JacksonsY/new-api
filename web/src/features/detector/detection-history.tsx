@@ -22,17 +22,11 @@ import { useTranslation } from 'react-i18next'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { toIntlLocale } from '@/i18n/languages'
-import {
-  formatTimestampRelative,
-  formatTimestampToDate,
-} from '@/lib/format'
+import { formatTimestampRelative, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { DetectorReportCard, VerdictBadge } from './detector-report'
-import type {
-  DetectionHistoryEntry,
-  DetectionHistoryRequest,
-} from './types'
+import type { DetectionHistoryEntry, DetectionHistoryRequest } from './types'
 import { verdictToneClass } from './verdict'
 
 // HistoryRow is one collapsed detection: a scannable summary (score, model,

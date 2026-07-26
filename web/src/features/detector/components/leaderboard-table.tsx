@@ -33,8 +33,8 @@ export function LeaderboardTable() {
   const { t } = useTranslation()
   const columns = useLeaderboardColumns()
 
-  const { pagination, onPaginationChange, ensurePageInRange } = useTableUrlState(
-    {
+  const { pagination, onPaginationChange, ensurePageInRange } =
+    useTableUrlState({
       search: route.useSearch(),
       navigate: route.useNavigate(),
       pagination: {
@@ -43,8 +43,7 @@ export function LeaderboardTable() {
         pageSizeStorageKey: 'detector-leaderboard:page-size:v1',
       },
       globalFilter: { enabled: false },
-    }
-  )
+    })
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [

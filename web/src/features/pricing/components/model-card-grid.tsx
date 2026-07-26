@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/design-system/button'
+
 import {
   DEFAULT_PRICING_CARD_PAGE_SIZE,
   DEFAULT_TOKEN_UNIT,
@@ -75,9 +76,7 @@ export function ModelCardGrid(props: ModelCardGridProps) {
             selectedGroup={props.selectedGroup}
             onClick={() => props.onModelClick(model.model_name || '')}
             onTry={
-              onTryModel
-                ? () => onTryModel(model.model_name || '')
-                : undefined
+              onTryModel ? () => onTryModel(model.model_name || '') : undefined
             }
           />
         ))}

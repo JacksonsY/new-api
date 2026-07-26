@@ -39,10 +39,16 @@ export type SupplierReviewAction = {
 
 const SUPPLIER_STATUS_BADGE: Record<
   number,
-  { variant: 'success' | 'destructive' | 'warning' | 'neutral'; labelKey: string }
+  {
+    variant: 'success' | 'destructive' | 'warning' | 'neutral'
+    labelKey: string
+  }
 > = {
   [SUPPLIER_STATUS.APPROVED]: { variant: 'success', labelKey: 'Approved' },
-  [SUPPLIER_STATUS.SUSPENDED]: { variant: 'destructive', labelKey: 'Suspended' },
+  [SUPPLIER_STATUS.SUSPENDED]: {
+    variant: 'destructive',
+    labelKey: 'Suspended',
+  },
   [SUPPLIER_STATUS.PENDING]: { variant: 'warning', labelKey: 'Pending' },
 }
 
@@ -88,7 +94,9 @@ export function useAdminSuppliersColumns(
         }
         return (
           <BadgeCell>
-            <StatusBadge variant={badge.variant}>{t(badge.labelKey)}</StatusBadge>
+            <StatusBadge variant={badge.variant}>
+              {t(badge.labelKey)}
+            </StatusBadge>
           </BadgeCell>
         )
       },

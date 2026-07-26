@@ -251,9 +251,13 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
                 <div className='space-y-1'>
                   <div className='flex flex-wrap items-center gap-2'>
                     <p className='font-medium'>{t('Passkey Authentication')}</p>
-                    <StatusBadge variant={enabled ? 'success' : 'neutral'}>{enabled ? t('Enabled') : t('Disabled')}</StatusBadge>
+                    <StatusBadge variant={enabled ? 'success' : 'neutral'}>
+                      {enabled ? t('Enabled') : t('Disabled')}
+                    </StatusBadge>
                     {backupStatus && (
-                      <StatusBadge variant={backupStatus.variant}>{backupStatus.label}</StatusBadge>
+                      <StatusBadge variant={backupStatus.variant}>
+                        {backupStatus.label}
+                      </StatusBadge>
                     )}
                   </div>
                   <p className='text-muted-foreground text-sm'>

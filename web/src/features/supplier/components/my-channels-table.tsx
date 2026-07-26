@@ -43,8 +43,8 @@ export function MyChannelsTable() {
 
   const columns = useMyChannelsColumns(setEditTarget)
 
-  const { pagination, onPaginationChange, ensurePageInRange } = useTableUrlState(
-    {
+  const { pagination, onPaginationChange, ensurePageInRange } =
+    useTableUrlState({
       search: route.useSearch(),
       navigate: route.useNavigate(),
       pagination: {
@@ -53,8 +53,7 @@ export function MyChannelsTable() {
         pageSizeStorageKey: 'supplier-my-channels:page-size:v1',
       },
       globalFilter: { enabled: false },
-    }
-  )
+    })
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [

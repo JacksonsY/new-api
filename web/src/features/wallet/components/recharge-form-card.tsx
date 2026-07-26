@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/tooltip'
 import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   formatCurrency,
@@ -49,8 +50,6 @@ import type {
   CreemProduct,
   WaffoPayMethod,
 } from '../types'
-import { useAuthStore } from '@/stores/auth-store'
-
 import { AutoGroupTiersCard } from './auto-group-tiers-card'
 import { CreemProductsSection } from './creem-products-section'
 

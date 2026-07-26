@@ -40,9 +40,6 @@ import { useTranslation } from 'react-i18next'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/design-system/button'
-import { VerdictBadge } from '@/features/detector/detector-report'
-import type { DetectorVerdict } from '@/features/detector/types'
-import { ChannelVerifyDialog } from '@/features/detector/verify-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,6 +53,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { VerdictBadge } from '@/features/detector/detector-report'
+import type { DetectorVerdict } from '@/features/detector/types'
+import { ChannelVerifyDialog } from '@/features/detector/verify-dialog'
 import {
   ADMIN_PERMISSION_ACTIONS,
   ADMIN_PERMISSION_RESOURCES,

@@ -105,7 +105,10 @@ export function useDetectionPoll() {
           // a longer backoff before surfacing an error, so a single 429 doesn't
           // abort an in-flight detection.
           consecutiveErrors += 1
-          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS || polls >= MAX_POLLS) {
+          if (
+            consecutiveErrors >= MAX_CONSECUTIVE_ERRORS ||
+            polls >= MAX_POLLS
+          ) {
             setPhase('error')
             setError('Detection failed')
             activeRef.current = false

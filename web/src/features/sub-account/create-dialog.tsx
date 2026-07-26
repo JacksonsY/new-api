@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/design-system/button'
-import { Dialog } from '@/components/dialog'
 import { Input } from '@/components/design-system/input'
+import { Dialog } from '@/components/dialog'
 import { Label } from '@/components/ui/label'
 
 import { createSubAccounts } from './api'
@@ -40,9 +40,8 @@ export function CreateSubAccountDialog({
   const [count, setCount] = useState(1)
   const [note, setNote] = useState('')
   const [preset, setPreset] = useState(ROLE_PRESET_USER)
-  const [permissions, setPermissions] = useState<Record<string, boolean>>(
-    defaultPerms()
-  )
+  const [permissions, setPermissions] =
+    useState<Record<string, boolean>>(defaultPerms())
   const [total, setTotal] = useState<LimitInput>(unlimited())
   const [month, setMonth] = useState<LimitInput>(unlimited())
   const [day, setDay] = useState<LimitInput>(unlimited())
@@ -142,7 +141,9 @@ export function CreateSubAccountDialog({
               max={100}
               value={count}
               onChange={(e) =>
-                setCount(Math.min(100, Math.max(1, Number(e.target.value) || 1)))
+                setCount(
+                  Math.min(100, Math.max(1, Number(e.target.value) || 1))
+                )
               }
               className='w-20 text-center'
             />
@@ -160,9 +161,7 @@ export function CreateSubAccountDialog({
           preset={preset}
           onPresetChange={setPreset}
           permissions={permissions}
-          onToggle={(k, on) =>
-            setPermissions((p) => ({ ...p, [k]: on }))
-          }
+          onToggle={(k, on) => setPermissions((p) => ({ ...p, [k]: on }))}
           canGrantAdmin={canGrantAdmin}
         />
 

@@ -49,7 +49,6 @@ function formatCompactThroughput(tps: number): string {
   return `${formatCompactNumber(tps)}t`
 }
 
-
 /** 定价表「可用率」列的段条数；与后端汇总带回的逐桶成功率个数一致(24 桶≈一天)。 */
 const AVAILABILITY_BAR_COUNT = 24
 

@@ -23,9 +23,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/design-system/button'
-import { SectionPageLayout } from '@/components/layout'
-import { Card, CardContent } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -34,11 +31,18 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/design-system/table'
+import { SectionPageLayout } from '@/components/layout'
+import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { formatTimestamp } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { getSupplierProfile, listSupplierApplications, supplierApply } from './api'
+import {
+  getSupplierProfile,
+  listSupplierApplications,
+  supplierApply,
+} from './api'
 import { ChannelAuditBadge } from './channel-audit-badge'
 import { ChannelOfferFields } from './components/channel-offer-fields'
 import { MerchantProfileFields } from './components/merchant-profile-fields'
@@ -61,7 +65,8 @@ export function SupplierApply() {
   const [profile, setProfile] = useState<SupplierProfileForm>(
     EMPTY_SUPPLIER_PROFILE
   )
-  const [channel, setChannel] = useState<SupplierChannelForm>(EMPTY_CHANNEL_FORM)
+  const [channel, setChannel] =
+    useState<SupplierChannelForm>(EMPTY_CHANNEL_FORM)
 
   // 管理员及以上不能作为供应商（裁判/运动员），与后端 EnsureSupplierApplied 一致。
   const user = useAuthStore((s) => s.auth.user)
@@ -164,7 +169,9 @@ export function SupplierApply() {
       <StateCard
         icon={<ShieldX className='text-destructive size-8' />}
         title={t('Your supplier access is suspended')}
-        description={t('Please contact the administrator for more information.')}
+        description={t(
+          'Please contact the administrator for more information.'
+        )}
       />
     )
   } else {
@@ -304,7 +311,9 @@ function RecordsCard({
     <Card data-card-hover='false'>
       <CardContent className='space-y-3 p-6'>
         <div className='space-y-0.5'>
-          <h2 className='text-base font-semibold'>{t('Application records')}</h2>
+          <h2 className='text-base font-semibold'>
+            {t('Application records')}
+          </h2>
           <p className='text-muted-foreground text-sm leading-relaxed'>
             {t('Your most recent channel onboarding requests.')}
           </p>

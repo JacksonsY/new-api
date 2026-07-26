@@ -90,12 +90,18 @@ export function TwoFACard({ loading: pageLoading }: TwoFACardProps) {
                   <div className='flex items-center gap-2'>
                     <p className='font-medium'>{t('Two-Step Verification')}</p>
                     {status.enabled ? (
-                      <StatusBadge variant='success'>{t('Enabled')}</StatusBadge>
+                      <StatusBadge variant='success'>
+                        {t('Enabled')}
+                      </StatusBadge>
                     ) : (
-                      <StatusBadge variant='neutral'>{t('Disabled')}</StatusBadge>
+                      <StatusBadge variant='neutral'>
+                        {t('Disabled')}
+                      </StatusBadge>
                     )}
                     {status.locked && (
-                      <StatusBadge variant='destructive'>{t('Locked')}</StatusBadge>
+                      <StatusBadge variant='destructive'>
+                        {t('Locked')}
+                      </StatusBadge>
                     )}
                   </div>
                   <p className='text-muted-foreground text-sm'>

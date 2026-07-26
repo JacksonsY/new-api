@@ -228,12 +228,12 @@ export function GlobalSettingsCard({ defaultValues }: GlobalSettingsCardProps) {
                     heightClassName='h-32 min-h-32 max-h-32'
                   />
                 </FormControl>
-                  <FormDescription>
-                    {t(
-                      'Models listed here will not automatically append or remove -thinking / -nothinking suffixes.'
-                    )}
-                  </FormDescription>
-                  <FormMessage />
+                <FormDescription>
+                  {t(
+                    'Models listed here will not automatically append or remove -thinking / -nothinking suffixes.'
+                  )}
+                </FormDescription>
+                <FormMessage />
               </FormItem>
             )}
           />
@@ -300,10 +300,10 @@ export function GlobalSettingsCard({ defaultValues }: GlobalSettingsCardProps) {
                           { shouldDirty: true }
                         )
                       }
-                      >
-                        {t('Fill example (all channels)')}
-                      </Button>
-                    </div>
+                    >
+                      {t('Fill example (all channels)')}
+                    </Button>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}

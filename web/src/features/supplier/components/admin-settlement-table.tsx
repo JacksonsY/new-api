@@ -23,7 +23,11 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { DataTablePage, StaticDataTable, useDataTable } from '@/components/data-table'
+import {
+  DataTablePage,
+  StaticDataTable,
+  useDataTable,
+} from '@/components/data-table'
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
 import { Dialog } from '@/components/dialog'
@@ -47,7 +51,11 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
-import { formatQuota, formatTimestamp, parseQuotaFromDollars } from '@/lib/format'
+import {
+  formatQuota,
+  formatTimestamp,
+  parseQuotaFromDollars,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import {
@@ -89,8 +97,8 @@ export function AdminSettlementTable() {
     onViewLedger: setLedgerUser,
   })
 
-  const { pagination, onPaginationChange, ensurePageInRange } = useTableUrlState(
-    {
+  const { pagination, onPaginationChange, ensurePageInRange } =
+    useTableUrlState({
       search: route.useSearch(),
       navigate: route.useNavigate(),
       pagination: {
@@ -99,8 +107,7 @@ export function AdminSettlementTable() {
         pageSizeStorageKey: 'supplier-settlement:page-size:v1',
       },
       globalFilter: { enabled: false },
-    }
-  )
+    })
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
@@ -272,14 +279,18 @@ function PayoutDialog({
               {t('Transfer to')}
             </div>
             <div className='flex justify-between gap-3'>
-              <span className='text-muted-foreground'>{t('Payout Method')}</span>
+              <span className='text-muted-foreground'>
+                {t('Payout Method')}
+              </span>
               <span className='font-medium'>
                 {t(payoutMethodLabelKey(target.user.supplier_payout_method))}
               </span>
             </div>
             <div className='flex justify-between gap-3'>
-              <span className='text-muted-foreground'>{t('Payout Account')}</span>
-              <span className='font-medium break-all text-right'>
+              <span className='text-muted-foreground'>
+                {t('Payout Account')}
+              </span>
+              <span className='text-right font-medium break-all'>
                 {target.user.supplier_payout_account}
               </span>
             </div>
@@ -287,14 +298,14 @@ function PayoutDialog({
               <span className='text-muted-foreground'>
                 {t('Account Holder Name')}
               </span>
-              <span className='font-medium break-all text-right'>
+              <span className='text-right font-medium break-all'>
                 {target.user.supplier_payout_name || '-'}
               </span>
             </div>
             {target.user.supplier_contact && (
               <div className='flex justify-between gap-3'>
                 <span className='text-muted-foreground'>{t('Contact')}</span>
-                <span className='font-medium break-all text-right'>
+                <span className='text-right font-medium break-all'>
                   {target.user.supplier_contact}
                 </span>
               </div>

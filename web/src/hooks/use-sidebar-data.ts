@@ -75,7 +75,6 @@ export function useSidebarData(): SidebarData {
   const agentEnabled = status?.agent_enabled !== false
   const supplierEnabled = status?.supplier_enabled !== false
 
-
   return {
     navGroups: [
       {

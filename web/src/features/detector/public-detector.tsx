@@ -282,7 +282,10 @@ export function PublicDetector() {
     form.setValue('model', req.model)
     form.setValue('mode', req.mode)
     form.setValue('include_long_context', req.include_long_context)
-    form.setValue('include_long_context_extreme', req.include_long_context_extreme)
+    form.setValue(
+      'include_long_context_extreme',
+      req.include_long_context_extreme
+    )
     // API Key 从不落盘，重测须重新输入。
     form.setValue('api_key', '')
     formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -327,8 +330,7 @@ export function PublicDetector() {
         // 长上下文档位合法耗时可达十几分钟，放宽轮询上限。
         start(res.data.job_id, {
           longRun:
-            values.include_long_context ||
-            values.include_long_context_extreme,
+            values.include_long_context || values.include_long_context_extreme,
         })
         // 移动端表单较长，提交后把状态面板带进视野（桌面端已可见则无操作）。
         resultsRef.current?.scrollIntoView({
@@ -355,22 +357,30 @@ export function PublicDetector() {
     {
       icon: BadgeCheck,
       title: t('Model identity'),
-      desc: t('Asks who it is and flags non-official backends like AWS or OpenAI.'),
+      desc: t(
+        'Asks who it is and flags non-official backends like AWS or OpenAI.'
+      ),
     },
     {
       icon: Fingerprint,
       title: t('Usage fingerprint'),
-      desc: t('Catches swapped-core relays leaking Anthropic-native usage fields.'),
+      desc: t(
+        'Catches swapped-core relays leaking Anthropic-native usage fields.'
+      ),
     },
     {
       icon: KeyRound,
       title: t('Thinking signature'),
-      desc: t('Verifies the server-signed reasoning signature is present and forwarded.'),
+      desc: t(
+        'Verifies the server-signed reasoning signature is present and forwarded.'
+      ),
     },
     {
       icon: Braces,
       title: t('Protocol compliance'),
-      desc: t('Checks field shapes, IDs, and streaming against the official spec.'),
+      desc: t(
+        'Checks field shapes, IDs, and streaming against the official spec.'
+      ),
     },
     {
       icon: FileText,
@@ -380,7 +390,9 @@ export function PublicDetector() {
     {
       icon: Ruler,
       title: t('Long context'),
-      desc: t('Optionally probes the real context window with needle-in-haystack.'),
+      desc: t(
+        'Optionally probes the real context window with needle-in-haystack.'
+      ),
     },
   ]
 
@@ -429,7 +441,10 @@ export function PublicDetector() {
             className='pf-card pf-static scroll-mt-24 p-5 text-left sm:p-6 lg:self-start'
           >
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+              <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className='space-y-4'
+              >
                 <FormField
                   control={form.control}
                   name='protocol'
@@ -471,7 +486,10 @@ export function PublicDetector() {
                     <FormItem>
                       <FormLabel>{t('Base URL')}</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder='https://api.example.com' />
+                        <Input
+                          {...field}
+                          placeholder='https://api.example.com'
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -525,7 +543,10 @@ export function PublicDetector() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>{t('Mode')}</FormLabel>
-                        <Select value={field.value} onValueChange={field.onChange}>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
                           <FormControl>
                             <SelectTrigger className='w-full'>
                               <SelectValue />
@@ -590,7 +611,9 @@ export function PublicDetector() {
                           />
                         </FormControl>
                         <span className='text-sm'>
-                          {t('Extreme: probe the model’s full context (extra cost)')}
+                          {t(
+                            'Extreme: probe the model’s full context (extra cost)'
+                          )}
                           <span className='text-muted-foreground mt-0.5 block text-xs'>
                             {t(
                               'Probes adaptively up to the model’s advertised limit (~950k on 1M models) to catch "advertised 1M, actually 200k" fraud that the standard tiers miss.'
@@ -684,7 +707,10 @@ export function PublicDetector() {
             {checks.map((c) => {
               const Icon = c.icon
               return (
-                <div key={c.title} className='pf-card flex flex-col gap-2.5 p-5'>
+                <div
+                  key={c.title}
+                  className='pf-card flex flex-col gap-2.5 p-5'
+                >
                   <span
                     className='inline-flex size-10 items-center justify-center rounded-xl'
                     style={{
@@ -692,7 +718,10 @@ export function PublicDetector() {
                       border: '1px solid var(--pf-line-2)',
                     }}
                   >
-                    <Icon className='size-5' style={{ color: 'var(--pf-fire)' }} />
+                    <Icon
+                      className='size-5'
+                      style={{ color: 'var(--pf-fire)' }}
+                    />
                   </span>
                   <h3
                     className='text-base font-bold'
