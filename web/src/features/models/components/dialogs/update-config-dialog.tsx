@@ -25,9 +25,10 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
+import { Dialog } from '@/components/dialog'
+import { JsonCodeEditor } from '@/components/json-code-editor'
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
-import { Dialog } from '@/components/dialog'
 import {
   Collapsible,
   CollapsibleContent,
@@ -41,7 +42,6 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
-import { Textarea } from '@/components/ui/textarea'
 
 import { getDeployment, updateDeployment } from '../../api'
 import { deploymentsQueryKeys } from '../../lib'
@@ -398,10 +398,14 @@ export function UpdateConfigDialog({
                         <FormItem>
                           <FormLabel>{t('Env (JSON object)')}</FormLabel>
                           <FormControl>
-                            <Textarea
-                              className='min-h-40 font-mono text-xs'
+                            <JsonCodeEditor
+                              value={field.value || ''}
+                              onChange={field.onChange}
+                              name={field.name}
+                              onBlur={field.onBlur}
+                              textareaRef={field.ref}
                               placeholder='{"KEY":"VALUE"}'
-                              {...field}
+                              heightClassName='h-40 min-h-40 max-h-40'
                             />
                           </FormControl>
                           <FormMessage />
@@ -415,10 +419,14 @@ export function UpdateConfigDialog({
                         <FormItem>
                           <FormLabel>{t('Secret env (JSON object)')}</FormLabel>
                           <FormControl>
-                            <Textarea
-                              className='min-h-40 font-mono text-xs'
+                            <JsonCodeEditor
+                              value={field.value || ''}
+                              onChange={field.onChange}
+                              name={field.name}
+                              onBlur={field.onBlur}
+                              textareaRef={field.ref}
                               placeholder='{"SECRET":"VALUE"}'
-                              {...field}
+                              heightClassName='h-40 min-h-40 max-h-40'
                             />
                           </FormControl>
                           <FormMessage />

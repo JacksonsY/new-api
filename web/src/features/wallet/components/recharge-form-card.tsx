@@ -165,7 +165,12 @@ export function RechargeFormCard({
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
 
   useEffect(() => {
-    setLocalAmount(topupAmount.toString())
+    // Empty string must survive, otherwise the field can never be cleared.
+    setLocalAmount((previousAmount) =>
+      previousAmount === '' && topupAmount === 0
+        ? previousAmount
+        : topupAmount.toString()
+    )
   }, [topupAmount])
 
   const handleAmountChange = (value: string) => {
@@ -349,7 +354,10 @@ export function RechargeFormCard({
               {hasStandardPaymentMethods || showWaffoMethods ? (
                 <div className='grid grid-cols-2 gap-2 lg:grid-cols-3'>
                   {topupInfo?.pay_methods?.map((method) => {
-                    const methodMin = method.min_topup || 0
+                    const methodMin = Math.max(
+                      method.min_topup || 0,
+                      getMinTopupAmount(topupInfo)
+                    )
                     const belowMin = methodMin > topupAmount
                     return (
                       <PaymentOptionButton

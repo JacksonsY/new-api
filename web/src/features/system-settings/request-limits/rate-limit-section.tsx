@@ -25,6 +25,7 @@ import * as z from 'zod'
 
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
+import { JsonCodeEditor } from '@/components/json-code-editor'
 import {
   Form,
   FormControl,
@@ -35,7 +36,6 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 
 import {
   SettingsForm,
@@ -272,11 +272,16 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                       onChange={field.onChange}
                     />
                   ) : (
-                    <Textarea
-                      rows={8}
+                    <JsonCodeEditor
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
                       placeholder={`{\n  "default": [200, 100],\n  "vip": [0, 1000]\n}`}
-                      className='font-mono text-sm'
-                      {...field}
+                      aria-invalid={Boolean(
+                        form.formState.errors.ModelRequestRateLimitGroup
+                      )}
                     />
                   )}
                 </FormControl>

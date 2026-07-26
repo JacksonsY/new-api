@@ -24,8 +24,8 @@ import { toast } from 'sonner'
 import { StaticDataTable } from '@/components/data-table'
 import { Button } from '@/components/design-system/button'
 import { Input } from '@/components/design-system/input'
+import { JsonCodeEditor } from '@/components/json-code-editor'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Textarea } from '@/components/ui/textarea'
 
 import { useUpdateOption } from '../hooks/use-update-option'
 
@@ -308,12 +308,11 @@ export const ToolPriceSettings = memo(function ToolPriceSettings({
         />
       ) : (
         <div className='space-y-2'>
-          <Textarea
+          <JsonCodeEditor
             value={jsonText}
-            onChange={(e) => handleJsonChange(e.target.value)}
-            className='font-mono text-sm'
-            rows={12}
-            spellCheck={false}
+            onChange={handleJsonChange}
+            heightClassName='h-72 min-h-72 max-h-72'
+            aria-invalid={Boolean(jsonError)}
           />
           {jsonError && <p className='text-destructive text-sm'>{jsonError}</p>}
         </div>
