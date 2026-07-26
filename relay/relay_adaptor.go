@@ -30,6 +30,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/perplexity"
 	"github.com/QuantumNous/new-api/relay/channel/replicate"
 	"github.com/QuantumNous/new-api/relay/channel/siliconflow"
+	"github.com/QuantumNous/new-api/relay/channel/sub2api"
 	"github.com/QuantumNous/new-api/relay/channel/submodel"
 	taskaiai "github.com/QuantumNous/new-api/relay/channel/task/aiai"
 	taskali "github.com/QuantumNous/new-api/relay/channel/task/ali"
@@ -125,6 +126,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &codex.Adaptor{}
 	case constant.APITypeAdvancedCustom:
 		return &advancedcustom.Adaptor{}
+	case constant.APITypeSub2API:
+		return &sub2api.Adaptor{}
 	}
 	return nil
 }

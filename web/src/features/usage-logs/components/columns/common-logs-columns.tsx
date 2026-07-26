@@ -60,6 +60,7 @@ import {
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
+import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
 import { useUsageLogsContext } from '../usage-logs-provider'
@@ -759,34 +760,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
 
         const quota = row.getValue('quota') as number
         const other = parseLogOther(log.other)
-        const isSubscription = other?.billing_source === 'subscription'
-
-        if (isSubscription) {
-          return (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className='text-success cursor-help text-sm font-medium' />
-                  }
-                >
-                  {t('Subscription')}
-                </TooltipTrigger>
-                <TooltipContent>
-                  <span>
-                    {t('Deducted by subscription')}: {formatLogQuota(quota)}
-                  </span>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )
-        }
-
-        return (
-          <span className='text-sm font-medium tabular-nums'>
-            {formatLogQuota(quota)}
-          </span>
-        )
+        return <LogCostDisplay quota={quota} other={other} />
       },
       meta: {
         cardRole: 'badge',

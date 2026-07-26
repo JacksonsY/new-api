@@ -26,10 +26,16 @@ For commercial licensing, please contact support@quantumnous.com
  * of provider logos out of the initial/entry bundle, the resolver lives in a
  * React.lazy chunk (`./lobe-icon-impl`) that loads on first render.
  */
-import { Suspense } from 'react'
+import { Suspense, type ComponentType, type ReactNode } from 'react'
+
+import { IconSub2api } from '@/assets/custom/icon-sub2api'
 
 import { lazyWithRetry } from './lazy-with-retry'
 import { LobeIconFallback } from './lobe-icon-fallback'
+
+const CUSTOM_ICONS: Record<string, ComponentType<{ size?: number }>> = {
+  Sub2API: IconSub2api,
+}
 
 const LobeIconImpl = lazyWithRetry('lobe-icon-impl', () =>
   import('./lobe-icon-impl').then((m) => ({ default: m.LobeIconImpl }))
@@ -49,11 +55,16 @@ const LobeIconImpl = lazyWithRetry('lobe-icon-impl', () =>
 export function getLobeIcon(
   iconName: string | undefined | null,
   size: number = 20
-): React.ReactNode {
+): ReactNode {
   const trimmedName = typeof iconName === 'string' ? iconName.trim() : ''
 
   if (!trimmedName) {
     return <LobeIconFallback size={size} label='?' />
+  }
+
+  const CustomIcon = CUSTOM_ICONS[trimmedName.split('.')[0]]
+  if (CustomIcon) {
+    return <CustomIcon size={size} />
   }
 
   return (
