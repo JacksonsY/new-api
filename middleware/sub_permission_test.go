@@ -14,8 +14,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
 // setupSubPermTestDB 以进程内 SQLite 隔离 model.DB，并关闭 Redis，

@@ -6,7 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,8 +16,6 @@ func resetPricingEndpointTestTables(t *testing.T) {
 	t.Helper()
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	common.MemoryCacheEnabled = true
-	// PR #6177 后 GetPricing 会排除未定价模型；本套测试只验 endpoint 类型推断，用自用模式让
-	// 未定价的测试模型仍以默认档暴露（复刻 PR 前的可见性），避免被断言的模型被剔除。
 	originalSelfUseMode := operation_setting.SelfUseModeEnabled
 	operation_setting.SelfUseModeEnabled = true
 	require.NoError(t, DB.AutoMigrate(&Channel{}, &Ability{}, &Model{}, &Vendor{}))

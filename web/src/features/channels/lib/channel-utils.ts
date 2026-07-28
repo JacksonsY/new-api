@@ -62,7 +62,9 @@ export function getChannelTypeIcon(type: number): string {
     8: 'OpenAI', // Custom
     58: 'NewAPI', // Advanced Custom
     57: 'OpenAI', // Codex
+    59: 'HappyHorse', // AIAI
     60: 'Sub2API', // Sub2API
+    61: 'NewAPI', // New API
     3: 'Azure', // Azure
 
     // Anthropic
@@ -82,7 +84,7 @@ export function getChannelTypeIcon(type: number): string {
     46: 'Baidu', // Baidu V2
     16: 'Zhipu', // Zhipu
     26: 'Zhipu', // Zhipu V4
-    17: 'Bailian', // Ali（阿里百炼，用正牌百炼 logo 而非通义千问）
+    17: 'Qwen', // Ali
     18: 'Spark', // Xunfei
     23: 'Hunyuan', // Tencent
     19: 'Ai360', // 360
@@ -113,7 +115,6 @@ export function getChannelTypeIcon(type: number): string {
     55: 'OpenAI', // Sora
     54: 'Doubao', // DoubaoVideo
     56: 'Replicate', // Replicate
-    59: 'HappyHorse', // AIAI（happyhorse 视频，自定义图标）
 
     // Tools & Platforms
     37: 'Dify', // Dify
@@ -131,6 +132,39 @@ export function getChannelTypeIcon(type: number): string {
   }
 
   return TYPE_TO_ICON[type] || 'OpenAI'
+}
+
+export function channelLiveBalanceUsd(channel: {
+  balance?: number | null
+  used_quota?: number | null
+  balance_snapshot?: number | null
+}): number {
+  const balance = channel.balance || 0
+  const snapshot = channel.balance_snapshot
+  if (snapshot == null) return balance
+  const { config } = getCurrencyDisplay()
+  return balance - ((channel.used_quota || 0) - snapshot) / config.quotaPerUnit
+}
+
+export function estimateChannelDaysRemaining(
+  channel: Parameters<typeof channelLiveBalanceUsd>[0],
+  usage: ChannelRecentUsage | undefined | null
+): number | null {
+  if (!usage || usage.quota <= 0) return null
+  const liveBalance = channelLiveBalanceUsd(channel)
+  if (liveBalance <= 0) return null
+  const { config } = getCurrencyDisplay()
+  const avgDailyUsd =
+    usage.quota / Math.max(usage.active_days, 1) / config.quotaPerUnit
+  return liveBalance / avgDailyUsd
+}
+
+export function getDaysRemainingVariant(
+  days: number
+): 'destructive' | 'warning' | 'neutral' {
+  if (days <= 7) return 'destructive'
+  if (days <= 15) return 'warning'
+  return 'neutral'
 }
 
 // ============================================================================
@@ -363,52 +397,6 @@ export function getBalanceVariant(
     return 'warning'
   }
   return 'success'
-}
-
-// ============================================================================
-// 蓝图A：实时余额与剩余天数估算（对齐后端 balance_snapshot / recent_usage）
-// ============================================================================
-
-/**
- * 实时剩余余额（USD）：落库余额减去"上次余额落库后"的消耗
- * （used_quota - balance_snapshot 的增量）。快照从未打过时退回落库余额。
- */
-export function channelLiveBalanceUsd(channel: {
-  balance?: number | null
-  used_quota?: number | null
-  balance_snapshot?: number | null
-}): number {
-  const balance = channel.balance || 0
-  const snapshot = channel.balance_snapshot
-  if (snapshot == null) return balance
-  const { config } = getCurrencyDisplay()
-  return balance - ((channel.used_quota || 0) - snapshot) / config.quotaPerUnit
-}
-
-/**
- * 按最近活跃日的日均消耗估算实时余额还能撑几天。不可估算时返回 null
- * （无消耗记录 / 余额未设置或已耗尽）。
- */
-export function estimateChannelDaysRemaining(
-  channel: Parameters<typeof channelLiveBalanceUsd>[0],
-  usage: ChannelRecentUsage | undefined | null
-): number | null {
-  if (!usage || usage.quota <= 0) return null
-  const liveBalance = channelLiveBalanceUsd(channel)
-  if (liveBalance <= 0) return null
-  const { config } = getCurrencyDisplay()
-  const avgDailyUsd =
-    usage.quota / Math.max(usage.active_days, 1) / config.quotaPerUnit
-  return liveBalance / avgDailyUsd
-}
-
-/** 剩余天数染色：≤7 危险、≤15 警告，其余中性。阈值只管列表展示，与告警阈值独立。 */
-export function getDaysRemainingVariant(
-  days: number
-): 'destructive' | 'warning' | 'neutral' {
-  if (days <= 7) return 'destructive'
-  if (days <= 15) return 'warning'
-  return 'neutral'
 }
 
 // ============================================================================

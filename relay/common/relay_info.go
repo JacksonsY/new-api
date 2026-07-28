@@ -10,11 +10,13 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/model_setting"
-	"github.com/QuantumNous/new-api/types"
+	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -28,22 +30,15 @@ type ThinkingContentInfo struct {
 }
 
 const (
-	LastMessageTypeNone     = "none"
-	LastMessageTypeText     = "text"
-	LastMessageTypeTools    = "tools"
-	LastMessageTypeThinking = "thinking"
+	LastMessageTypeNone     = convmeta.LastMessageTypeNone
+	LastMessageTypeText     = convmeta.LastMessageTypeText
+	LastMessageTypeTools    = convmeta.LastMessageTypeTools
+	LastMessageTypeThinking = convmeta.LastMessageTypeThinking
 )
 
-type ClaudeConvertInfo struct {
-	LastMessagesType string
-	Index            int
-	Usage            *dto.Usage
-	FinishReason     string
-	Done             bool
-
-	ToolCallBaseIndex      int
-	ToolCallMaxIndexOffset int
-}
+// ClaudeConvertInfo now lives with the converters (convmeta); the alias keeps
+// host code and adaptors compiling unchanged.
+type ClaudeConvertInfo = convmeta.ClaudeConvertInfo
 
 type RerankerInfo struct {
 	Documents       []any
@@ -90,7 +85,7 @@ type RelayInfo struct {
 	TokenKey          string
 	TokenGroup        string
 	UserId            int
-	ParentId          int // >>> jzlh-sub >0=子号,计费付款人=主号钱包;结算/退款/分润读此快照
+	ParentId          int
 	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
 	UserGroup         string // 用户所在分组
 	TokenUnlimited    bool
@@ -162,7 +157,7 @@ type RelayInfo struct {
 	// *bytes.Reader/Buffer/strings.Reader). 0 means "let net/http decide".
 	UpstreamRequestBodySize int64
 
-	PriceData types.PriceData
+	PriceData hosttypes.PriceData
 
 	// QuotaClamp is set (non-nil) when a quota conversion saturated at the
 	// int32 bound (or NaN fallback) while computing this request's charge.
@@ -185,11 +180,12 @@ type RelayInfo struct {
 
 	StreamStatus *StreamStatus
 
-	// TrafficUsage 是本次请求最终计费口径的 usage 快照,由结算入口
-	// (service.PostTextConsumeQuota)统一写入,渠道健康监控读取。
-	// 不能复用 ClaudeConvertInfo.Usage:那是 Claude 协议转换的中间态,
-	// 只在 Claude 格式入口初始化,其余格式经 nil 嵌入指针访问会 panic。
+	// TrafficUsage is the final billing usage snapshot used by channel-health
+	// monitoring. It is kept separate from protocol-conversion intermediates.
 	TrafficUsage *dto.Usage
+
+	// convOptions caches the converter settings snapshot (see ConvOptions).
+	convOptions *convmeta.Options
 
 	ThinkingContentInfo
 	TokenCountMeta
@@ -200,8 +196,8 @@ type RelayInfo struct {
 	*TaskRelayInfo
 }
 
-// GetTrafficUsage 返回用于渠道健康/流量监控的 usage,对未初始化
-// ClaudeConvertInfo 的格式 nil 安全。优先结算快照,回退协议转换中间态。
+// GetTrafficUsage returns the final billing usage used by traffic monitoring.
+// Protocol-conversion usage is retained as a nil-safe fallback.
 func (info *RelayInfo) GetTrafficUsage() *dto.Usage {
 	if info == nil {
 		return nil
@@ -260,6 +256,10 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	}
 
 	info.ChannelMeta = channelMeta
+
+	// Channel identity feeds the converter options snapshot (e.g.
+	// OpenRouterDialect); drop the cache so a cross-channel retry rebuilds it.
+	info.convOptions = nil
 
 	// reset some fields based on channel meta
 	// 重置某些字段，例如模型名称等
@@ -365,6 +365,7 @@ var streamSupportedChannels = map[int]bool{
 	constant.ChannelTypeSiliconFlow:    true,
 	constant.ChannelTypeAdvancedCustom: true,
 	constant.ChannelTypeSub2API:        true,
+	constant.ChannelTypeNewAPI:         true,
 	constant.ChannelTypeTencent:        true,
 }
 
@@ -480,7 +481,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	isStream := false
 
 	if request != nil {
-		isStream = request.IsStream(c)
+		isStream = request.IsStream(c.Request)
 	}
 	c.Set(string(constant.ContextKeyIsStream), isStream)
 
@@ -495,7 +496,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 		RequestId:  reqId,
 		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
-		ParentId:   common.GetContextKeyInt(c, constant.ContextKeyUserParentId), // >>> jzlh-sub
+		ParentId:   common.GetContextKeyInt(c, constant.ContextKeyUserParentId),
 		UsingGroup: common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
 		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),
 		UserQuota:  common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
@@ -701,11 +702,131 @@ func GenRelayInfoAlphaSearch(c *gin.Context, request *dto.AlphaSearchRequest) *R
 //}
 
 func (info *RelayInfo) SetEstimatePromptTokens(promptTokens int) {
+	if info == nil {
+		return
+	}
 	info.estimatePromptTokens = promptTokens
 }
 
 func (info *RelayInfo) GetEstimatePromptTokens() int {
+	if info == nil {
+		return 0
+	}
 	return info.estimatePromptTokens
+}
+
+// ---------------------------------------------------------------------------
+// convmeta.Meta implementation — the view format converters see. Keep these
+// thin: they only expose protocol state, never billing/user fields.
+// ---------------------------------------------------------------------------
+
+var _ convmeta.Meta = (*RelayInfo)(nil)
+
+func (info *RelayInfo) GetOriginModelName() string {
+	if info == nil {
+		return ""
+	}
+	return info.OriginModelName
+}
+
+func (info *RelayInfo) GetUpstreamModelName() string {
+	if info == nil || info.ChannelMeta == nil {
+		return ""
+	}
+	return info.UpstreamModelName
+}
+
+func (info *RelayInfo) HasChannelMeta() bool { return info != nil && info.ChannelMeta != nil }
+
+func (info *RelayInfo) GetChannelID() int {
+	if info == nil || info.ChannelMeta == nil {
+		return 0
+	}
+	return info.ChannelId
+}
+
+func (info *RelayInfo) GetChannelType() int {
+	if info == nil || info.ChannelMeta == nil {
+		return 0
+	}
+	return info.ChannelType
+}
+
+func (info *RelayInfo) GetIsStream() bool {
+	return info != nil && info.IsStream
+}
+
+func (info *RelayInfo) GetReasoningEffort() string {
+	if info == nil {
+		return ""
+	}
+	return info.ReasoningEffort
+}
+
+func (info *RelayInfo) SetReasoningEffort(effort string) {
+	if info == nil {
+		return
+	}
+	info.ReasoningEffort = effort
+}
+
+func (info *RelayInfo) EnsureClaudeConvertInfo() *convmeta.ClaudeConvertInfo {
+	if info == nil {
+		return &convmeta.ClaudeConvertInfo{
+			LastMessagesType: convmeta.LastMessageTypeNone,
+		}
+	}
+	if info.ClaudeConvertInfo == nil {
+		info.ClaudeConvertInfo = &convmeta.ClaudeConvertInfo{
+			LastMessagesType: convmeta.LastMessageTypeNone,
+		}
+	}
+	return info.ClaudeConvertInfo
+}
+
+func (info *RelayInfo) GetSendResponseCount() int {
+	if info == nil {
+		return 0
+	}
+	return info.SendResponseCount
+}
+
+func (info *RelayInfo) IncrSendResponseCount() {
+	if info == nil {
+		return
+	}
+	info.SendResponseCount++
+}
+
+// ConvOptions snapshots host settings for the converters. Rebuilt on each
+// call site's first use; cached so one relay session sees one snapshot.
+func (info *RelayInfo) ConvOptions() *convmeta.Options {
+	if info != nil && info.convOptions != nil {
+		return info.convOptions
+	}
+
+	claudeSettings := model_setting.GetClaudeSettings()
+	geminiSettings := model_setting.GetGeminiSettings()
+	options := &convmeta.Options{
+		Claude: convmeta.ClaudeOptions{
+			ThinkingAdapterEnabled:                claudeSettings.ThinkingAdapterEnabled,
+			ThinkingAdapterBudgetTokensPercentage: claudeSettings.ThinkingAdapterBudgetTokensPercentage,
+			DefaultMaxTokens:                      claudeSettings.GetDefaultMaxTokens,
+		},
+		Gemini: convmeta.GeminiOptions{
+			ThinkingAdapterEnabled:                geminiSettings.ThinkingAdapterEnabled,
+			ThinkingAdapterBudgetTokensPercentage: geminiSettings.ThinkingAdapterBudgetTokensPercentage,
+			FunctionCallThoughtSignatureEnabled:   geminiSettings.FunctionCallThoughtSignatureEnabled,
+			SupportsImagine:                       model_setting.IsGeminiModelSupportImagine,
+			SafetySetting:                         model_setting.GetGeminiSafetySetting,
+		},
+		OpenRouterDialect:      info != nil && info.GetChannelType() == constant.ChannelTypeOpenRouter,
+		PreserveThinkingSuffix: model_setting.ShouldPreserveThinkingSuffix,
+	}
+	if info != nil {
+		info.convOptions = options
+	}
+	return options
 }
 
 func (info *RelayInfo) SetFirstResponseTime() {
@@ -728,10 +849,8 @@ type TaskRelayInfo struct {
 
 	ConsumeQuota bool
 
-	// RemixOtherRatios 是 remix 提交时从原任务快照的一次性倍率(时长/分辨率等)。
-	// 每次尝试(含跨渠道重试)重建 PriceData 后从这里重放,不能改从 PriceData.OtherRatios()
-	// 现读——那会把上一尝试适配器 EstimateBilling 灌入的键(各平台键名不同)累积进来,
-	// 跨平台重试时旧键不被新键覆盖、与新键连乘造成过度计费。
+	// RemixOtherRatios is the immutable ratio snapshot copied from the source
+	// task and replayed after each retry rebuilds PriceData.
 	RemixOtherRatios map[string]float64
 
 	// LockedChannel holds the full channel object when the request is bound to

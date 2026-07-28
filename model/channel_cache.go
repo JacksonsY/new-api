@@ -11,9 +11,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	channelhealth "github.com/QuantumNous/new-api/pkg/channel_health"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
@@ -22,9 +22,6 @@ var channelsIDM map[int]*Channel                     // all channels include dis
 // channel2advancedCustomConfig caches parsed Advanced Custom (type 58) configs so
 // path-aware selection avoids re-parsing JSON per request. Refreshed on full sync.
 var channel2advancedCustomConfig map[int]*dto.AdvancedCustomConfig
-
-// channel2maxConcurrency caches each channel's max_concurrency (>0 only) so the
-// per-request concurrency filter avoids re-parsing channel settings JSON.
 var channel2maxConcurrency map[int]int
 var channelSyncLock sync.RWMutex
 
@@ -63,8 +60,6 @@ func InitChannelCache() {
 		if channel.Status != common.ChannelStatusEnabled {
 			continue // skip disabled channels
 		}
-		// jzlh-supplier 审核门：未过审的供应商渠道不进内存路由池，与 abilities 路径
-		// (ability.go 的 isRoutable) 保持一致，否则开内存缓存时待审渠道会直接 serving。
 		if !channel.isRoutable() {
 			continue
 		}
@@ -130,8 +125,6 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	return GetRandomSatisfiedChannelExcluding(group, model, retry, requestPath, nil)
 }
 
-// GetRandomSatisfiedChannelExcluding selects a channel while omitting channels
-// that already lost an atomic max-concurrency race for the current request.
 func GetRandomSatisfiedChannelExcluding(group string, model string, retry int, requestPath string, excluded map[int]struct{}) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
@@ -211,29 +204,27 @@ func GetRandomSatisfiedChannelExcluding(group string, model string, retry int, r
 		return nil, errors.New(fmt.Sprintf("no channel found, group: %s, model: %s, priority: %d", group, model, targetPriority))
 	}
 
-	// 渠道级并发上限：剔除本实例在飞数已达 max_concurrency 的渠道。
 	targetChannels = filterChannelsByConcurrencyLimit(targetChannels)
 	if len(targetChannels) == 0 {
 		return nil, nil
 	}
 
-	var sumWeight = 0
+	var sumWeight int
 	for _, channel := range targetChannels {
 		sumWeight += channel.GetWeight()
 	}
 
-	// Adaptive routing: re-rank this priority layer by passive channel health
-	// (TTFT/error EWMA + circuit breaker). At full health the distribution
-	// matches the legacy weighted-random below; Select returns ok=false (fall
-	// through) when disabled or when the breaker excluded every candidate.
 	if channelhealth.Enabled() {
-		cands := make([]channelhealth.Candidate, 0, len(targetChannels))
-		for _, ch := range targetChannels {
-			cands = append(cands, channelhealth.Candidate{ChannelID: ch.Id, Weight: ch.GetWeight()})
+		candidates := make([]channelhealth.Candidate, 0, len(targetChannels))
+		for _, channel := range targetChannels {
+			candidates = append(candidates, channelhealth.Candidate{
+				ChannelID: channel.Id,
+				Weight:    channel.GetWeight(),
+			})
 		}
-		if chosenID, ok := channelhealth.Select(cands); ok {
-			if ch, exists := channelsIDM[chosenID]; exists {
-				return ch, nil
+		if chosenID, ok := channelhealth.Select(candidates); ok {
+			if channel, exists := channelsIDM[chosenID]; exists {
+				return channel, nil
 			}
 		}
 	}
@@ -269,18 +260,14 @@ func GetRandomSatisfiedChannelExcluding(group string, model string, retry int, r
 	return nil, errors.New("channel not found")
 }
 
-// filterChannelsByConcurrencyLimit drops channels whose in-flight count (this
-// instance) has reached their configured max_concurrency. Channels without a
-// limit (absent from channel2maxConcurrency) always pass. An empty result is a
-// hard saturation signal; callers must not fail open past an operator limit.
-// Caller must hold channelSyncLock (read lock). The input slice is never mutated.
 func filterChannelsByConcurrencyLimit(channels []*Channel) []*Channel {
 	if len(channels) == 0 || len(channel2maxConcurrency) == 0 {
 		return channels
 	}
 	filtered := make([]*Channel, 0, len(channels))
 	for _, channel := range channels {
-		if limit, ok := channel2maxConcurrency[channel.Id]; ok && channelhealth.CurrentInflight(channel.Id) >= int64(limit) {
+		if limit, ok := channel2maxConcurrency[channel.Id]; ok &&
+			channelhealth.CurrentInflight(channel.Id) >= int64(limit) {
 			continue
 		}
 		filtered = append(filtered, channel)
@@ -288,9 +275,6 @@ func filterChannelsByConcurrencyLimit(channels []*Channel) []*Channel {
 	return filtered
 }
 
-// TryAcquireChannelInflight atomically reserves one request slot using the
-// channel's configured max_concurrency. It is paired with
-// channelhealth.ReleaseInflight by the relay controller.
 func TryAcquireChannelInflight(channelID int) bool {
 	if channelID <= 0 {
 		return false
@@ -383,10 +367,8 @@ func CacheUpdateChannelStatus(id int, status int) {
 		// delete the channel from group2model2channels
 		for group, model2channels := range group2model2channels {
 			for model, channels := range model2channels {
-				// jzlh-fix 重建新切片，避免原地 append 截断共享底层数组
-				// (同一底层数组可能被其他读者持有的切片共享，原地写会污染它们)。
 				removed := false
-				filtered := channels[:0:0] // 与 channels 同元素类型、cap 0，append 必然分配新底层数组
+				filtered := channels[:0:0]
 				for _, channelId := range channels {
 					if channelId == id {
 						removed = true
@@ -427,6 +409,14 @@ func CacheUpdateChannel(channel *Channel) {
 		if config := channel.GetOtherSettings().AdvancedCustom; config != nil {
 			channel2advancedCustomConfig[channel.Id] = config
 		}
+	}
+	if channel2maxConcurrency == nil {
+		channel2maxConcurrency = make(map[int]int)
+	}
+	if limit := channel.GetSetting().MaxConcurrency; limit > 0 {
+		channel2maxConcurrency[channel.Id] = limit
+	} else {
+		delete(channel2maxConcurrency, channel.Id)
 	}
 	logger.LogDebug(nil, "CacheUpdateChannel after: id=%d, name=%s, status=%d, polling_index=%d", channel.Id, channel.Name, channel.Status, channel.ChannelInfo.MultiKeyPollingIndex)
 	// Lock ordering: do NOT hold channelSyncLock while calling

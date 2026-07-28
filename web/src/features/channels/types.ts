@@ -38,8 +38,6 @@ export const channelSchema = z.object({
   id: z.number(),
   type: z.number(),
   key: z.string(),
-  // v2 P2 归属:>0 = 供应商渠道(user_id 为供应商用户 id),0/缺省 = 平台自营。
-  // 供应商渠道的生命周期由审核台托管,渠道页仅标注归属提醒管理员去审核台操作。
   user_id: z.number().nullish(),
   openai_organization: z.string().nullish(),
   test_model: z.string().nullish(),
@@ -60,14 +58,11 @@ export const channelSchema = z.object({
   status_code_mapping: z.string().nullish(),
   priority: z.number().nullish(),
   auto_ban: z.number().nullish(),
-  channel_ratio: z.number().nullish(), // 渠道计费倍率（成本统计，仅管理员）
-  // Veridrop 真伪检测：最近一次检测的判定/评分/关键问题数（可选，随渠道行下发）
+  channel_ratio: z.number().nullish(),
   detect_verdict: z.string().nullish(),
   detect_score: z.number().nullish(),
   detect_critical_count: z.number().nullish(),
-  // 蓝图A：上次余额落库时的 used_quota 快照，实时余额本地推算用
   balance_snapshot: z.number().nullish(),
-  // 蓝图A：近期消耗统计（列表接口的 recent_usage map 在前端合并进行，非后端字段）
   recent_usage: z
     .object({ quota: z.number(), active_days: z.number() })
     .nullish(),
@@ -89,7 +84,6 @@ export const channelSchema = z.object({
 
 export type Channel = z.infer<typeof channelSchema>
 
-// 蓝图A：渠道近期消耗统计（剩余天数估算），对齐后端 model.ChannelRecentUsage
 export interface ChannelRecentUsage {
   quota: number
   active_days: number
@@ -107,9 +101,12 @@ export interface ChannelSettings {
   pass_through_body_enabled?: boolean
   system_prompt?: string
   system_prompt_override?: boolean
+  http_protocol?: 'auto' | 'http1' | string
+  http2_connection_shards?: number
   sub2api_balance_query?: boolean
   upstream_ratio_sync?: boolean
   upstream_group_name?: string
+  hide_upstream_errors?: boolean
 }
 
 export interface ChannelOtherSettings {
@@ -354,6 +351,7 @@ export interface TagOperationParams {
   new_tag?: string
   priority?: number
   weight?: number
+  channel_ratio?: number
   model_mapping?: string
   models?: string
   groups?: string
@@ -374,7 +372,6 @@ export interface ChannelFormData {
   model_mapping?: string
   priority?: number
   weight?: number
-  channel_ratio?: number
   test_model?: string
   auto_ban?: number
   status: number

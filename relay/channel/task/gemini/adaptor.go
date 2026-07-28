@@ -11,11 +11,12 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
@@ -40,19 +41,16 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
-func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
+func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *taskdto.TaskError) {
 	if taskErr = relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate); taskErr != nil {
 		return taskErr
 	}
 	return ValidateVeoMediaMetadata(c)
 }
 
-// ValidateVeoMediaMetadata 预解析 metadata 里的媒体输入。这些是用户输入，必须在
-// 这里以 400 本地错误拒绝：留到 BuildRequestBody 才报会被包成 500 非本地错误，
-// 从而记为渠道故障并跨渠道重试——每个渠道都拿同一份坏输入再失败一次。
-// 这里用空 instance 校验，multipart 图片与 metadata 的互斥组合仍由
-// BuildRequestBody 的真实 instance 兜底。
-func ValidateVeoMediaMetadata(c *gin.Context) *dto.TaskError {
+// ValidateVeoMediaMetadata rejects invalid user media metadata as a local 400
+// before channel selection can interpret it as an upstream failure.
+func ValidateVeoMediaMetadata(c *gin.Context) *taskdto.TaskError {
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
@@ -104,17 +102,6 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 			info.Action = constant.TaskActionGenerate
 		}
 	}
-	features, err := ApplyVeoMetadataToInstance(req.Metadata, &instance)
-	if err != nil {
-		return nil, err
-	}
-	if features.HasLastFrame {
-		info.Action = constant.TaskActionFirstTailGenerate
-	} else if features.HasReferenceImages {
-		info.Action = constant.TaskActionReferenceGenerate
-	} else if features.HasImage {
-		info.Action = constant.TaskActionGenerate
-	}
 
 	params := &VeoParameters{}
 	if err := taskcommon.UnmarshalMetadata(req.Metadata, params); err != nil {
@@ -150,7 +137,7 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 }
 
 // DoResponse handles upstream response, returns taskID etc.
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
+func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)

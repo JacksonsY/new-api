@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { z } from 'zod'
 
 import {
+  CHANNEL_TYPE_NEW_API,
   CHANNEL_STATUS,
   ERROR_MESSAGES,
   MODEL_FETCHABLE_TYPES,
@@ -67,6 +68,37 @@ function isOptionalProxyURL(value: string | undefined): boolean {
   } catch {
     return false
   }
+}
+
+export const HTTP_PROTOCOL_AUTO = 'auto'
+export const HTTP_PROTOCOL_HTTP1 = 'http1'
+export const MAX_HTTP2_CONNECTION_SHARDS = 8
+
+export function normalizeHttpProtocol(
+  value: string | undefined | null
+): 'auto' | 'http1' {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+  if (normalized === HTTP_PROTOCOL_HTTP1) {
+    return HTTP_PROTOCOL_HTTP1
+  }
+  return HTTP_PROTOCOL_AUTO
+}
+
+export function normalizeHttp2ConnectionShards(
+  value: number | undefined | null
+): number {
+  if (value == null || Number.isNaN(value) || value === 0) {
+    return 1
+  }
+  if (value < 1) {
+    return 1
+  }
+  if (value > MAX_HTTP2_CONNECTION_SHARDS) {
+    return MAX_HTTP2_CONNECTION_SHARDS
+  }
+  return value
 }
 
 function parseOptionalJson(value: string | undefined): unknown {
@@ -225,14 +257,16 @@ export const channelFormSchema = z
       .string()
       .optional()
       .refine(isOptionalProxyURL, ERROR_MESSAGES.INVALID_PROXY),
+    http_protocol: z.enum(['auto', 'http1']).optional(),
+    http2_connection_shards: z.number().int().optional(),
     max_concurrency: z.number().int().min(0).optional(),
     pass_through_body_enabled: z.boolean().optional(),
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
-    sub2api_balance_query: z.boolean().optional(), // Query balance via sub2api upstream /v1/usage
-    upstream_ratio_sync: z.boolean().optional(), // 随余额更新自动同步成本倍率（sub2api 从用量推导 / new-api 按分组名取 pricing）
-    upstream_group_name: z.string().optional(), // 本渠道 Key 在上游所属分组，仅 new-api 上游的倍率同步需要
-    hide_upstream_errors: z.boolean().optional(), // 对下游隐藏上游原始报错（供应链保密）
+    sub2api_balance_query: z.boolean().optional(),
+    upstream_ratio_sync: z.boolean().optional(),
+    upstream_group_name: z.string().optional(),
+    hide_upstream_errors: z.boolean().optional(),
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
@@ -253,7 +287,10 @@ export const channelFormSchema = z
     upstream_model_update_ignored_models: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if ([3, 8, 36, 45].includes(data.type) && !data.base_url?.trim()) {
+    if (
+      [3, 8, 36, 45, CHANNEL_TYPE_NEW_API].includes(data.type) &&
+      !data.base_url?.trim()
+    ) {
       addRequiredIssue(
         ctx,
         'base_url',
@@ -342,6 +379,23 @@ export const channelFormSchema = z
         'Vertex AI API Key mode does not support batch creation'
       )
     }
+
+    const protocol = normalizeHttpProtocol(data.http_protocol)
+    const shards = data.http2_connection_shards ?? 1
+    if (shards < 1 || shards > MAX_HTTP2_CONNECTION_SHARDS) {
+      addRequiredIssue(
+        ctx,
+        'http2_connection_shards',
+        ERROR_MESSAGES.INVALID_HTTP2_CONNECTION_SHARDS
+      )
+    }
+    if (protocol === HTTP_PROTOCOL_HTTP1 && shards > 1) {
+      addRequiredIssue(
+        ctx,
+        'http2_connection_shards',
+        ERROR_MESSAGES.INVALID_HTTP1_WITH_SHARDS
+      )
+    }
   })
 
 export type ChannelFormValues = z.infer<typeof channelFormSchema>
@@ -381,6 +435,8 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   force_format: false,
   thinking_to_content: false,
   proxy: '',
+  http_protocol: HTTP_PROTOCOL_AUTO,
+  http2_connection_shards: 1,
   max_concurrency: 0,
   pass_through_body_enabled: false,
   system_prompt: '',
@@ -424,6 +480,8 @@ export function transformChannelToFormDefaults(
     force_format: false,
     thinking_to_content: false,
     proxy: '',
+    http_protocol: HTTP_PROTOCOL_AUTO as 'auto' | 'http1',
+    http2_connection_shards: 1,
     max_concurrency: 0,
     pass_through_body_enabled: false,
     system_prompt: '',
@@ -437,10 +495,16 @@ export function transformChannelToFormDefaults(
   if (channel.setting) {
     try {
       const parsed = JSON.parse(channel.setting)
+      const protocol = normalizeHttpProtocol(parsed.http_protocol)
+      const shards = normalizeHttp2ConnectionShards(
+        parsed.http2_connection_shards
+      )
       extraSettings = {
         force_format: parsed.force_format || false,
         thinking_to_content: parsed.thinking_to_content || false,
         proxy: parsed.proxy || '',
+        http_protocol: protocol,
+        http2_connection_shards: protocol === HTTP_PROTOCOL_HTTP1 ? 1 : shards,
         max_concurrency: parsed.max_concurrency || 0,
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || '',
@@ -559,8 +623,8 @@ export function transformChannelToFormDefaults(
 /**
  * Build the setting JSON string from form extra settings
  */
-function buildSettingJSON(formData: ChannelFormValues): string {
-  const settingObj = {
+export function buildSettingJSON(formData: ChannelFormValues): string {
+  const settingObj: Record<string, unknown> = {
     force_format: formData.force_format || false,
     thinking_to_content: formData.thinking_to_content || false,
     proxy: formData.proxy?.trim() || '',
@@ -569,10 +633,24 @@ function buildSettingJSON(formData: ChannelFormValues): string {
     system_prompt: formData.system_prompt || '',
     system_prompt_override: formData.system_prompt_override || false,
     sub2api_balance_query: formData.sub2api_balance_query || false,
-    hide_upstream_errors: formData.hide_upstream_errors || false,
+    hide_upstream_errors: formData.hide_upstream_errors ?? true,
     upstream_ratio_sync: formData.upstream_ratio_sync || false,
     upstream_group_name: formData.upstream_group_name || '',
   }
+
+  const protocol = normalizeHttpProtocol(formData.http_protocol)
+  const shards =
+    protocol === HTTP_PROTOCOL_HTTP1
+      ? 1
+      : normalizeHttp2ConnectionShards(formData.http2_connection_shards)
+
+  // Omit defaults so unchanged channels keep equivalent JSON.
+  if (protocol === HTTP_PROTOCOL_HTTP1) {
+    settingObj.http_protocol = HTTP_PROTOCOL_HTTP1
+  } else if (shards > 1) {
+    settingObj.http2_connection_shards = shards
+  }
+
   return JSON.stringify(settingObj)
 }
 

@@ -1,10 +1,11 @@
-package dto
+package dto_test
 
 import (
 	"math"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,13 +26,13 @@ func TestIntValueUnmarshalNumericForms(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var v IntValue
+			var v dto.IntValue
 			require.NoError(t, common.Unmarshal([]byte(tt.in), &v))
 			assert.Equal(t, tt.want, int(v))
 		})
 	}
 
-	var v IntValue
+	var v dto.IntValue
 	require.Error(t, common.Unmarshal([]byte(`"abc"`), &v))
 	require.Error(t, common.Unmarshal([]byte(`true`), &v))
 }
@@ -50,7 +51,7 @@ func TestIntValueUnmarshalSaturatesOutOfRange(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var v IntValue
+			var v dto.IntValue
 			require.NoError(t, common.Unmarshal([]byte(tt.in), &v))
 			assert.Equal(t, tt.want, int(v))
 		})

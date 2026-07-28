@@ -1,16 +1,15 @@
 package helper
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	basecommon "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
@@ -20,7 +19,6 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 		info.ChannelMeta = &common.ChannelMeta{}
 	}
 
-	// 先清零响应模型名改写状态：重试可能换到无映射的渠道，且下方存在多个提前返回路径
 	basecommon.SetContextKey(c, constant.ContextKeyClientFacingModelName, "")
 
 	isResponsesCompact := info.RelayMode == relayconstant.RelayModeResponsesCompact
@@ -34,7 +32,7 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 	modelMapping := c.GetString("model_mapping")
 	if modelMapping != "" && modelMapping != "{}" {
 		modelMap := make(map[string]string)
-		err := json.Unmarshal([]byte(modelMapping), &modelMap)
+		err := basecommon.Unmarshal([]byte(modelMapping), &modelMap)
 		if err != nil {
 			return fmt.Errorf("unmarshal_model_mapping_failed")
 		}
@@ -79,11 +77,9 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 		info.UpstreamModelName = finalUpstreamModelName
 		info.OriginModelName = ratio_setting.WithCompactModelSuffix(finalUpstreamModelName)
 	}
-	// 通知响应写出层把上游真实模型名改写回客户请求名（防供应链泄漏）
 	if info.IsModelMapped && info.OriginModelName != "" && info.OriginModelName != info.UpstreamModelName {
 		basecommon.SetContextKey(c, constant.ContextKeyClientFacingModelName, info.OriginModelName)
 	}
-
 	if request != nil {
 		request.SetModelName(info.UpstreamModelName)
 	}

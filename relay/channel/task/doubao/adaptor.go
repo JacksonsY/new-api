@@ -12,11 +12,12 @@ import (
 	"github.com/QuantumNous/new-api/common"
 
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -117,7 +118,7 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
-func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
+func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *taskdto.TaskError) {
 	if c.GetBool(common.KeySeedanceOfficialAPI) {
 		var body map[string]interface{}
 		if err := common.UnmarshalBodyReusable(c, &body); err != nil {
@@ -131,21 +132,20 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		if _, ok := body["content"]; !ok {
 			return service.TaskErrorWrapperLocal(fmt.Errorf("field content is required"), "missing_content", http.StatusBadRequest)
 		}
-		// 时长封顶（AGENTS.md：新请求 DTO 从第一天就 bound；此分支绕过了标准的
-		// validateTaskDurationBounds）。用 float64 比较避免对无界数值做裸 int 转换；越界即 400，
-		// 不把无界时长透传给上游/计费。
 		if raw, ok := body["duration"]; ok {
-			var secs float64
-			switch v := raw.(type) {
+			var seconds float64
+			switch value := raw.(type) {
 			case float64:
-				secs = v
+				seconds = value
 			case string:
-				secs, _ = strconv.ParseFloat(strings.TrimSpace(v), 64)
+				seconds, _ = strconv.ParseFloat(strings.TrimSpace(value), 64)
 			}
-			if secs < 0 || secs > float64(relaycommon.MaxTaskDurationSeconds) {
+			if seconds < 0 || seconds > float64(relaycommon.MaxTaskDurationSeconds) {
 				return service.TaskErrorWrapperLocal(
 					fmt.Errorf("duration must be between 1 and %d", relaycommon.MaxTaskDurationSeconds),
-					"invalid_duration", http.StatusBadRequest)
+					"invalid_duration",
+					http.StatusBadRequest,
+				)
 			}
 		}
 
@@ -233,8 +233,6 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 
 		var bodyMap map[string]interface{}
 		if err := common.Unmarshal(cachedBody, &bodyMap); err != nil {
-			// body 不是 JSON 对象：无法安全改写 model→UpstreamModelName，与其把带本地
-			// (可能带路由前缀)模型名的原始 body 透传给上游致其误判，不如显式失败。
 			return nil, errors.Wrap(err, "unmarshal_request_body_failed")
 		}
 		if info.UpstreamModelName != "" {
@@ -268,13 +266,31 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	return bytes.NewReader(data), nil
 }
 
+func seedanceTextPrompt(body map[string]interface{}) string {
+	content, ok := body["content"].([]interface{})
+	if !ok {
+		return ""
+	}
+	for _, item := range content {
+		itemMap, ok := item.(map[string]interface{})
+		if !ok || itemMap["type"] != "text" {
+			continue
+		}
+		text, _ := itemMap["text"].(string)
+		if strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	return ""
+}
+
 // DoRequest delegates to common helper.
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
 }
 
 // DoResponse handles upstream response, returns taskID etc.
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
+func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
@@ -378,27 +394,6 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	})
 
 	return &r, nil
-}
-
-func seedanceTextPrompt(body map[string]interface{}) string {
-	content, ok := body["content"].([]interface{})
-	if !ok {
-		return ""
-	}
-	for _, item := range content {
-		itemMap, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if itemMap["type"] != "text" {
-			continue
-		}
-		text, _ := itemMap["text"].(string)
-		if strings.TrimSpace(text) != "" {
-			return text
-		}
-	}
-	return ""
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
