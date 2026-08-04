@@ -19,9 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-/* Public Sans + Lora with `font-display: optional` (see fonts.css). Avoids
- * the mid-session size jump from Fontsource's default `swap` policy. */
-@import './fonts.css';
+@import '@fontsource-variable/public-sans';
+/* Editorial serif (Lora) backing the `serif` font axis and the Anthropic
+ * preset's default typography. See `--font-serif` in theme.css for the
+ * full Latin + CJK fallback stack and `theme-presets.css` for the cascade
+ * that activates it. Loaded globally so font-switching is instantaneous
+ * with no FOUT once the variable is fetched. */
+@import '@fontsource-variable/lora';
 
 @import './theme.css';
 @import './theme-presets.css';
@@ -88,10 +92,7 @@ For commercial licensing, please contact support@quantumnous.com
     scrollbar-color: var(--border) transparent;
   }
   html {
-    /* Inherit the active body face from `--font-body` (set on body). Avoid
-     * `font-sans` here — it pinned Public Sans even when the serif axis was
-     * active, and fought the body cascade during theme boot. */
-    @apply overflow-x-hidden;
+    @apply overflow-x-hidden font-sans;
   }
   body {
     @apply bg-background text-foreground has-[div[data-variant='inset']]:bg-sidebar min-h-svh w-full;
@@ -119,64 +120,6 @@ For commercial licensing, please contact support@quantumnous.com
     textarea {
       font-size: 16px !important;
     }
-  }
-}
-
-/* ── 九紫离火 brand utilities ─────────────────────────────────────────────
- * Authored utilities (not Tailwind-generated) that consume the brand tokens
- * from theme.css. They follow the active light/dark values automatically.
- * Hover behavior is baked into the class (rather than relying on Tailwind
- * `hover:` variants, which only generate for known utilities). */
-@layer components {
-  .text-gradient-lihuo {
-    background-image: var(--gradient-lihuo);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-  /* 品牌加载态（与 index.html 开屏页同一视觉）：logo 呼吸光晕 + 离火渐变
-   * 进度条。供 BrandLoader 组件（路由跳转 pending / 页面级加载）使用。 */
-  .brand-loader-logo {
-    animation: brand-loader-breathe 2.2s ease-in-out infinite;
-  }
-  .brand-loader-track {
-    width: 132px;
-    height: 3px;
-    border-radius: 999px;
-    background: color-mix(in oklab, var(--foreground) 10%, transparent);
-    overflow: hidden;
-  }
-  .brand-loader-fill {
-    width: 40%;
-    height: 100%;
-    border-radius: 999px;
-    background-image: var(--gradient-lihuo);
-    animation: brand-loader-slide 1.1s ease-in-out infinite alternate;
-  }
-  .bg-gradient-lihuo {
-    background-image: var(--gradient-lihuo);
-  }
-  .border-gradient-lihuo {
-    border: 1px solid transparent;
-    background:
-      linear-gradient(var(--card), var(--card)) padding-box,
-      var(--gradient-lihuo) border-box;
-  }
-  .shadow-glow-violet {
-    box-shadow: var(--glow-violet);
-  }
-  .shadow-glow-ember {
-    box-shadow: var(--glow-ember);
-  }
-  /* 离火 CTA fill — reserved for primary conversions (recharge / upgrade). */
-  .btn-cta {
-    background-image: var(--gradient-lihuo);
-    color: #fff;
-    box-shadow: var(--glow-ember);
-  }
-  .btn-cta:hover {
-    box-shadow: var(--glow-ember), var(--glow-violet);
-    filter: brightness(1.05);
   }
 }
 
@@ -491,7 +434,8 @@ For commercial licensing, please contact support@quantumnous.com
   .animate-appear,
   .animate-appear-zoom,
   .animate-scroll-up,
-  .animate-scroll-down {
+  .animate-scroll-down,
+  [data-slot='table'] tbody tr {
     animation: none !important;
     opacity: 1;
     transform: none;
@@ -576,12 +520,79 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 
-/* Micro-interactions — admin surfaces stay calm: color transitions only.
- * No entrance animations, no hover lift/shadow, no press scaling. High-
- * frequency workflows (scanning tables, toggling filters) read as instant;
- * decorative motion belongs to the landing page (landing-* utilities). */
-[data-slot='table'] tr {
-  transition: background-color 120ms ease;
+/* Micro-interactions — Vercel-style subtle hover/active feedback */
+@media (prefers-reduced-motion: no-preference) {
+  [data-slot='card']:not([data-card-hover='false']) {
+    transition:
+      transform 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  @media (min-width: 641px) {
+    [data-slot='card']:not([data-card-hover='false']):hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgb(0 0 0 / 0.06);
+    }
+
+    .dark [data-slot='card']:not([data-card-hover='false']):hover {
+      box-shadow: 0 4px 12px rgb(0 0 0 / 0.3);
+    }
+  }
+
+  button:not(:disabled):active,
+  [role='button']:not(:disabled):active {
+    transform: scale(0.98);
+  }
+
+  [data-slot='table'] tr {
+    transition: background-color 120ms ease;
+  }
+
+  /* Table row stagger-in animation */
+  [data-slot='table'] tbody tr {
+    animation: tableRowEnter 0.2s cubic-bezier(0.33, 1, 0.68, 1) both;
+  }
+  [data-slot='table'] tbody tr:nth-child(2) {
+    animation-delay: 25ms;
+  }
+  [data-slot='table'] tbody tr:nth-child(3) {
+    animation-delay: 50ms;
+  }
+  [data-slot='table'] tbody tr:nth-child(4) {
+    animation-delay: 75ms;
+  }
+  [data-slot='table'] tbody tr:nth-child(5) {
+    animation-delay: 100ms;
+  }
+  [data-slot='table'] tbody tr:nth-child(6) {
+    animation-delay: 125ms;
+  }
+  [data-slot='table'] tbody tr:nth-child(7) {
+    animation-delay: 150ms;
+  }
+  [data-slot='table'] tbody tr:nth-child(8) {
+    animation-delay: 175ms;
+  }
+  [data-slot='table'] tbody tr:nth-child(9) {
+    animation-delay: 200ms;
+  }
+  [data-slot='table'] tbody tr:nth-child(10) {
+    animation-delay: 225ms;
+  }
+  [data-slot='table'] tbody tr:nth-child(n + 11) {
+    animation-delay: 250ms;
+  }
+}
+
+@keyframes tableRowEnter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Tabular numbers for data-heavy contexts */
@@ -640,34 +651,48 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 
-@keyframes brand-loader-breathe {
-  0%,
-  100% {
-    filter: drop-shadow(
-      0 0 12px color-mix(in oklab, var(--brand-violet) 35%, transparent)
-    );
-    transform: scale(1);
-  }
-  50% {
-    filter: drop-shadow(
-      0 0 26px color-mix(in oklab, var(--brand-ember) 45%, transparent)
-    );
-    transform: scale(1.04);
+/* ── Auto group flowing border ── */
+@property --auto-group-flow-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes auto-group-flow-border-travel {
+  to {
+    --auto-group-flow-angle: 360deg;
   }
 }
 
-@keyframes brand-loader-slide {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(250%);
-  }
+/* Border-only effect: the conic gradient covers the whole layer, but the
+ * two-layer mask (content-box XOR full box) keeps only a `padding`-wide
+ * ring visible, so the highlight hugs the rounded perimeter. Animating
+ * the gradient's start angle makes the bright segment travel around all
+ * four edges and corners without touching the interior. */
+.auto-group-flow-border {
+  padding: 1.5px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--auto-group-flow-angle),
+    transparent 0deg,
+    transparent 240deg,
+    color-mix(in oklch, var(--primary) 45%, transparent) 300deg,
+    var(--primary) 342deg,
+    transparent 360deg
+  );
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: auto-group-flow-border-travel 3.2s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .brand-loader-logo,
-  .brand-loader-fill {
-    animation: none !important;
+  .auto-group-flow-border {
+    display: none;
   }
 }

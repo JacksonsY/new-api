@@ -52,9 +52,10 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/design-system/button'
 import { Dialog } from '@/components/dialog'
-import { StatusBadge, type StatusVariant } from '@/components/status-badge'
+import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
+import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
@@ -69,7 +70,6 @@ import {
   parseAuditLine,
   decodeBillingExprB64,
   getTieredBillingSummary,
-  getUsageTokenParts,
   hasAnyCacheTokens,
   isViolationFeeLog,
   getFirstResponseTimeColor,
@@ -79,7 +79,6 @@ import {
 import {
   getLogTypeConfig,
   isPerCallBilling,
-  isPerSecondTaskBilling,
   isTimingLogType,
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
@@ -95,18 +94,13 @@ const CHANNEL_FIELD_LABELS: Record<string, string> = {
   key: 'Key',
 }
 
-// 任务计费倍率键 → 展示标签。视频：tier=分档倍率(分辨率/画质)、seconds=计费秒数；
-// 其余任务适配器的倍率同理（doubao video_input、ali/gemini size 等）。
-const TASK_RATIO_LABELS: Record<string, string> = {
-  tier: 'Tier multiplier',
-  seconds: 'Billed seconds',
-  resolution: 'Resolution multiplier',
-  size: 'Size multiplier',
-  video_input: 'Video input multiplier',
-  duration: 'Duration',
+function timingTextColorClass(
+  variant: 'success' | 'warning' | 'danger'
+): string {
+  if (variant === 'success') return 'text-emerald-600'
+  if (variant === 'warning') return 'text-amber-600'
+  return 'text-rose-600'
 }
-// 这些键是「数量」而非「倍率」，按整数展示（不加 x 后缀）。
-const TASK_RATIO_COUNT_KEYS = new Set(['seconds', 'duration'])
 
 function DetailRow(props: {
   label: React.ReactNode
@@ -134,27 +128,33 @@ function DetailRow(props: {
 
 function DetailSection(props: {
   icon?: React.ReactNode
+  iconTone?: IconBadgeTone
   label: string
-  variant?: 'default' | 'destructive'
+  variant?: 'default' | 'danger'
   children: React.ReactNode
 }) {
-  const isDestructive = props.variant === 'destructive'
+  const isDanger = props.variant === 'danger'
+  const iconTone = isDanger ? 'destructive' : props.iconTone
   return (
     <div className='min-w-0 space-y-1.5'>
       <Label
         className={cn(
           'flex items-center gap-1.5 text-xs font-semibold',
-          isDestructive && 'text-destructive'
+          isDanger && 'text-red-500'
         )}
       >
-        {props.icon}
+        {props.icon && (
+          <IconBadge tone={iconTone} size='xs'>
+            {props.icon}
+          </IconBadge>
+        )}
         {props.label}
       </Label>
       <div
         className={cn(
           'min-w-0 space-y-1 overflow-hidden rounded-md border p-2.5 max-sm:p-2',
-          isDestructive
-            ? 'border-destructive/25 bg-destructive/10'
+          isDanger
+            ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/20'
             : 'bg-muted/30'
         )}
       >
@@ -223,12 +223,9 @@ function BillingBreakdown(props: {
   const { t } = useTranslation()
   const { log, other, isAdmin } = props
   const isPerCall = isPerCallBilling(other.model_price)
+  const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const tieredSummary = getTieredBillingSummary(other)
-  // 任务计费倍率（视频 tier/seconds 等）。带计费秒数的任务按
-  // 「每秒基准价 × 秒数(× 档位倍率)」结算，是按秒计费而非按次。
-  const taskRatios = other.task_ratios
-  const isPerSecondTask = isPerSecondTaskBilling(taskRatios)
 
   const rows: Array<{ label: string; value: string }> = []
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
@@ -260,13 +257,10 @@ function BillingBreakdown(props: {
       })
     }
   } else if (isPerCall) {
-    rows.push({
-      label: t('Billing Mode'),
-      value: isPerSecondTask ? t('Per Second') : t('Per-call'),
-    })
+    rows.push({ label: t('Billing Mode'), value: t('Per-call') })
     if (other.model_price != null) {
       rows.push({
-        label: isPerSecondTask ? t('Base price per second') : t('Model Price'),
+        label: t('Model Price'),
         value: fmtPrice(other.model_price),
       })
     }
@@ -286,20 +280,6 @@ function BillingBreakdown(props: {
     }
   }
 
-  // 计费倍率行：决定最终费用的量，做成结构化行，而非只藏在
-  // content 文本的「计算参数」里，便于审计视频/任务计费口径。
-  if (taskRatios) {
-    for (const [key, val] of Object.entries(taskRatios)) {
-      if (typeof val !== 'number' || !Number.isFinite(val)) continue
-      const isCount = TASK_RATIO_COUNT_KEYS.has(key)
-      if (!isCount && val === 1) continue // 1.0 倍率无影响，跳过
-      rows.push({
-        label: t(TASK_RATIO_LABELS[key] ?? key),
-        value: isCount ? String(val) : `${parseFloat(val.toFixed(4))}x`,
-      })
-    }
-  }
-
   const userGR = other.user_group_ratio
   const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
   const effectiveGR = isUserGR ? userGR : other.group_ratio
@@ -310,11 +290,7 @@ function BillingBreakdown(props: {
     })
   }
 
-  // 缓存价格展示不限定 Claude：非 Claude 路径（/v1/responses、OpenAI 兼容等）
-  // 后端同样写入 cache_tokens/cache_ratio（GenerateTextOtherInfo），此前用
-  // other.claude 门控导致这些日志的缓存读取价不显示（上游 issue #6011）。
-  // Claude 特有的缓存创建各行仍按各自字段存在与否渲染，非 Claude 不受影响。
-  if (!isTieredExpr && hasAnyCacheTokens(other)) {
+  if (!isTieredExpr && isClaude && hasAnyCacheTokens(other)) {
     if (other.cache_ratio != null && other.cache_ratio !== 1) {
       rows.push({
         label: t('Cache Read'),
@@ -404,46 +380,6 @@ function BillingBreakdown(props: {
     })
   }
 
-  // 原始费用 = 实付 ÷ 生效分组倍率（折前官方口径），所有用户可见并无条件展示：
-  // 即便分组倍率为 1（原始费用等于总费用）也明确给出这个基数，便于审计渠道成本
-  // 而无需自行心算。分组倍率缺失或非法按 1 兜底。
-  const groupRatioForCost =
-    effectiveGR != null && Number.isFinite(effectiveGR) && effectiveGR > 0
-      ? effectiveGR
-      : 1
-  const rawQuota = log.quota / groupRatioForCost
-  rows.push({
-    label: t('Original Cost'),
-    value: formatLogQuota(Math.round(rawQuota)),
-  })
-
-  // 渠道成本（仅管理员可见，不影响用户扣费）。成本倍率（含 sub2api/上游分组
-  // 自动同步）是相对官方原价的折扣，log.quota 是乘过分组倍率的用户实付，
-  // 分组倍率≠1 时直接乘实付会错估成本，基数必须用原始费用。
-  if (
-    isAdmin &&
-    typeof log.channel_ratio === 'number' &&
-    log.channel_ratio > 0 && // 旧日志加列前默认 0 = 未打快照，不展示
-    log.channel_ratio !== 1
-  ) {
-    rows.push({
-      label: t('Channel cost ratio'),
-      value: `${log.channel_ratio}x`,
-    })
-    // 优先用后端落库的成本快照（与渠道支出聚合/面板同源）；
-    // 快照列加列前的旧日志回退本地推导，口径一致
-    const snapshotCost =
-      typeof log.channel_quota === 'number' && log.channel_quota !== 0
-        ? log.channel_quota
-        : null
-    rows.push({
-      label: t('Channel Cost'),
-      value: formatLogQuota(
-        snapshotCost ?? Math.round(rawQuota * log.channel_ratio)
-      ),
-    })
-  }
-
   if (isAdmin && other.admin_info) {
     rows.push({
       label: t('Billing Path'),
@@ -471,26 +407,22 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
   const { t } = useTranslation()
   const { log, other } = props
 
+  const promptTokens = log.prompt_tokens || 0
+  const completionTokens = log.completion_tokens || 0
+  const cacheRead = other.cache_tokens || 0
   const cacheWrite = other.cache_creation_tokens || 0
   const cacheWrite5m = other.cache_creation_tokens_5m || 0
   const cacheWrite1h = other.cache_creation_tokens_1h || 0
-  const hasTokens =
-    (log.prompt_tokens || 0) > 0 || (log.completion_tokens || 0) > 0
+  const hasTokens = promptTokens > 0 || completionTokens > 0
 
   if (!hasTokens) return null
 
-  const {
-    inputTokens,
-    outputTokens,
-    cacheReadTokens: cacheRead,
-  } = getUsageTokenParts(log, other)
-
   const rows: Array<{ label: string; value: string }> = []
 
-  rows.push({ label: t('Input Tokens'), value: inputTokens.toLocaleString() })
+  rows.push({ label: t('Input Tokens'), value: promptTokens.toLocaleString() })
   rows.push({
     label: t('Output Tokens'),
-    value: outputTokens.toLocaleString(),
+    value: completionTokens.toLocaleString(),
   })
 
   if (cacheRead > 0) {
@@ -550,12 +482,6 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
   const typeConfig = getLogTypeConfig(props.log.type)
-  let reasoningEffortVariant: StatusVariant = 'success'
-  if (other?.reasoning_effort === 'high') {
-    reasoningEffortVariant = 'warning'
-  } else if (other?.reasoning_effort === 'medium') {
-    reasoningEffortVariant = 'info'
-  }
 
   const isViolation = isViolationFeeLog(other)
   const isRefund = props.log.type === 6
@@ -678,6 +604,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const useChannel = other?.admin_info?.use_channel
   const channelChain =
     useChannel && useChannel.length > 0 ? useChannel.join(' → ') : undefined
+  let reasoningEffortVariant: StatusBadgeProps['variant'] = 'green'
+  if (other?.reasoning_effort === 'high') {
+    reasoningEffortVariant = 'orange'
+  } else if (other?.reasoning_effort === 'medium') {
+    reasoningEffortVariant = 'yellow'
+  }
 
   return (
     <Dialog
@@ -686,9 +618,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
       title={
         <>
           {t('Log Details')}
-          <StatusBadge variant={typeConfig.variant} size='sm'>
-            {t(typeConfig.label)}
-          </StatusBadge>
+          <StatusBadge
+            label={t(typeConfig.label)}
+            variant={typeConfig.color as StatusBadgeProps['variant']}
+            size='sm'
+            copyable={false}
+          />
         </>
       }
       description={t('View the complete details for this log entry')}
@@ -760,10 +695,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
               label={t('IP Address')}
               value={
                 <span className='flex items-center gap-1'>
-                  <Globe
-                    className='text-muted-foreground size-3'
-                    aria-hidden='true'
-                  />
+                  <Globe className='size-3 text-amber-500' aria-hidden='true' />
                   {props.log.ip}
                 </span>
               }
@@ -775,25 +707,32 @@ export function DetailsDialog(props: DetailsDialogProps) {
             <DetailRow
               label={t('Response Time')}
               value={
-                <span className='flex flex-wrap items-center gap-1'>
-                  <StatusBadge
-                    appearance='plain'
-                    variant={getResponseTimeColor(
-                      props.log.use_time,
-                      props.log.completion_tokens
-                    )}
-                  >
-                    {formatUseTime(props.log.use_time)}
-                  </StatusBadge>
+                <span
+                  className={cn(
+                    'font-medium',
+                    timingTextColorClass(
+                      getResponseTimeColor(
+                        props.log.use_time,
+                        props.log.completion_tokens
+                      )
+                    )
+                  )}
+                >
+                  {formatUseTime(props.log.use_time)}
                   {props.log.is_stream &&
                     other?.frt != null &&
                     other.frt > 0 && (
-                      <StatusBadge
-                        appearance='plain'
-                        variant={getFirstResponseTimeColor(other.frt / 1000)}
+                      <span
+                        className={cn(
+                          'font-normal',
+                          timingTextColorClass(
+                            getFirstResponseTimeColor(other.frt / 1000)
+                          )
+                        )}
                       >
-                        {`(FRT: ${formatUseTime(other.frt / 1000)})`}
-                      </StatusBadge>
+                        {' '}
+                        (FRT: {formatUseTime(other.frt / 1000)})
+                      </span>
                     )}
                 </span>
               }
@@ -807,14 +746,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
             <div className='relative min-w-0'>
               <Button
                 variant='ghost'
-                size='icon-xs'
-                className='absolute top-0 right-0'
+                size='sm'
+                className='absolute top-0 right-0 h-5 w-5 p-0'
                 onClick={() => copyToClipboard(conversionLabel)}
                 title={t('Copy to clipboard')}
                 aria-label={t('Copy to clipboard')}
               >
                 {copiedText === conversionLabel ? (
-                  <Check className='text-success size-3' />
+                  <Check className='size-3 text-green-600' />
                 ) : (
                   <Copy className='size-3' />
                 )}
@@ -846,7 +785,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
           <DetailSection
             icon={<AlertTriangle className='size-3.5' aria-hidden='true' />}
             label={t('Quota clamped')}
-            variant='destructive'
+            variant='danger'
           >
             <p className='mb-1 text-xs wrap-break-word'>
               {t('Quota saturation protection triggered')}
@@ -881,7 +820,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
           <DetailSection
             icon={<AlertTriangle className='size-3.5' aria-hidden='true' />}
             label={t('Reject Reason')}
-            variant='destructive'
+            variant='danger'
           >
             <p className='text-xs wrap-break-word'>{other.reject_reason}</p>
           </DetailSection>
@@ -892,7 +831,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
           <DetailSection
             icon={<AlertTriangle className='size-3.5' aria-hidden='true' />}
             label={t('Violation Fee')}
-            variant='destructive'
+            variant='danger'
           >
             {other.violation_fee_code && (
               <DetailRow
@@ -931,6 +870,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
         {showTopupAuditSection && (
           <DetailSection
             icon={<ShieldCheck className='size-3.5' aria-hidden='true' />}
+            iconTone='success'
             label={t('Top-up Audit Info')}
           >
             {topupAuditFields.map((field) => (
@@ -942,7 +882,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
               />
             ))}
             {showLegacyTopupWarning && (
-              <div className='text-warning flex items-start gap-1.5 text-xs'>
+              <div className='flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400'>
                 <Info className='mt-0.5 size-3.5 shrink-0' aria-hidden='true' />
                 <span>
                   {t(
@@ -975,6 +915,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
         {showManageAuditSection && (
           <DetailSection
             icon={<ShieldCheck className='size-3.5' aria-hidden='true' />}
+            iconTone='info'
             label={t('Operation Audit Info')}
           >
             {operationText != null && (
@@ -1017,6 +958,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
         {isLogin && loginAuditFields.length > 0 && (
           <DetailSection
             icon={<LogIn className='size-3.5' aria-hidden='true' />}
+            iconTone='info'
             label={t('Login Info')}
           >
             {operationText != null && (
@@ -1037,6 +979,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
         {hasAudioTokens && other && (
           <DetailSection
             icon={<Headphones className='size-3.5' aria-hidden='true' />}
+            iconTone='chart-4'
             label={t('Audio Tokens')}
           >
             {other.audio_input != null && other.audio_input > 0 && (
@@ -1075,9 +1018,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
           <DetailRow
             label={t('Reasoning Effort')}
             value={
-              <StatusBadge variant={reasoningEffortVariant} size='sm'>
-                {other.reasoning_effort}
-              </StatusBadge>
+              <StatusBadge
+                label={other.reasoning_effort}
+                variant={reasoningEffortVariant}
+                size='sm'
+                copyable={false}
+              />
             }
           />
         )}
@@ -1087,9 +1033,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
           <DetailRow
             label={t('System Prompt')}
             value={
-              <StatusBadge variant='warning' size='sm'>
-                {t('Overwritten')}
-              </StatusBadge>
+              <StatusBadge
+                label={t('Overwritten')}
+                variant='orange'
+                size='sm'
+                copyable={false}
+              />
             }
           />
         )}
@@ -1146,9 +1095,9 @@ export function DetailsDialog(props: DetailsDialogProps) {
               value={
                 <span className='flex items-center gap-1'>
                   {isUsageBillingPathLocal(other.admin_info) ? (
-                    <Monitor className='text-muted-foreground size-3' />
+                    <Monitor className='size-3 text-blue-500' />
                   ) : (
-                    <Cloud className='text-muted-foreground size-3' />
+                    <Cloud className='size-3 text-emerald-500' />
                   )}
                   <span className='text-xs'>
                     {getUsageBillingPathLabel(t, other.admin_info)}
@@ -1158,45 +1107,46 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
-        {/* Stream status details (admin only) */}
-        {props.isAdmin &&
-          other?.stream_status &&
-          other.stream_status.status !== 'ok' && (
-            <DetailSection label={t('Stream Status')}>
+        {/* Stream status details */}
+        {other?.stream_status && other.stream_status.status !== 'ok' && (
+          <DetailSection label={t('Stream Status')}>
+            <DetailRow
+              label={t('Status')}
+              value={
+                <StatusBadge
+                  label={other.stream_status.status || t('Error')}
+                  variant='red'
+                  size='sm'
+                  copyable={false}
+                />
+              }
+            />
+            {other.stream_status.end_reason && (
               <DetailRow
-                label={t('Status')}
-                value={
-                  <StatusBadge variant='destructive' size='sm'>
-                    {other.stream_status.status || t('Error')}
-                  </StatusBadge>
-                }
+                label={t('End Reason')}
+                value={other.stream_status.end_reason}
               />
-              {other.stream_status.end_reason && (
-                <DetailRow
-                  label={t('End Reason')}
-                  value={other.stream_status.end_reason}
-                />
+            )}
+            {(other.stream_status.error_count ?? 0) > 0 && (
+              <DetailRow
+                label={t('Soft Errors')}
+                value={String(other.stream_status.error_count)}
+              />
+            )}
+            {other.stream_status.end_error && (
+              <DetailRow
+                label={t('End Error')}
+                value={other.stream_status.end_error}
+              />
+            )}
+            {Array.isArray(other.stream_status.errors) &&
+              other.stream_status.errors.length > 0 && (
+                <pre className='bg-background/60 mt-1 max-h-32 overflow-y-auto rounded border p-2 font-mono text-[11px] leading-relaxed wrap-break-word whitespace-pre-wrap'>
+                  {other.stream_status.errors.join('\n')}
+                </pre>
               )}
-              {(other.stream_status.error_count ?? 0) > 0 && (
-                <DetailRow
-                  label={t('Soft Errors')}
-                  value={String(other.stream_status.error_count)}
-                />
-              )}
-              {other.stream_status.end_error && (
-                <DetailRow
-                  label={t('End Error')}
-                  value={other.stream_status.end_error}
-                />
-              )}
-              {Array.isArray(other.stream_status.errors) &&
-                other.stream_status.errors.length > 0 && (
-                  <pre className='bg-background/60 mt-1 max-h-32 overflow-y-auto rounded border p-2 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap'>
-                    {other.stream_status.errors.join('\n')}
-                  </pre>
-                )}
-            </DetailSection>
-          )}
+          </DetailSection>
+        )}
 
         {/* Subscription billing details */}
         {isSubscription && other && (
@@ -1250,6 +1200,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
         {other?.po && Array.isArray(other.po) && other.po.length > 0 && (
           <DetailSection
             icon={<Settings2 className='size-3.5' aria-hidden='true' />}
+            iconTone='chart-3'
             label={`${t('Param Override')} (${other.po.length})`}
           >
             {other.po.filter(Boolean).map((line) => {
@@ -1257,13 +1208,16 @@ export function DetailsDialog(props: DetailsDialogProps) {
               if (!parsed) return null
               return (
                 <div
-                  key={line}
+                  key={`${parsed.action}-${parsed.content}`}
                   className='bg-background/60 flex min-w-0 flex-col gap-1.5 rounded border p-2 sm:flex-row sm:items-start sm:gap-2'
                 >
-                  <StatusBadge variant='neutral' className='shrink-0'>
-                    {getParamOverrideActionLabel(parsed.action, t)}
-                  </StatusBadge>
-                  <span className='min-w-0 font-mono text-xs leading-relaxed break-all sm:wrap-break-word'>
+                  <StatusBadge
+                    variant='neutral'
+                    label={getParamOverrideActionLabel(parsed.action, t)}
+                    className='shrink-0 font-medium'
+                    copyable={false}
+                  />
+                  <span className='min-w-0 font-mono text-[11px] leading-relaxed break-all sm:wrap-break-word'>
                     {parsed.content}
                   </span>
                 </div>
@@ -1279,14 +1233,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
             <div className='bg-muted/30 relative min-w-0 overflow-hidden rounded-md border p-2.5'>
               <Button
                 variant='ghost'
-                size='icon-xs'
-                className='absolute top-1.5 right-1.5'
+                size='sm'
+                className='absolute top-1.5 right-1.5 h-5 w-5 p-0'
                 onClick={() => copyToClipboard(details)}
                 title={t('Copy to clipboard')}
                 aria-label={t('Copy to clipboard')}
               >
                 {copiedText === details ? (
-                  <Check className='text-success size-3' />
+                  <Check className='size-3 text-green-600' />
                 ) : (
                   <Copy className='size-3' />
                 )}

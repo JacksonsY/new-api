@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -233,13 +232,11 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 func (s *BillingSession) reserveFunding(delta int) error {
 	switch funding := s.funding.(type) {
 	case *WalletFunding:
-		// strict(子账号共享池)：流式中途扩容预留同样走原子 IfEnough，防并发透支。
-		if funding.strict {
-			if err := model.DecreaseUserQuotaIfEnough(funding.userId, delta); err != nil {
-				return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota,
-					http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
-			}
-		} else if err := model.DecreaseUserQuota(funding.userId, delta, false); err != nil {
+		// 与结算补扣（SettleBilling 正差额 → WalletFunding.Settle）语义一致：
+		// 全额无条件扣减，余额不足的部分记为欠费（余额可为负），不中断请求，
+		// 保证日志记录的预扣额度与用户余额的实际变动始终对账一致。
+		// DecreaseUserQuota 仅在数据库错误时失败。
+		if err := model.DecreaseUserQuota(funding.userId, delta, false); err != nil {
 			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		funding.consumed += delta
@@ -291,12 +288,6 @@ func (s *BillingSession) shouldTrust(c *gin.Context) bool {
 	if s.relayInfo.ForcePreConsume {
 		return false
 	}
-
-	// >>> jzlh-sub 子账号共享主号钱包(池),多子号并发命中同一池；禁信任旁路防并发超支。
-	if s.relayInfo.ParentId != 0 {
-		return false
-	}
-	// <<< jzlh-sub
 
 	trustQuota := common.GetTrustQuota()
 	if trustQuota <= 0 {
@@ -410,61 +401,6 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		}
 		return session, nil
 	}
-
-	// >>> jzlh-sub 子账号：强制走主号钱包(共享池),覆盖 BillingPreference,优先级最高。
-	// 付款人=ParentId;先过子号三档额度校验(总/月/日),再查主号钱包余额。
-	trySubAccount := func() (*BillingSession, *types.NewAPIError) {
-		if err := model.CheckSubAccountQuota(relayInfo.UserId, preConsumedQuota); err != nil {
-			var msg string
-			switch {
-			case errors.Is(err, model.ErrSubTotalQuotaExceeded):
-				msg = "子账号总额度已用尽"
-			case errors.Is(err, model.ErrSubMonthQuotaExceeded):
-				msg = "子账号本月额度已用尽"
-			case errors.Is(err, model.ErrSubDayQuotaExceeded):
-				msg = "子账号本日额度已用尽"
-			default:
-				return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
-			}
-			return nil, types.NewErrorWithStatusCode(errors.New(msg), types.ErrorCodeInsufficientUserQuota,
-				http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
-		}
-		// 主号被封禁/注销后子号必须同步止血——否则封禁主号形同虚设，
-		// 子号可继续登录消耗被封主号的钱包(封禁规避)。
-		payerCache, err := model.GetUserCache(relayInfo.ParentId)
-		if err != nil {
-			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
-		}
-		if payerCache.Status != common.UserStatusEnabled {
-			return nil, types.NewErrorWithStatusCode(errors.New("主账号已被禁用，子账号无法继续使用"),
-				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
-				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
-		}
-		payerQuota, err := model.GetUserQuota(relayInfo.ParentId, false)
-		if err != nil {
-			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
-		}
-		if payerQuota <= 0 || payerQuota-preConsumedQuota < 0 {
-			return nil, types.NewErrorWithStatusCode(
-				fmt.Errorf("主账号额度不足, 剩余额度: %s", logger.FormatQuota(payerQuota)),
-				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
-				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
-		}
-		relayInfo.UserQuota = payerQuota
-		session := &BillingSession{
-			relayInfo: relayInfo,
-			// strict：共享池预扣走原子 IfEnough，防并发子号把主号池扣成负(TOCTOU)。
-			funding: &WalletFunding{userId: relayInfo.ParentId, strict: true},
-		}
-		if apiErr := session.preConsume(c, preConsumedQuota); apiErr != nil {
-			return nil, apiErr
-		}
-		return session, nil
-	}
-	if relayInfo.ParentId != 0 {
-		return trySubAccount()
-	}
-	// <<< jzlh-sub
 
 	switch pref {
 	case "subscription_only":
