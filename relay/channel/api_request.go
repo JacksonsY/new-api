@@ -1,7 +1,6 @@
 package channel
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -26,20 +25,26 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// applyUpstreamContentLength populates req.ContentLength when the upstream
-// body is wrapped in a BodyStorage (see relay/common/outbound_body.go).
-//
-// net/http.NewRequest only auto-detects ContentLength for *bytes.Reader,
-// *bytes.Buffer and *strings.Reader. When the body is a type-erased io.Reader
-// (which is the case for ReaderOnly(BodyStorage)), the Content-Length header
-// would otherwise be omitted, forcing chunked transfer encoding and breaking
-// some upstreams that require an explicit Content-Length.
-func applyUpstreamContentLength(req *http.Request, info *common.RelayInfo) {
-	if info == nil {
+// ApplyUpstreamBodyMetadata restores metadata that net/http cannot infer from
+// a ReplayableBody. Callers must pass the original body because NewRequest
+// hides its dynamic type behind req.Body's io.ReadCloser wrapper.
+func ApplyUpstreamBodyMetadata(req *http.Request, body io.Reader) {
+	replayable, ok := body.(common2.ReplayableBody)
+	if !ok {
 		return
 	}
-	if info.UpstreamRequestBodySize > 0 && req.ContentLength <= 0 {
-		req.ContentLength = info.UpstreamRequestBodySize
+
+	// BodyStorage structurally satisfies ReplayableBody, but it also exposes
+	// io.Closer. If a caller passes the storage directly instead of using
+	// NewReplayableBodyReader, hide Close before the transport takes ownership
+	// of req.Body so the shared replay source remains available to GetBody.
+	if _, rawStorage := body.(common2.BodyStorage); rawStorage {
+		req.Body = io.NopCloser(body)
+	}
+
+	req.ContentLength = replayable.Size()
+	if req.GetBody == nil {
+		req.GetBody = replayable.NewReader
 	}
 }
 
@@ -79,13 +84,8 @@ var passthroughSkipHeaderNamesLower = map[string]struct{}{
 	"cookie": {},
 
 	// Additional headers that should not be forwarded by name-matching passthrough rules.
-	"host":           {},
-	"content-length": {},
-	// content-type 描述请求体格式，由各适配器 BuildRequestBody 根据上游协议设定；
-	// 若经 "*"/regex passthrough 透传客户端值，会把"客户端 multipart 提交→上游 JSON"
-	// 的任务适配器(xai/gemini 等)的 application/json 覆盖成 multipart boundary 导致上游 400。
-	// 显式配置的 content-type override 走单独的覆盖循环、不受此跳过影响。
-	"content-type":    {},
+	"host":            {},
+	"content-length":  {},
 	"accept-encoding": {},
 
 	// Do not passthrough credentials by wildcard/regex.
@@ -316,13 +316,11 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	// 绑定客户端请求上下文：客户端断开即取消上游请求（流式读取期间取消同样是期望行为）。
-	// 整体超时由 service.InitHttpClient 的 http.Client.Timeout（RELAY_TIMEOUT）控制，无需再派生 WithTimeout。
-	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
+	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
-	applyUpstreamContentLength(req, info)
+	ApplyUpstreamBodyMetadata(req, requestBody)
 	headers := req.Header
 	err = a.SetupRequestHeader(c, &headers, info)
 	if err != nil {
@@ -348,11 +346,11 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
+	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
-	applyUpstreamContentLength(req, info)
+	ApplyUpstreamBodyMetadata(req, requestBody)
 	// set form data
 	req.Header.Set("Content-Type", c.Request.Header.Get("Content-Type"))
 	headers := req.Header
@@ -482,11 +480,24 @@ func sendPingData(c *gin.Context, mutex *sync.Mutex) error {
 func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	return doRequest(c, req, info)
 }
+
+// keepUpstreamRedirectResponse stops net/http from following redirects while
+// returning the upstream 3xx response to the relay without an extra error.
+func keepUpstreamRedirectResponse(_ *http.Request, _ []*http.Request) error {
+	return http.ErrUseLastResponse
+}
+
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
+	// Clients are cached and shared across channels, so override redirect
+	// behavior on a shallow copy instead of mutating the cached client. This
+	// still reuses its transport and connection pools, including HTTP/2's
+	// transparent stream retries.
+	relayClient := *client
+	relayClient.CheckRedirect = keepUpstreamRedirectResponse
 	if common2.DebugEnabled && req != nil && req.URL != nil {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
 		logger.LogDebug(c, fmt.Sprintf(
@@ -518,10 +529,9 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
-	resp, err := client.Do(req)
+	resp, err := relayClient.Do(req)
 	if err != nil {
-		// url.Error 可能携带完整 URL（含 Vertex API-Key 模式的 key=xxx 查询参数），记日志前脱敏
-		logger.LogError(c, "do request failed: "+common2.MaskSensitiveInfo(err.Error()))
+		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
@@ -553,34 +563,24 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	if err != nil {
 		return nil, err
 	}
-	// 先读出完整 body，保证 GetBody 每次都能返回可重放的新 reader（重定向/重试时不会拿到已消费的 reader）
-	var bodyBytes []byte
-	if requestBody != nil {
-		bodyBytes, err = io.ReadAll(requestBody)
-		if err != nil {
-			return nil, fmt.Errorf("read request body failed: %w", err)
-		}
-	}
-	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
-	applyUpstreamContentLength(req, info)
-	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(bodyBytes)), nil
-	}
+	ApplyUpstreamBodyMetadata(req, requestBody)
+	// Do NOT wrap requestBody in a GetBody closure here: returning the same
+	// (already consumed) reader would make any transport-level retry silently
+	// replay an empty body. http.NewRequest already derives a correct,
+	// snapshot-based GetBody for *bytes.Reader/Buffer/strings.Reader bodies
+	// (which most task adaptors pass in); ApplyUpstreamBodyMetadata wires the
+	// same contract for bodies that explicitly implement ReplayableBody.
+	// Otherwise GetBody stays nil so the transport fails the retry instead of
+	// sending a corrupted request.
 
 	err = a.BuildRequestHeader(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("setup request header failed: %w", err)
 	}
-	// 在 BuildRequestHeader 之后应用 header_override，让渠道自定义头覆盖默认头；
-	// 与 DoApiRequest/DoFormRequest/DoWssRequest 三路行为对齐(此前任务路径漏了)。
-	headerOverride, err := processHeaderOverride(info, c)
-	if err != nil {
-		return nil, err
-	}
-	applyHeaderOverrideToRequest(req, headerOverride)
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
