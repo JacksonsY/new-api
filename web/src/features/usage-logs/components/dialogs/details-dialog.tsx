@@ -70,6 +70,7 @@ import {
   parseAuditLine,
   decodeBillingExprB64,
   getTieredBillingSummary,
+  getUsageTokenParts,
   hasAnyCacheTokens,
   isViolationFeeLog,
   getFirstResponseTimeColor,
@@ -79,6 +80,7 @@ import {
 import {
   getLogTypeConfig,
   isPerCallBilling,
+  isPerSecondTaskBilling,
   isTimingLogType,
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
@@ -95,12 +97,25 @@ const CHANNEL_FIELD_LABELS: Record<string, string> = {
 }
 
 function timingTextColorClass(
-  variant: 'success' | 'warning' | 'danger'
+  variant: 'success' | 'warning' | 'destructive'
 ): string {
   if (variant === 'success') return 'text-emerald-600'
   if (variant === 'warning') return 'text-amber-600'
   return 'text-rose-600'
 }
+
+// Task billing multipliers are persisted in `other.task_ratios`. Keep their
+// labels structured in the details view so per-second video charges and tier
+// multipliers remain auditable instead of being buried in free-form content.
+const TASK_RATIO_LABELS: Record<string, string> = {
+  tier: 'Tier multiplier',
+  seconds: 'Billed seconds',
+  resolution: 'Resolution multiplier',
+  size: 'Size multiplier',
+  video_input: 'Video input multiplier',
+  duration: 'Duration',
+}
+const TASK_RATIO_COUNT_KEYS = new Set(['seconds', 'duration'])
 
 function DetailRow(props: {
   label: React.ReactNode
@@ -223,9 +238,10 @@ function BillingBreakdown(props: {
   const { t } = useTranslation()
   const { log, other, isAdmin } = props
   const isPerCall = isPerCallBilling(other.model_price)
-  const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const tieredSummary = getTieredBillingSummary(other)
+  const taskRatios = other.task_ratios
+  const isPerSecondTask = isPerSecondTaskBilling(taskRatios)
 
   const rows: Array<{ label: string; value: string }> = []
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
@@ -257,10 +273,13 @@ function BillingBreakdown(props: {
       })
     }
   } else if (isPerCall) {
-    rows.push({ label: t('Billing Mode'), value: t('Per-call') })
+    rows.push({
+      label: t('Billing Mode'),
+      value: isPerSecondTask ? t('Per Second') : t('Per-call'),
+    })
     if (other.model_price != null) {
       rows.push({
-        label: t('Model Price'),
+        label: isPerSecondTask ? t('Base price per second') : t('Model Price'),
         value: fmtPrice(other.model_price),
       })
     }
@@ -280,6 +299,18 @@ function BillingBreakdown(props: {
     }
   }
 
+  if (taskRatios) {
+    for (const [key, val] of Object.entries(taskRatios)) {
+      if (typeof val !== 'number' || !Number.isFinite(val)) continue
+      const isCount = TASK_RATIO_COUNT_KEYS.has(key)
+      if (!isCount && val === 1) continue
+      rows.push({
+        label: t(TASK_RATIO_LABELS[key] ?? key),
+        value: isCount ? String(val) : `${parseFloat(val.toFixed(4))}x`,
+      })
+    }
+  }
+
   const userGR = other.user_group_ratio
   const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
   const effectiveGR = isUserGR ? userGR : other.group_ratio
@@ -290,7 +321,7 @@ function BillingBreakdown(props: {
     })
   }
 
-  if (!isTieredExpr && isClaude && hasAnyCacheTokens(other)) {
+  if (!isTieredExpr && hasAnyCacheTokens(other)) {
     if (other.cache_ratio != null && other.cache_ratio !== 1) {
       rows.push({
         label: t('Cache Read'),
@@ -380,6 +411,40 @@ function BillingBreakdown(props: {
     })
   }
 
+  // Original cost is the pre-group-ratio amount. This is the common base for
+  // channel cost reporting and must remain visible even when the ratio is 1.
+  const groupRatioForCost =
+    effectiveGR != null && Number.isFinite(effectiveGR) && effectiveGR > 0
+      ? effectiveGR
+      : 1
+  const rawQuota = log.quota / groupRatioForCost
+  rows.push({
+    label: t('Original Cost'),
+    value: formatLogQuota(Math.round(rawQuota)),
+  })
+
+  if (
+    isAdmin &&
+    typeof log.channel_ratio === 'number' &&
+    log.channel_ratio > 0 &&
+    log.channel_ratio !== 1
+  ) {
+    rows.push({
+      label: t('Channel cost ratio'),
+      value: `${log.channel_ratio}x`,
+    })
+    const snapshotCost =
+      typeof log.channel_quota === 'number' && log.channel_quota !== 0
+        ? log.channel_quota
+        : null
+    rows.push({
+      label: t('Channel Cost'),
+      value: formatLogQuota(
+        snapshotCost ?? Math.round(rawQuota * log.channel_ratio)
+      ),
+    })
+  }
+
   if (isAdmin && other.admin_info) {
     rows.push({
       label: t('Billing Path'),
@@ -407,22 +472,26 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
   const { t } = useTranslation()
   const { log, other } = props
 
-  const promptTokens = log.prompt_tokens || 0
-  const completionTokens = log.completion_tokens || 0
-  const cacheRead = other.cache_tokens || 0
   const cacheWrite = other.cache_creation_tokens || 0
   const cacheWrite5m = other.cache_creation_tokens_5m || 0
   const cacheWrite1h = other.cache_creation_tokens_1h || 0
-  const hasTokens = promptTokens > 0 || completionTokens > 0
+  const hasTokens =
+    (log.prompt_tokens || 0) > 0 || (log.completion_tokens || 0) > 0
 
   if (!hasTokens) return null
 
   const rows: Array<{ label: string; value: string }> = []
 
-  rows.push({ label: t('Input Tokens'), value: promptTokens.toLocaleString() })
+  const {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens: cacheRead,
+  } = getUsageTokenParts(log, other)
+
+  rows.push({ label: t('Input Tokens'), value: inputTokens.toLocaleString() })
   rows.push({
     label: t('Output Tokens'),
-    value: completionTokens.toLocaleString(),
+    value: outputTokens.toLocaleString(),
   })
 
   if (cacheRead > 0) {
@@ -604,11 +673,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const useChannel = other?.admin_info?.use_channel
   const channelChain =
     useChannel && useChannel.length > 0 ? useChannel.join(' → ') : undefined
-  let reasoningEffortVariant: StatusBadgeProps['variant'] = 'green'
+  let reasoningEffortVariant: StatusBadgeProps['variant'] = 'success'
   if (other?.reasoning_effort === 'high') {
-    reasoningEffortVariant = 'orange'
+    reasoningEffortVariant = 'warning'
   } else if (other?.reasoning_effort === 'medium') {
-    reasoningEffortVariant = 'yellow'
+    reasoningEffortVariant = 'info'
   }
 
   return (
@@ -619,11 +688,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
         <>
           {t('Log Details')}
           <StatusBadge
-            label={t(typeConfig.label)}
-            variant={typeConfig.color as StatusBadgeProps['variant']}
+            variant={typeConfig.variant}
             size='sm'
-            copyable={false}
-          />
+          >
+            {t(typeConfig.label)}
+          </StatusBadge>
         </>
       }
       description={t('View the complete details for this log entry')}
@@ -1019,11 +1088,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
             label={t('Reasoning Effort')}
             value={
               <StatusBadge
-                label={other.reasoning_effort}
                 variant={reasoningEffortVariant}
                 size='sm'
-                copyable={false}
-              />
+              >
+                {other.reasoning_effort}
+              </StatusBadge>
             }
           />
         )}
@@ -1034,11 +1103,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
             label={t('System Prompt')}
             value={
               <StatusBadge
-                label={t('Overwritten')}
-                variant='orange'
+                variant='warning'
                 size='sm'
-                copyable={false}
-              />
+              >
+                {t('Overwritten')}
+              </StatusBadge>
             }
           />
         )}
@@ -1114,11 +1183,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
               label={t('Status')}
               value={
                 <StatusBadge
-                  label={other.stream_status.status || t('Error')}
-                  variant='red'
+                  variant='destructive'
                   size='sm'
-                  copyable={false}
-                />
+                >
+                  {other.stream_status.status || t('Error')}
+                </StatusBadge>
               }
             />
             {other.stream_status.end_reason && (
@@ -1213,10 +1282,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 >
                   <StatusBadge
                     variant='neutral'
-                    label={getParamOverrideActionLabel(parsed.action, t)}
                     className='shrink-0 font-medium'
-                    copyable={false}
-                  />
+                  >
+                    {getParamOverrideActionLabel(parsed.action, t)}
+                  </StatusBadge>
                   <span className='min-w-0 font-mono text-[11px] leading-relaxed break-all sm:wrap-break-word'>
                     {parsed.content}
                   </span>

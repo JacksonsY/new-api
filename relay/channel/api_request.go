@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -86,6 +87,7 @@ var passthroughSkipHeaderNamesLower = map[string]struct{}{
 	// Additional headers that should not be forwarded by name-matching passthrough rules.
 	"host":            {},
 	"content-length":  {},
+	"content-type":    {},
 	"accept-encoding": {},
 
 	// Do not passthrough credentials by wildcard/regex.
@@ -316,7 +318,7 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -346,7 +348,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -531,7 +533,9 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := relayClient.Do(req)
 	if err != nil {
-		logger.LogError(c, "do request failed: "+err.Error())
+		// url.Error may include API keys embedded in query parameters (for
+		// example Vertex credentials); never write the raw upstream URL to logs.
+		logger.LogError(c, "do request failed: "+common2.MaskSensitiveInfo(err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
@@ -563,24 +567,40 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+
+	// Most task adaptors already provide a replayable body or one of net/http's
+	// concrete reader types. Preserve those zero-copy paths; materialize an
+	// arbitrary reader once so transport retries never replay a consumed body.
+	requestBodyForHTTP := requestBody
+	if requestBody != nil {
+		switch requestBody.(type) {
+		case common2.ReplayableBody, *bytes.Reader, *bytes.Buffer, *strings.Reader:
+			// NewRequestWithContext/ApplyUpstreamBodyMetadata can derive GetBody.
+		default:
+			bodyBytes, readErr := io.ReadAll(requestBody)
+			if readErr != nil {
+				return nil, fmt.Errorf("read request body failed: %w", readErr)
+			}
+			requestBodyForHTTP = bytes.NewReader(bodyBytes)
+		}
+	}
+	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBodyForHTTP)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
-	ApplyUpstreamBodyMetadata(req, requestBody)
-	// Do NOT wrap requestBody in a GetBody closure here: returning the same
-	// (already consumed) reader would make any transport-level retry silently
-	// replay an empty body. http.NewRequest already derives a correct,
-	// snapshot-based GetBody for *bytes.Reader/Buffer/strings.Reader bodies
-	// (which most task adaptors pass in); ApplyUpstreamBodyMetadata wires the
-	// same contract for bodies that explicitly implement ReplayableBody.
-	// Otherwise GetBody stays nil so the transport fails the retry instead of
-	// sending a corrupted request.
+	ApplyUpstreamBodyMetadata(req, requestBodyForHTTP)
 
 	err = a.BuildRequestHeader(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("setup request header failed: %w", err)
 	}
+	// Task requests use a separate header builder; keep the same override
+	// semantics as chat/form/websocket requests.
+	headerOverride, err := processHeaderOverride(info, c)
+	if err != nil {
+		return nil, err
+	}
+	applyHeaderOverrideToRequest(req, headerOverride)
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)

@@ -123,6 +123,100 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 
+/* 九紫离火 brand utilities. These classes consume the shared theme tokens so
+ * the same identity works in light/dark mode and in the authenticated shell
+ * as well as the landing page. */
+@layer components {
+  .text-gradient-lihuo {
+    background-image: var(--gradient-lihuo);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .brand-loader-logo {
+    animation: brand-loader-breathe 2.2s ease-in-out infinite;
+  }
+
+  .brand-loader-track {
+    width: 132px;
+    height: 3px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--foreground) 10%, transparent);
+    overflow: hidden;
+  }
+
+  .brand-loader-fill {
+    width: 40%;
+    height: 100%;
+    border-radius: 999px;
+    background-image: var(--gradient-lihuo);
+    animation: brand-loader-slide 1.1s ease-in-out infinite alternate;
+  }
+
+  .bg-gradient-lihuo {
+    background-image: var(--gradient-lihuo);
+  }
+
+  .border-gradient-lihuo {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--card), var(--card)) padding-box,
+      var(--gradient-lihuo) border-box;
+  }
+
+  .shadow-glow-violet {
+    box-shadow: var(--glow-violet);
+  }
+
+  .shadow-glow-ember {
+    box-shadow: var(--glow-ember);
+  }
+
+  .btn-cta {
+    background-image: var(--gradient-lihuo);
+    color: #fff;
+    box-shadow: var(--glow-ember);
+  }
+
+  .btn-cta:hover {
+    box-shadow: var(--glow-ember), var(--glow-violet);
+    filter: brightness(1.05);
+  }
+}
+
+@keyframes brand-loader-breathe {
+  0%,
+  100% {
+    filter: drop-shadow(
+      0 0 12px color-mix(in oklab, var(--brand-violet) 35%, transparent)
+    );
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(
+      0 0 26px color-mix(in oklab, var(--brand-ember) 45%, transparent)
+    );
+    transform: scale(1.04);
+  }
+}
+
+@keyframes brand-loader-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-loader-logo,
+  .brand-loader-fill {
+    animation: none !important;
+  }
+}
+
 /* Vercel Geist-style skeleton shimmer */
 .skeleton-shimmer {
   background: linear-gradient(

@@ -170,3 +170,46 @@ func TestConvertToAliRequestWan25I2VKeepsLegacyImgURL(t *testing.T) {
 	require.Contains(t, string(body), `"img_url"`)
 	require.NotContains(t, string(body), `"media"`)
 }
+
+func TestConvertToAliRequestNewFormatModelsPreservesFrameSemantics(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	req := relaycommon.TaskSubmitReq{
+		Model: "happyhorse-1.0-i2v",
+		Images: []string{
+			"https://example.com/first.png",
+			"https://example.com/last.png",
+		},
+	}
+
+	aliReq, err := adaptor.convertToAliRequest(testRelayInfo(), req)
+
+	require.NoError(t, err)
+	require.Equal(t, "1080P", aliReq.Parameters.Resolution)
+	require.Equal(t, []AliVideoMedia{
+		{Type: "first_frame", URL: "https://example.com/first.png"},
+		{Type: "last_frame", URL: "https://example.com/last.png"},
+	}, aliReq.Input.Media)
+}
+
+func TestProcessAliOtherRatiosIncludesWan27AndHappyHorseModels(t *testing.T) {
+	tests := []struct {
+		model string
+		want  float64
+	}{
+		{model: "wan2.7-i2v", want: 1 / 0.6},
+		{model: "happyhorse-1.0-r2v", want: 1.6 / 0.9},
+		{model: "happyhorse-1.1-t2v", want: 1.2 / 0.9},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			ratios, err := ProcessAliOtherRatios(&AliVideoRequest{
+				Model:      tt.model,
+				Parameters: &AliVideoParameters{Resolution: "1080P"},
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, ratios["resolution-1080P"])
+		})
+	}
+}

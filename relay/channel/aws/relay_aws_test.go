@@ -319,6 +319,31 @@ func TestAwsHandlersCancelSdkRequestAndSkipRetry(t *testing.T) {
 	}
 }
 
+func TestHandleNovaRequestRejectsEmptyContent(t *testing.T) {
+	originalRelayTimeout := common.RelayTimeout
+	common.RelayTimeout = 0
+	t.Cleanup(func() { common.RelayTimeout = originalRelayTimeout })
+
+	client := newAwsTestClient(awsHTTPClientFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewReader([]byte(`{"output":{"message":{"content":[]}},"usage":{}}`))),
+			Request:    request,
+		}, nil
+	}))
+
+	adaptor := &Adaptor{AwsClient: client, AwsReq: newAwsInvokeModelInput()}
+	c := newAwsTestContext(httptest.NewRecorder(), context.Background())
+
+	handlerErr, usage := handleNovaRequest(c, newAwsTestRelayInfo(), adaptor)
+
+	require.Error(t, handlerErr)
+	require.Nil(t, usage)
+	assert.Contains(t, handlerErr.Error(), "nova response has empty content")
+}
+
 func TestAwsStreamHandlerUsesFinalUpstreamUsage(t *testing.T) {
 	originalRelayTimeout := common.RelayTimeout
 	common.RelayTimeout = 0

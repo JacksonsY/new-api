@@ -117,7 +117,17 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 			}
 			chatRequest.ExtraBody = extraBody
 		}
-		return a.ConvertOpenAIRequest(c, info, &chatRequest)
+		converted, err := a.ConvertOpenAIRequest(c, info, &chatRequest)
+		if err != nil {
+			return nil, err
+		}
+		// Pattern-detected model variants (for example nano-banana-2) may not
+		// be present in the exact supported-model table used by the converter.
+		// Force IMAGE so an image-generation request cannot silently become text.
+		if geminiReq, ok := converted.(*dto.GeminiChatRequest); ok {
+			geminiReq.GenerationConfig.ResponseModalities = []string{"TEXT", "IMAGE"}
+		}
+		return converted, nil
 	}
 	if !strings.HasPrefix(info.UpstreamModelName, "imagen") {
 		return nil, errors.New("not supported model for image generation, only imagen models are supported")

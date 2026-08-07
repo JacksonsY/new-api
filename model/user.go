@@ -17,7 +17,27 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const UserNameMaxLength = 20
+const (
+	UserNameMaxLength  = 20
+	affCodeLength      = 8
+	affCodeMaxAttempts = 10
+)
+
+var affCodeGenerator = func() string {
+	return common.GetRandomString(affCodeLength)
+}
+
+// >>> jzlh-supplier 供应商身份状态（User.SupplierStatus）。默认 0=非供应商，零回填。
+const (
+	SupplierStatusNone      = 0 // 非供应商
+	SupplierStatusPending   = 1 // 已申请，待管理员审核
+	SupplierStatusApproved  = 2 // 审核通过，可上架渠道
+	SupplierStatusSuspended = 3 // 被停用（风控/违约）
+)
+
+// <<< jzlh-supplier
+
+var ErrInsufficientUserQuota = errors.New("insufficient user quota")
 
 var userSortColumns = map[string]string{
 	"id":            "id",
@@ -77,30 +97,63 @@ func resolveUserSortOptions(sortOptions []UserSortOptions) UserSortOptions {
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int                        `json:"id"`
-	Username         string                     `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password         string                     `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName      string                     `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status           int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string                     `json:"email" gorm:"index" validate:"max=50"`
-	GitHubId         string                     `json:"github_id" gorm:"column:github_id;index"`
-	DiscordId        string                     `json:"discord_id" gorm:"column:discord_id;index"`
-	OidcId           string                     `json:"oidc_id" gorm:"column:oidc_id;index"`
-	WeChatId         string                     `json:"wechat_id" gorm:"column:wechat_id;index"`
-	TelegramId       string                     `json:"telegram_id" gorm:"column:telegram_id;index"`
-	VerificationCode string                     `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
-	AccessToken      *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	Id               int     `json:"id"`
+	Username         string  `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password         string  `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword string  `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName      string  `json:"display_name" gorm:"index" validate:"max=20"`
+	Role             int     `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status           int     `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email            string  `json:"email" gorm:"index" validate:"max=50"`
+	GitHubId         string  `json:"github_id" gorm:"column:github_id;index"`
+	DiscordId        string  `json:"discord_id" gorm:"column:discord_id;index"`
+	OidcId           string  `json:"oidc_id" gorm:"column:oidc_id;index"`
+	WeChatId         string  `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId       string  `json:"telegram_id" gorm:"column:telegram_id;index"`
+	VerificationCode string  `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
+	AccessToken      *string `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	// Quota/UsedQuota deliberately omit type:int so GORM maps MySQL/PostgreSQL
+	// to BIGINT while SQLite remains INTEGER. Billing values must not be
+	// narrowed back to a 32-bit column during an AutoMigrate.
+	Quota           int    `json:"quota" gorm:"default:0"`
+	UsedQuota       int    `json:"used_quota" gorm:"default:0;column:used_quota"` // used quota
+	RequestCount    int    `json:"request_count" gorm:"type:int;default:0;"`      // request number
+	Group           string `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode         string `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount        int    `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota        int    `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota int    `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId       int    `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	// >>> jzlh-agent 代理分销：与全局 role 正交的独立维度
+	AgentType              string  `json:"agent_type" gorm:"type:varchar(16);default:'';column:agent_type"`
+	UsageProfitRate        float64 `json:"usage_profit_rate" gorm:"default:0;column:usage_profit_rate"`
+	AgentApprovedTime      int64   `json:"agent_approved_time" gorm:"bigint;default:0;column:agent_approved_time"`
+	CommissionQuota        int     `json:"commission_quota" gorm:"default:0;column:commission_quota"`
+	CommissionHistoryQuota int     `json:"commission_history_quota" gorm:"default:0;column:commission_history_quota"`
+	RegisterIp             string  `json:"-" gorm:"type:varchar(64);default:'';column:register_ip"`
+	DownstreamCount        int64   `json:"downstream_count,omitempty" gorm:"-"`
+	// <<< jzlh-agent
+	// >>> jzlh-supplier 供应商身份（与 AgentType/Role 正交，同一用户可既是代理又是供应商）
+	SupplierStatus        int    `json:"supplier_status" gorm:"default:0;column:supplier_status"`
+	SupplierPayableQuota  int64  `json:"supplier_payable_quota,omitempty" gorm:"-"`
+	SupplierPayoutMethod  string `json:"supplier_payout_method,omitempty" gorm:"type:varchar(16);default:'';column:supplier_payout_method"`
+	SupplierPayoutAccount string `json:"supplier_payout_account,omitempty" gorm:"type:varchar(128);default:'';column:supplier_payout_account"`
+	SupplierPayoutName    string `json:"supplier_payout_name,omitempty" gorm:"type:varchar(64);default:'';column:supplier_payout_name"`
+	SupplierContact       string `json:"supplier_contact,omitempty" gorm:"type:varchar(128);default:'';column:supplier_contact"`
+	SupplierName          string `json:"supplier_name,omitempty" gorm:"type:varchar(64);default:'';column:supplier_name"`
+	SupplierIntro         string `json:"supplier_intro,omitempty" gorm:"type:varchar(255);default:'';column:supplier_intro"`
+	// <<< jzlh-supplier
+	// >>> jzlh-sub 子账号：与全局 role/AgentType/SupplierStatus 正交的从属维度
+	ParentId int `json:"parent_id" gorm:"type:int;default:0;index"`
+	// Sub-account limits and period usage share the same wide quota storage.
+	TotalQuotaLimit int   `json:"total_quota_limit" gorm:"default:-1;column:total_quota_limit"`
+	MonthQuotaLimit int   `json:"month_quota_limit" gorm:"default:-1;column:month_quota_limit"`
+	DayQuotaLimit   int   `json:"day_quota_limit" gorm:"default:-1;column:day_quota_limit"`
+	MonthUsedQuota  int   `json:"month_used_quota" gorm:"default:0;column:month_used_quota"`
+	DayUsedQuota    int   `json:"day_used_quota" gorm:"default:0;column:day_used_quota"`
+	MonthAnchor     int64 `json:"month_anchor" gorm:"bigint;default:0;column:month_anchor"`
+	DayAnchor       int64 `json:"day_anchor" gorm:"bigint;default:0;column:day_anchor"`
+	// <<< jzlh-sub
 	DeletedAt        gorm.DeletedAt             `gorm:"index"`
 	LinuxDOId        string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting          string                     `json:"setting" gorm:"type:text;column:setting"`
@@ -124,6 +177,7 @@ func (user *User) ToBaseUser() *UserBase {
 		Email:       user.Email,
 		AuthVersion: user.AuthVersion,
 		CacheSchema: userCacheSchemaVersion,
+		ParentId:    user.ParentId,
 	}
 	return cache
 }
@@ -486,7 +540,82 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 	}
 	var user User
 	err := DB.Select("id").First(&user, "aff_code = ?", affCode).Error
-	return user.Id, err
+	if err != nil {
+		return 0, err
+	}
+	blocked, err := IsInviteCodeBlocked(user.Id)
+	if err != nil {
+		return 0, err
+	}
+	if blocked {
+		return 0, errors.New("aff code blocked by risk control")
+	}
+	return user.Id, nil
+}
+
+func generateAvailableAffCode(db *gorm.DB) (string, error) {
+	for range affCodeMaxAttempts {
+		affCode := affCodeGenerator()
+		if affCode == "" {
+			continue
+		}
+
+		var existing User
+		result := db.Unscoped().
+			Select("id").
+			Where("aff_code = ?", affCode).
+			Limit(1).
+			Find(&existing)
+		if result.Error != nil {
+			return "", result.Error
+		}
+		if result.RowsAffected == 0 {
+			return affCode, nil
+		}
+	}
+
+	return "", errors.New("failed to find an available affiliate code")
+}
+
+// PrepareAffCode selects a currently unused code before a write transaction
+// starts. The unique index remains the final guard for a concurrent collision.
+func (user *User) PrepareAffCode() error {
+	affCode, err := generateAvailableAffCode(DB)
+	if err != nil {
+		return err
+	}
+	user.AffCode = affCode
+	return nil
+}
+
+// EnsureAffCode assigns a code to a legacy user that does not already have one.
+func (user *User) EnsureAffCode() error {
+	if user.AffCode != "" {
+		return nil
+	}
+
+	affCode, err := generateAvailableAffCode(DB)
+	if err != nil {
+		return err
+	}
+
+	result := DB.Model(&User{}).
+		Where("id = ? AND (aff_code = ? OR aff_code IS NULL)", user.Id, "").
+		Update("aff_code", affCode)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		user.AffCode = affCode
+		return nil
+	}
+
+	var current User
+	if err := DB.Select("aff_code").First(&current, user.Id).Error; err != nil {
+		return err
+	}
+	user.AffCode = current.AffCode
+	return nil
 }
 
 func DeleteUserById(id int) (err error) {
@@ -554,7 +683,19 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	}
 
 	// 提交事务
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	// Billing pre-checks prefer the Redis quota cache. Keep it in sync only
+	// after the durable transfer commits, otherwise a failed transaction could
+	// make the cache claim that funds were added.
+	userId := user.Id
+	gopool.Go(func() {
+		if err := cacheIncrUserQuota(userId, int64(quota)); err != nil {
+			common.SysLog("failed to sync user quota cache after aff transfer: " + err.Error())
+		}
+	})
+	return nil
 }
 
 func (user *User) prepareForInsert(tx *gorm.DB) error {
@@ -609,13 +750,15 @@ func ensureEmailAvailableWithTx(tx *gorm.DB, email string, excludeUserID int) er
 }
 
 func (user *User) Insert(inviterId int) error {
+	if err := user.PrepareAffCode(); err != nil {
+		return err
+	}
 	if err := DB.Transaction(func(tx *gorm.DB) error {
 		return withNormalizedEmailLock(tx, user.Email, func(tx *gorm.DB) error {
 			if err := user.prepareForInsert(tx); err != nil {
 				return err
 			}
 			user.Quota = common.QuotaForNewUser
-			user.AffCode = common.GetRandomString(4)
 
 			// 初始化用户设置，包括默认的边栏配置
 			if user.Setting == "" {
@@ -679,7 +822,10 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			return err
 		}
 		user.Quota = common.QuotaForNewUser
-		user.AffCode = common.GetRandomString(4)
+		user.InviterId = inviterId
+		if user.AffCode == "" {
+			return errors.New("affiliate code is not prepared")
+		}
 
 		// 初始化用户设置
 		if user.Setting == "" {
@@ -1262,17 +1408,19 @@ func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	gopool.Go(func() {
-		err := cacheIncrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to increase user quota: " + err.Error())
-		}
-	})
+	if quota == 0 {
+		return nil
+	}
 	if !db && common.BatchUpdateEnabled {
+		updateUserQuotaCacheAsync(id, int64(quota))
 		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
 		return nil
 	}
-	return increaseUserQuota(id, quota)
+	if err := increaseUserQuota(id, quota); err != nil {
+		return err
+	}
+	updateUserQuotaCacheAsync(id, int64(quota))
+	return nil
 }
 
 func increaseUserQuota(id int, quota int) (err error) {
@@ -1287,17 +1435,53 @@ func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	gopool.Go(func() {
-		err := cacheDecrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to decrease user quota: " + err.Error())
-		}
-	})
+	if quota == 0 {
+		return nil
+	}
 	if !db && common.BatchUpdateEnabled {
+		updateUserQuotaCacheAsync(id, -int64(quota))
 		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
 		return nil
 	}
-	return decreaseUserQuota(id, quota)
+	if err := decreaseUserQuota(id, quota); err != nil {
+		return err
+	}
+	updateUserQuotaCacheAsync(id, -int64(quota))
+	return nil
+}
+
+// DecreaseUserQuotaIfEnough atomically reserves quota and rejects an overdraft.
+// Billing paths use this direct database update even when batch updates are
+// enabled so concurrent requests cannot reserve the same balance twice.
+func DecreaseUserQuotaIfEnough(id int, quota int) error {
+	if quota < 0 {
+		return errors.New("quota 不能为负数！")
+	}
+	if quota == 0 {
+		return nil
+	}
+	result := DB.Model(&User{}).
+		Where("id = ? AND quota >= ?", id, quota).
+		Update("quota", gorm.Expr("quota - ?", quota))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("%w: user=%d required=%d", ErrInsufficientUserQuota, id, quota)
+	}
+	updateUserQuotaCacheAsync(id, -int64(quota))
+	return nil
+}
+
+func updateUserQuotaCacheAsync(id int, delta int64) {
+	if !common.RedisEnabled || delta == 0 {
+		return
+	}
+	gopool.Go(func() {
+		if err := cacheIncrUserQuota(id, delta); err != nil {
+			common.SysLog("failed to update user quota cache: " + err.Error())
+		}
+	})
 }
 
 func decreaseUserQuota(id int, quota int) (err error) {
@@ -1362,18 +1546,50 @@ func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
 	//}
 }
 
+// DecreaseUserUsedQuota rolls back consumed quota without allowing the
+// persisted counter to become negative after a duplicate refund.
+func DecreaseUserUsedQuota(id int, quota int) {
+	if id <= 0 || quota <= 0 {
+		return
+	}
+	if common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeUsedQuota, id, -quota)
+		return
+	}
+	if err := DB.Model(&User{}).Where("id = ?", id).Update(
+		"used_quota",
+		gorm.Expr("CASE WHEN used_quota < ? THEN 0 ELSE used_quota - ? END", quota, quota),
+	).Error; err != nil {
+		common.SysLog("failed to decrease user used quota: " + err.Error())
+	}
+}
+
 func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int) {
 	if quota == 0 && usedQuota == 0 && requestCount == 0 {
 		return
 	}
 
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
-		map[string]interface{}{
-			"quota":         gorm.Expr("quota + ?", quota),
-			"used_quota":    gorm.Expr("used_quota + ?", usedQuota),
-			"request_count": gorm.Expr("request_count + ?", requestCount),
-		},
-	).Error
+	updates := map[string]interface{}{}
+	if quota != 0 {
+		updates["quota"] = gorm.Expr("quota + ?", quota)
+	}
+	if usedQuota > 0 {
+		updates["used_quota"] = gorm.Expr("used_quota + ?", usedQuota)
+	} else if usedQuota < 0 {
+		// Refunds are idempotent. Clamp at zero so a duplicate or delayed
+		// settlement cannot turn the usage counter negative.
+		refund := -usedQuota
+		updates["used_quota"] = gorm.Expr(
+			"CASE WHEN used_quota < ? THEN 0 ELSE used_quota - ? END",
+			refund,
+			refund,
+		)
+	}
+	if requestCount != 0 {
+		updates["request_count"] = gorm.Expr("request_count + ?", requestCount)
+	}
+
+	err := DB.Model(&User{}).Where("id = ?", id).Updates(updates).Error
 	if err != nil {
 		common.SysLog("failed to batch update user quota, used quota and request count: " + err.Error())
 	}

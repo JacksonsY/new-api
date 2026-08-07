@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -232,11 +233,15 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 func (s *BillingSession) reserveFunding(delta int) error {
 	switch funding := s.funding.(type) {
 	case *WalletFunding:
-		// 与结算补扣（SettleBilling 正差额 → WalletFunding.Settle）语义一致：
-		// 全额无条件扣减，余额不足的部分记为欠费（余额可为负），不中断请求，
-		// 保证日志记录的预扣额度与用户余额的实际变动始终对账一致。
-		// DecreaseUserQuota 仅在数据库错误时失败。
-		if err := model.DecreaseUserQuota(funding.userId, delta, false); err != nil {
+		// Shared sub-account wallets must reserve atomically even when a stream
+		// expands its estimate. A stale balance check followed by an unconditional
+		// decrement would let concurrent child requests overdraw the parent pool.
+		if funding.strict {
+			if err := model.DecreaseUserQuotaIfEnough(funding.userId, delta); err != nil {
+				return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota,
+					http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+			}
+		} else if err := model.DecreaseUserQuota(funding.userId, delta, false); err != nil {
 			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		funding.consumed += delta
@@ -286,6 +291,13 @@ func (s *BillingSession) reserveToken(delta int) error {
 func (s *BillingSession) shouldTrust(c *gin.Context) bool {
 	// 异步任务（ForcePreConsume=true）必须预扣全额，不允许信任旁路
 	if s.relayInfo.ForcePreConsume {
+		return false
+	}
+
+	// Child accounts share the parent wallet. Never bypass pre-consumption for
+	// them: trust-quota mode would otherwise allow several children to spend the
+	// same parent balance concurrently without an atomic reservation.
+	if s.relayInfo.ParentId != 0 {
 		return false
 	}
 
@@ -400,6 +412,66 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 			return nil, apiErr
 		}
 		return session, nil
+	}
+
+	// 子账号强制使用主账号共享钱包，并在预扣前校验子账号的总/月/日额度。
+	// 付款人和请求归属分离：钱包扣主号，日志仍记录子号。
+	trySubAccount := func() (*BillingSession, *types.NewAPIError) {
+		if err := model.CheckSubAccountQuota(relayInfo.UserId, preConsumedQuota); err != nil {
+			var msg string
+			switch {
+			case errors.Is(err, model.ErrSubTotalQuotaExceeded):
+				msg = "子账号总额度已用尽"
+			case errors.Is(err, model.ErrSubMonthQuotaExceeded):
+				msg = "子账号本月额度已用尽"
+			case errors.Is(err, model.ErrSubDayQuotaExceeded):
+				msg = "子账号本日额度已用尽"
+			default:
+				return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+			}
+			return nil, types.NewErrorWithStatusCode(
+				errors.New(msg), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog(),
+			)
+		}
+
+		payerCache, err := model.GetUserCache(relayInfo.ParentId)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		if payerCache.Status != common.UserStatusEnabled {
+			return nil, types.NewErrorWithStatusCode(
+				errors.New("主账号已被禁用，子账号无法继续使用"),
+				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog(),
+			)
+		}
+
+		payerQuota, err := model.GetUserQuota(relayInfo.ParentId, false)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		if payerQuota <= 0 || payerQuota-preConsumedQuota < 0 {
+			return nil, types.NewErrorWithStatusCode(
+				fmt.Errorf("主账号额度不足, 剩余额度: %s", logger.FormatQuota(payerQuota)),
+				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog(),
+			)
+		}
+
+		relayInfo.UserQuota = payerQuota
+		session := &BillingSession{
+			relayInfo: relayInfo,
+			funding:   &WalletFunding{userId: relayInfo.ParentId, strict: true},
+		}
+		if apiErr := session.preConsume(c, preConsumedQuota); apiErr != nil {
+			return nil, apiErr
+		}
+		return session, nil
+	}
+
+	if relayInfo.ParentId != 0 {
+		return trySubAccount()
 	}
 
 	switch pref {

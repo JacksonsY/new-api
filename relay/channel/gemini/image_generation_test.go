@@ -3,7 +3,10 @@ package gemini
 import (
 	"testing"
 
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/gin-gonic/gin"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -104,4 +107,26 @@ func TestGeminiImageAspectRatio(t *testing.T) {
 	for _, tc := range cases {
 		assert.Equal(t, tc.want, geminiImageAspectRatio(tc.size), "size=%q", tc.size)
 	}
+}
+
+func TestConvertImageRequestForcesImageModalityForPatternVariant(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		RelayMode:       relayconstant.RelayModeImagesGenerations,
+		OriginModelName: "nano-banana-2",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "nano-banana-2",
+		},
+	}
+
+	converted, err := (&Adaptor{}).ConvertImageRequest(c, info, dto.ImageRequest{
+		Model:  "nano-banana-2",
+		Prompt: "draw a sunrise",
+	})
+
+	require.NoError(t, err)
+	geminiRequest, ok := converted.(*dto.GeminiChatRequest)
+	require.True(t, ok)
+	assert.Equal(t, []string{"TEXT", "IMAGE"}, geminiRequest.GenerationConfig.ResponseModalities)
 }

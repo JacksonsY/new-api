@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
 
@@ -57,22 +58,41 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 }
 
 type Log struct {
-	Id                int    `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
-	UserId            int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
-	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type"`
-	Type              int    `json:"type" gorm:"index:idx_created_at_type"`
-	Content           string `json:"content"`
-	Username          string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
-	TokenName         string `json:"token_name" gorm:"index;default:''"`
-	ModelName         string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
-	Quota             int    `json:"quota" gorm:"default:0"`
-	PromptTokens      int    `json:"prompt_tokens" gorm:"default:0"`
-	CompletionTokens  int    `json:"completion_tokens" gorm:"default:0"`
-	UseTime           int    `json:"use_time" gorm:"default:0"`
-	IsStream          bool   `json:"is_stream"`
-	ChannelId         int    `json:"channel" gorm:"index"`
-	ChannelName       string `json:"channel_name" gorm:"->"`
+	Id     int `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
+	UserId int `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
+	// idx_logs_channel_usage (type, channel_id, created_at, quota)：渠道消耗聚合的
+	// 覆盖索引（蓝图A 余额告警/剩余天数估算）。type+channel_id 等值定位、
+	// created_at 范围扫、quota 免回表；不建则两个聚合在大表上全表扫。
+	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type;index:idx_logs_channel_usage,priority:3"`
+	Type             int    `json:"type" gorm:"index:idx_created_at_type;index:idx_logs_channel_usage,priority:1"`
+	Content          string `json:"content"`
+	Username         string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
+	TokenName        string `json:"token_name" gorm:"index;default:''"`
+	ModelName        string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
+	Quota            int    `json:"quota" gorm:"default:0;index:idx_logs_channel_usage,priority:4"`
+	PromptTokens     int    `json:"prompt_tokens" gorm:"default:0"`
+	CompletionTokens int    `json:"completion_tokens" gorm:"default:0"`
+	UseTime          int    `json:"use_time" gorm:"default:0"`
+	IsStream         bool   `json:"is_stream"`
+	ChannelId        int    `json:"channel" gorm:"index;index:idx_logs_channel_usage,priority:2"`
+	ChannelName      string `json:"channel_name" gorm:"->"`
+	// ChannelRatio 渠道计费倍率快照：仅供管理员维度的渠道成本统计，不影响用户扣费。
+	// 默认在写入时显式赋值（GetChannelRatio 兜底），不用 gorm default 标签。
+	// omitempty：用户侧路径经 formatUserLogs 清零后，该字段整个不出现在响应里
+	// ——成本倍率是经营机密，普通用户连字段名都不该看到。
+	ChannelRatio    float64 `json:"channel_ratio,omitempty"`
+	ChannelRatioSet bool    `json:"-"`
+	// ChannelQuota 渠道成本快照：原始费用（实付 ÷ 生效分组倍率）× 渠道倍率，
+	// QuotaRound 后落库。物化是必须的——分组倍率埋在 other JSON 里，渠道支出
+	// SQL 聚合取不到。旧行为 0/NULL 时聚合回退 quota×channel_ratio 旧口径。
+	// 同为管理员维度信息：formatUserLogs 对普通用户清零，omitempty 隐藏字段名。
+	ChannelQuota int `json:"channel_quota,omitempty" gorm:"default:0"`
+	// SupplierId 渠道所属供应商快照（写日志时从渠道 owner 取，0=平台自营）。
+	// 供应商结算按此聚合；快照语义使渠道日后转手历史收益仍归原供应商。
+	// 同为管理员维度：formatUserLogs 对普通用户清零，omitempty 隐藏字段名。
+	SupplierId        int    `json:"supplier_id,omitempty" gorm:"default:0;index"`
 	TokenId           int    `json:"token_id" gorm:"default:0;index"`
+	ParentId          int    `json:"parent_id" gorm:"type:int;default:0;index"` // >>> jzlh-sub 子账号消费聚合 + 分润排除判据（0=非子号）
 	Group             string `json:"group" gorm:"index"`
 	Ip                string `json:"ip" gorm:"index;default:''"`
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
@@ -116,6 +136,10 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
+		// 渠道计费倍率/成本快照属于管理员维度信息，对普通用户隐藏
+		logs[i].ChannelRatio = 0
+		logs[i].ChannelQuota = 0
+		logs[i].SupplierId = 0
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
 		if otherMap != nil {
@@ -124,7 +148,10 @@ func formatUserLogs(logs []*Log, startIdx int) {
 			// Remove operation-audit details (operator/route info), admin-only.
 			delete(otherMap, "audit_info")
 			// delete(otherMap, "reject_reason")
-			// delete(otherMap, "stream_status")
+			// Keep stream_status visible to log owners; it is not admin-only.
+			// 上游真实模型名属于供应链信息，普通用户不可见（管理员日志视图保留）
+			delete(otherMap, "upstream_model_name")
+			delete(otherMap, "is_model_mapped")
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 	}
@@ -326,21 +353,86 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 }
 
 type RecordConsumeLogParams struct {
-	ChannelId        int                    `json:"channel_id"`
-	PromptTokens     int                    `json:"prompt_tokens"`
-	CompletionTokens int                    `json:"completion_tokens"`
-	ModelName        string                 `json:"model_name"`
-	TokenName        string                 `json:"token_name"`
-	Quota            int                    `json:"quota"`
-	Content          string                 `json:"content"`
-	TokenId          int                    `json:"token_id"`
-	UseTimeSeconds   int                    `json:"use_time_seconds"`
-	IsStream         bool                   `json:"is_stream"`
-	Group            string                 `json:"group"`
-	Other            map[string]interface{} `json:"other"`
+	ChannelId        int `json:"channel_id"`
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	// TotalTokens 用于汇总统计(quota_data.token_used)。Anthropic 语义下
+	// PromptTokens 不含缓存 token，需把 cache_read/cache_creation 加回后写入此处，
+	// 避免数据看板总 TOKEN 数漏算缓存；OpenAI 语义下与 Prompt+Completion 相同。
+	// 缺省 0 时 RecordConsumeLog 回退 Prompt+Completion，保持旧调用点兼容。
+	TotalTokens    int                    `json:"total_tokens"`
+	ModelName      string                 `json:"model_name"`
+	TokenName      string                 `json:"token_name"`
+	Quota          int                    `json:"quota"`
+	Content        string                 `json:"content"`
+	TokenId        int                    `json:"token_id"`
+	UseTimeSeconds int                    `json:"use_time_seconds"`
+	IsStream       bool                   `json:"is_stream"`
+	Group          string                 `json:"group"`
+	Other          map[string]interface{} `json:"other"`
+	ParentId       int                    `json:"parent_id"` // >>> jzlh-sub >0=子号消费,归属主号聚合 + 排除代理分润
+
+	// CommissionSourceKey links asynchronous task refunds to the exact initial
+	// commission owner. Empty keeps the request-id source used by sync relays.
+	CommissionSourceKey         string `json:"-"`
+	CommissionSourceKeyRequired bool   `json:"-"`
+}
+
+// groupRatioFromLogOther 从日志 other 取该笔消费生效的分组倍率（用户专属倍率
+// 生效时 group_ratio 已是覆盖后的值）。缺失或非正值按 1 兜底，等价旧口径。
+func groupRatioFromLogOther(other map[string]interface{}) float64 {
+	if ratio, ok := other["group_ratio"].(float64); ok && ratio > 0 {
+		return ratio
+	}
+	return 1
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
+	// >>> jzlh-sub 子账号周期额度（月/日）累加：总档由 used_quota 天然维护，此处只补周期计数。
+	// parent_id>0 才累加；异步不阻塞主链（月/日是软周期上限，非资金硬顶）。
+	if params.ParentId != 0 && params.Quota != 0 {
+		subUserId := userId
+		delta := params.Quota
+		gopool.Go(func() {
+			if err := AddSubAccountPeriodUsage(subUserId, delta); err != nil {
+				common.SysLog(fmt.Sprintf("failed to add sub-account period usage (user=%d delta=%d): %s", subUserId, delta, err.Error()))
+			}
+		})
+	}
+	// <<< jzlh-sub
+	// >>> jzlh-agent 消费分润（异步，不阻塞主链；独立于日志开关）
+	// 幂等键取 request id；必须在 goroutine 外读取，handler 返回后 c 可能被回收。
+	// jzlh-sub: 子号(parent_id>0)消费不计代理分润——钱是主号的（决策 R，与退款冲正对称）。
+	if params.Quota > 0 && params.ParentId == 0 {
+		sourceKey := params.CommissionSourceKey
+		if sourceKey == "" && !params.CommissionSourceKeyRequired {
+			if rid := c.GetString(common.RequestIdKey); rid != "" {
+				sourceKey = "consume:" + rid
+			}
+		}
+		if sourceKey != "" {
+			quota := params.Quota
+			record := func() {
+				RecordAgentCommission(userId, quota, sourceKey)
+			}
+			if params.CommissionSourceKey != "" {
+				// Persist ownership before billing publishes the task to the poller,
+				// so a fast task failure cannot outrun commission creation.
+				record()
+			} else {
+				gopool.Go(record)
+			}
+		} else {
+			// request id 缺失时没有幂等键，无幂等入账可被重放刷佣：跳过分润并留审计日志。
+			missingKey := "request id"
+			if params.CommissionSourceKeyRequired {
+				missingKey = "task source key"
+			}
+			common.SysLog(fmt.Sprintf(
+				"skip agent commission: missing %s (user=%d quota=%d)", missingKey, userId, params.Quota))
+		}
+	}
+	// <<< jzlh-agent
 	if !common.LogConsumeEnabled {
 		return
 	}
@@ -350,6 +442,15 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
 	otherStr := common.MapToJsonStr(params.Other)
+	// 渠道计费倍率 + 渠道成本快照：用于管理员维度的渠道成本统计，与用户扣费无关。
+	// 成本基数为原始费用（实付 ÷ 生效分组倍率），见 channelCostQuota。
+	channelRatio := 1.0
+	supplierId := 0
+	if channel, err := CacheGetChannel(params.ChannelId); err == nil && channel != nil {
+		channelRatio = channel.GetChannelRatio()
+		supplierId = channel.UserId // 供应商结算快照：渠道 owner，0=平台自营
+	}
+	channelQuota := channelCostQuota(params.Quota, groupRatioFromLogOther(params.Other), channelRatio)
 	// 判断是否需要记录 IP
 	needRecordIp := false
 	if settingMap, err := GetUserSetting(userId, false); err == nil {
@@ -359,6 +460,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	}
 	log := &Log{
 		UserId:           userId,
+		ParentId:         params.ParentId, // >>> jzlh-sub 子号消费聚合 + 分润排除
 		Username:         username,
 		CreatedAt:        createdAt,
 		Type:             LogTypeConsume,
@@ -369,6 +471,10 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		ModelName:        params.ModelName,
 		Quota:            params.Quota,
 		ChannelId:        params.ChannelId,
+		ChannelRatio:     channelRatio,
+		ChannelRatioSet:  true,
+		ChannelQuota:     channelQuota,
+		SupplierId:       supplierId,
 		TokenId:          params.TokenId,
 		UseTime:          params.UseTimeSeconds,
 		IsStream:         params.IsStream,
@@ -388,35 +494,78 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		logger.LogError(c, "failed to record log: "+err.Error())
 	}
 	if common.DataExportEnabled {
+		// Anthropic 语义下 PromptTokens 不含缓存，优先用调用方算好的 TotalTokens；
+		// 未提供(<=0)时回退 Prompt+Completion，保持旧调用点兼容。
+		tokenUsed := params.TotalTokens
+		if tokenUsed <= 0 {
+			tokenUsed = params.PromptTokens + params.CompletionTokens
+		}
+		// 渠道维度成本随用量数据一并预聚合进 quota_data，与日志快照同源同口径
 		LogQuotaData(QuotaDataLogParams{
-			UserID:    userId,
-			Username:  username,
-			ModelName: params.ModelName,
-			Quota:     params.Quota,
-			CreatedAt: createdAt,
-			TokenUsed: params.PromptTokens + params.CompletionTokens,
-			UseGroup:  params.Group,
-			TokenID:   params.TokenId,
-			ChannelID: params.ChannelId,
-			NodeName:  common.NodeName,
+			UserID:       userId,
+			Username:     username,
+			ModelName:    params.ModelName,
+			Quota:        params.Quota,
+			ChannelQuota: channelQuota,
+			CreatedAt:    createdAt,
+			TokenUsed:    tokenUsed,
+			UseGroup:     params.Group,
+			TokenID:      params.TokenId,
+			ChannelID:    params.ChannelId,
+			NodeName:     common.NodeName,
 		})
 	}
 }
 
 type RecordTaskBillingLogParams struct {
-	UserId    int
-	LogType   int
-	Content   string
-	ChannelId int
-	ModelName string
-	Quota     int
-	TokenId   int
-	Group     string
-	Other     map[string]interface{}
-	NodeName  string // 任务发起节点；为空时回退当前节点
+	UserId             int
+	LogType            int
+	Content            string
+	ChannelId          int
+	ModelName          string
+	Quota              int
+	TokenId            int
+	Group              string
+	Other              map[string]interface{}
+	NodeName           string // 任务发起节点；为空时回退当前节点
+	CommissionEventKey string // 同一任务内可重放且唯一的计费状态迁移标识
+	ParentId           int    // >>> jzlh-sub >0=子号任务,归属主号聚合 + 排除代理分润
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
+	// >>> jzlh-agent 任务消费分润同步结算，保证正差额先于后续全额退款落库；
+	// 退款(任务失败/差额下调)按原始归属回冲，防"刷失败任务套佣金"。
+	// 幂等键取 task_id；差额结算可用状态迁移键区分额度相同的多次合法记账。
+	// jzlh-sub: 子号(parent_id>0)任务消费/退款均不计代理分润（决策 R，对称）。
+	if params.Quota > 0 && params.ParentId == 0 {
+		taskKey := ""
+		if tid, ok := params.Other["task_id"].(string); ok && tid != "" {
+			eventKey := params.CommissionEventKey
+			if eventKey == "" {
+				eventKey = fmt.Sprintf("%d", params.LogType)
+			}
+			taskKey = BuildTaskCommissionSourceKey(
+				params.ChannelId, tid, eventKey, params.Quota,
+			)
+		}
+		userId, quota := params.UserId, params.Quota
+		if taskKey == "" {
+			// task_id 缺失时没有幂等键，无幂等入账/回冲可被重复触发：跳过并留审计日志。
+			if params.LogType == LogTypeConsume || params.LogType == LogTypeRefund {
+				common.SysLog(fmt.Sprintf(
+					"skip agent commission settle: missing task_id (user=%d type=%d quota=%d)",
+					userId, params.LogType, quota))
+			}
+		} else {
+			switch params.LogType {
+			case LogTypeConsume:
+				RecordAgentCommission(userId, quota, taskKey)
+			case LogTypeRefund:
+				RecordAgentCommissionReversal(userId, quota, taskKey)
+			}
+		}
+	}
+	// <<< jzlh-agent
 	if params.LogType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
@@ -428,19 +577,33 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		}
 	}
 	createdAt := common.GetTimestamp()
+	// 渠道计费倍率快照：用于管理员维度的渠道成本统计，与用户扣费无关。
+	channelRatio := 1.0
+	supplierId := 0
+	if channel, err := CacheGetChannel(params.ChannelId); err == nil && channel != nil {
+		channelRatio = channel.GetChannelRatio()
+		supplierId = channel.UserId // 供应商结算快照：渠道 owner，0=平台自营
+	}
+	// 渠道成本快照：基数为原始费用（实付 ÷ 生效分组倍率），见 channelCostQuota。
+	channelQuota := channelCostQuota(params.Quota, groupRatioFromLogOther(params.Other), channelRatio)
 	log := &Log{
-		UserId:    params.UserId,
-		Username:  username,
-		CreatedAt: createdAt,
-		Type:      params.LogType,
-		Content:   params.Content,
-		TokenName: tokenName,
-		ModelName: params.ModelName,
-		Quota:     params.Quota,
-		ChannelId: params.ChannelId,
-		TokenId:   params.TokenId,
-		Group:     params.Group,
-		Other:     common.MapToJsonStr(params.Other),
+		UserId:          params.UserId,
+		ParentId:        params.ParentId, // >>> jzlh-sub
+		Username:        username,
+		CreatedAt:       createdAt,
+		Type:            params.LogType,
+		Content:         params.Content,
+		TokenName:       tokenName,
+		ModelName:       params.ModelName,
+		Quota:           params.Quota,
+		ChannelId:       params.ChannelId,
+		ChannelRatio:    channelRatio,
+		ChannelRatioSet: true,
+		ChannelQuota:    channelQuota,
+		SupplierId:      supplierId,
+		TokenId:         params.TokenId,
+		Group:           params.Group,
+		Other:           common.MapToJsonStr(params.Other),
 	}
 	err := createLog(log)
 	if err != nil {
@@ -451,16 +614,18 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		if nodeName == "" {
 			nodeName = common.NodeName
 		}
+		// 渠道维度成本随用量数据一并预聚合进 quota_data，与日志快照同源同口径
 		LogQuotaData(QuotaDataLogParams{
-			UserID:    params.UserId,
-			Username:  username,
-			ModelName: params.ModelName,
-			Quota:     params.Quota,
-			CreatedAt: createdAt,
-			UseGroup:  params.Group,
-			TokenID:   params.TokenId,
-			ChannelID: params.ChannelId,
-			NodeName:  nodeName,
+			UserID:       params.UserId,
+			Username:     username,
+			ModelName:    params.ModelName,
+			Quota:        params.Quota,
+			ChannelQuota: channelQuota,
+			CreatedAt:    createdAt,
+			UseGroup:     params.Group,
+			TokenID:      params.TokenId,
+			ChannelID:    params.ChannelId,
+			NodeName:     nodeName,
 		})
 	}
 }
@@ -568,7 +733,6 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	} else {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
-
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
 		return nil, 0, err
 	}
@@ -734,4 +898,111 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 		return 0, result.Error
 	}
 	return result.RowsAffected, nil
+}
+
+// ---- 蓝图A 渠道消耗聚合（余额告警 / 剩余天数估算，参考 feitianbubu）----
+
+type ChannelRecentUsage struct {
+	Quota      int64 `json:"quota"`
+	ActiveDays int   `json:"active_days"`
+}
+
+// 剩余天数估算的共享窗口（渠道列表与余额告警同一口径）。
+const (
+	ChannelRecentUsageActiveDays   = 7
+	ChannelRecentUsageLookbackDays = 90 // 聚合最多回看的天数，防无界扫描
+)
+
+func channelQuotaSnapshotSQL() string {
+	ratioExpr := fmt.Sprintf(
+		"CASE WHEN channel_ratio_set AND channel_ratio >= 0 AND channel_ratio <= %.0f THEN channel_ratio WHEN channel_ratio > 0 AND channel_ratio <= %.0f THEN channel_ratio ELSE 1 END",
+		MaxChannelRatio,
+		MaxChannelRatio,
+	)
+	productExpr := "quota * (" + ratioExpr + ")"
+	// ROUND on approximate numeric types differs at .5 across supported engines
+	// (notably PostgreSQL may use ties-to-even). FLOOR-based branches implement
+	// the half-away-from-zero rule used by common.QuotaRound everywhere.
+	roundedExpr := "CASE WHEN " + productExpr + " >= 0 THEN FLOOR(" + productExpr + " + 0.5) ELSE -FLOOR(-(" + productExpr + ") + 0.5) END"
+	legacyExpr := fmt.Sprintf(
+		"CASE WHEN %s >= %d THEN %d WHEN %s <= %d THEN %d ELSE %s END",
+		roundedExpr, common.MaxQuota, common.MaxQuota,
+		roundedExpr, common.MinQuota, common.MinQuota,
+		roundedExpr,
+	)
+	// 新行写入时已把 原始费用（实付÷生效分组倍率）×渠道倍率 物化进 channel_quota
+	// （分组倍率埋在 other JSON 里，SQL 取不到，只能物化）。加列前的旧行该列为
+	// 0/NULL，回退上面 quota×channel_ratio 的旧口径表达式；真 0 成本行（quota=0
+	// 或显式 0 倍率）回退结果同为 0，两分支无歧义。
+	return "CASE WHEN channel_quota <> 0 THEN channel_quota ELSE " + legacyExpr + " END"
+}
+
+// GetChannelsRecentUsage 返回每个渠道"最近 maxActiveDays 个有消费的 UTC 日"的
+// 消耗额度总和（回看不早于 since）。按活跃日而非自然日取平均，低频渠道不会被
+// 大量零消费日稀释成"永不耗尽"。
+func GetChannelsRecentUsage(channelIds []int, since int64, maxActiveDays int) (map[int]ChannelRecentUsage, error) {
+	usageMap := make(map[int]ChannelRecentUsage)
+	if len(channelIds) == 0 || maxActiveDays <= 0 {
+		return usageMap, nil
+	}
+	var rows []struct {
+		ChannelId int
+		Day       int64
+		Quota     int64
+	}
+	// 整数取模做日桶（created_at - created_at % 86400）：MySQL/PostgreSQL/SQLite
+	// 行为一致（"/" 在 MySQL 上是小数除法，不可用）。
+	// Each consume log snapshots the ratio used when it was charged. Sum the
+	// per-row rounded values so later configuration changes do not rewrite
+	// historical channel cost. Invalid legacy values fall back to 1.0; zero is a
+	// valid explicit zero-cost ratio.
+	err := LOG_DB.Table("logs").
+		Select("channel_id, created_at - created_at % 86400 as day, sum("+channelQuotaSnapshotSQL()+") as quota").
+		Where("type = ?", LogTypeConsume).
+		Where("created_at >= ?", since).
+		Where("channel_id IN ?", channelIds).
+		Group("channel_id, day").
+		Order("day desc").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	// 行按日期倒序返回，每个渠道的前 maxActiveDays 行恰好是其最近的活跃日
+	for _, row := range rows {
+		usage := usageMap[row.ChannelId]
+		if usage.ActiveDays >= maxActiveDays {
+			continue
+		}
+		usage.ActiveDays++
+		usage.Quota += row.Quota
+		usageMap[row.ChannelId] = usage
+	}
+	return usageMap, nil
+}
+
+// GetChannelsQuotaSince 返回每个渠道自 since 起（滑动窗口，不按日分桶）的消耗
+// 额度总和。窗口内无消费的渠道不在 map 里。
+func GetChannelsQuotaSince(channelIds []int, since int64) (map[int]int64, error) {
+	result := make(map[int]int64)
+	if len(channelIds) == 0 {
+		return result, nil
+	}
+	var rows []struct {
+		ChannelId int
+		Quota     int64
+	}
+	err := LOG_DB.Table("logs").
+		Select("channel_id, sum("+channelQuotaSnapshotSQL()+") as quota").
+		Where("type = ?", LogTypeConsume).
+		Where("created_at >= ?", since).
+		Where("channel_id IN ?", channelIds).
+		Group("channel_id").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.ChannelId] = row.Quota
+	}
+	return result, nil
 }

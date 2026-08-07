@@ -121,11 +121,11 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         if (!statusConfig) return null
         return (
           <StatusBadge
-            label={t(statusConfig.label)}
             variant={statusConfig.variant}
-            copyable={false}
             className='-ml-1.5'
-          />
+          >
+            {t(statusConfig.label)}
+          </StatusBadge>
         )
       },
       filterFn: (row, id, value) => value.includes(String(row.getValue(id))),
@@ -270,11 +270,11 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         if (expiredTime === -1) {
           return (
             <StatusBadge
-              label={t('Never')}
               variant='neutral'
-              copyable={false}
               className='-ml-1.5'
-            />
+            >
+              {t('Never')}
+            </StatusBadge>
           )
         }
         const isExpired = expiredTime * 1000 < now

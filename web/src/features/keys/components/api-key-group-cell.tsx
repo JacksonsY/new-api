@@ -67,10 +67,10 @@ export function ApiKeyGroupCell(props: ApiKeyGroupCellProps) {
         }
       >
         <StatusBadge
-          label={t('Cross-group')}
           variant='info'
-          copyable={false}
-        />
+        >
+          {t('Cross-group')}
+        </StatusBadge>
         {/*<AutoGroupBadge shouldReduceMotion={props.shouldReduceMotion} />*/}
         <GroupRatioBadge
           ratio={props.ratio}

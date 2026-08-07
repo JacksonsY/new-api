@@ -38,6 +38,8 @@ func SetApiRouter(router *gin.Engine) {
 			perfMetricsRoute.GET("/summary", controller.GetPerfMetricsSummary)
 			perfMetricsRoute.GET("", controller.GetPerfMetrics)
 		}
+		apiRouter.GET("/channel_health", middleware.AdminAuth(), controller.GetChannelHealth)
+		apiRouter.DELETE("/channel_health", middleware.AdminAuth(), controller.ResetChannelHealth)
 		apiRouter.GET("/rankings", middleware.HeaderNavModuleAuth("rankings"), controller.GetRankings)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
@@ -65,6 +67,32 @@ func SetApiRouter(router *gin.Engine) {
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.UniversalVerify)
 
+		// Veridrop detector routes. Public probing remains rate-limited and the
+		// detector itself enforces SSRF protections; channel records/rechecks are
+		// administrator-only because they expose operational data.
+		detectorRoute := apiRouter.Group("/detector")
+		{
+			detectorRoute.POST("/detect", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.DetectPublic)
+			detectorRoute.GET("/status/:jobId", middleware.GlobalWebRateLimit(), controller.DetectStatus)
+			detectorRoute.GET("/leaderboard", controller.DetectorLeaderboard)
+			detectorRoute.POST("/channel/:id", middleware.AdminAuth(), controller.DetectChannel)
+			detectorRoute.GET("/channel/:id/latest", middleware.AdminAuth(), controller.ChannelLatestDetection)
+			detectorRoute.GET("/records", middleware.AdminAuth(), controller.DetectorRecords)
+			detectorRoute.POST("/recheck", middleware.AdminAuth(), controller.AdminRecheckSupplierChannels)
+		}
+
+		// Sub-account management is authenticated here; handlers perform the
+		// owner/team-management checks for the specific operation.
+		subAccountRoute := apiRouter.Group("/sub-account")
+		subAccountRoute.Use(middleware.UserAuth())
+		{
+			subAccountRoute.GET("", controller.ListSubAccounts)
+			subAccountRoute.POST("", middleware.CriticalRateLimit(), controller.CreateSubAccounts)
+			subAccountRoute.PUT("/:id", controller.UpdateSubAccount)
+			subAccountRoute.POST("/:id/disable", controller.DisableSubAccount)
+			subAccountRoute.DELETE("/:id", controller.DeleteSubAccount)
+		}
+
 		userRoute := apiRouter.Group("/user")
 		{
 			userRoute.POST("/auth/refresh", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.RefreshAuth)
@@ -89,8 +117,10 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/models", controller.GetUserModels)
 				selfRoute.PUT("/self", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.UpdateSelf)
-				selfRoute.DELETE("/self", controller.DeleteSelf)
-				selfRoute.GET("/token", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GenerateAccessToken)
+				// A child account cannot self-delete; the parent remains the final
+				// authority over the child lifecycle.
+				selfRoute.DELETE("/self", middleware.RejectSubAccount(), controller.DeleteSelf)
+				selfRoute.GET("/token", middleware.DisableCache(), controller.GenerateAccessToken)
 				selfRoute.GET("/passkey", controller.PasskeyStatus)
 				selfRoute.POST("/passkey/register/begin", middleware.DisableCache(), controller.PasskeyRegisterBegin)
 				selfRoute.POST("/passkey/register/finish", middleware.DisableCache(), controller.PasskeyRegisterFinish)
@@ -100,18 +130,25 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/aff", controller.GetAffCode)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
-				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
-				selfRoute.POST("/pay", middleware.CriticalRateLimit(), controller.RequestEpay)
+				// Wallet permission applies to child-account redemption/ePay flows;
+				// provider-specific payment paths and QR are explicitly blocked for
+				// child accounts until they support parent-wallet settlement.
+				selfRoute.POST("/topup", middleware.CriticalRateLimit(), middleware.SubPermission("wallet"), controller.TopUp)
+				selfRoute.POST("/pay", middleware.CriticalRateLimit(), middleware.SubPermission("wallet"), controller.RequestEpay)
+				selfRoute.POST("/epay/qr", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestEpayQR)
+				selfRoute.GET("/epay/order-status", controller.EpayOrderStatus)
 				selfRoute.POST("/amount", controller.RequestAmount)
-				selfRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.RequestStripePay)
+				selfRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestStripePay)
 				selfRoute.POST("/stripe/amount", controller.RequestStripeAmount)
-				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.RequestCreemPay)
+				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestCreemPay)
 				selfRoute.POST("/waffo/amount", controller.RequestWaffoAmount)
-				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPay)
+				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestWaffoPay)
 				selfRoute.POST("/waffo-pancake/amount", controller.RequestWaffoPancakeAmount)
-				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPancakePay)
-				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
+				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestWaffoPancakePay)
+				selfRoute.POST("/aff_transfer", middleware.RejectSubAccount(), controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
+				selfRoute.PUT("/storage_setting", middleware.CriticalRateLimit(), controller.UpdateUserStorageSetting)
+				selfRoute.DELETE("/storage_setting", controller.DeleteUserStorageSetting)
 
 				// 2FA routes
 				selfRoute.GET("/2fa/status", controller.Get2FAStatus)
@@ -135,6 +172,8 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
+				adminRoute.POST("/topup/epay/reconcile", controller.EpayReconcile)
+				adminRoute.POST("/topup/epay/detect", controller.EpayDetectCapabilities)
 				adminRoute.GET("/search", controller.SearchUsers)
 				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
@@ -142,6 +181,8 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/:id", controller.GetUser)
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)
+				adminRoute.POST("/batch/group", controller.BatchUpdateUserGroup)
+				adminRoute.POST("/batch/quota", controller.BatchAdjustUserQuota)
 				adminRoute.PUT("/", controller.UpdateUser)
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
@@ -149,6 +190,60 @@ func SetApiRouter(router *gin.Engine) {
 				// Admin 2FA routes
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
+			}
+
+			// Agent self-service and administration. Financial actions and risk
+			// controls stay Root-only; read/write self-service uses AgentAuth.
+			agentRoute := userRoute.Group("/agent")
+			{
+				agentRoute.POST("/create", middleware.RootAuth(), controller.CreateAgent)
+				agentRoute.POST("/revoke", middleware.RootAuth(), controller.RevokeAgent)
+				agentRoute.GET("/list", middleware.RootAuth(), controller.ListAgents)
+				agentRoute.POST("/apply", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.AgentApply)
+				agentRoute.GET("/apply", middleware.UserAuth(), controller.AgentApplicationStatus)
+				agentRoute.GET("/admin/applications", middleware.RootAuth(), controller.AdminListAgentApplications)
+				agentRoute.POST("/admin/applications/review", middleware.RootAuth(), controller.AdminReviewAgentApplication)
+				agentRoute.GET("/users", middleware.UserAuth(), middleware.AgentAuth(), controller.AgentListUsers)
+				agentRoute.GET("/commissions", middleware.UserAuth(), middleware.AgentAuth(), controller.AgentListCommissions)
+				agentRoute.POST("/commission/convert", middleware.UserAuth(), middleware.AgentAuth(), controller.ConvertCommission)
+				agentRoute.POST("/withdraw", middleware.UserAuth(), middleware.AgentAuth(), controller.CreateWithdrawal)
+				agentRoute.GET("/withdraws", middleware.UserAuth(), middleware.AgentAuth(), controller.AgentListWithdrawals)
+				agentRoute.POST("/withdraw/cancel", middleware.UserAuth(), middleware.AgentAuth(), controller.CancelAgentWithdrawal)
+				agentRoute.GET("/withdraw/all", middleware.RootAuth(), controller.AdminListWithdrawals)
+				agentRoute.POST("/withdraw/review", middleware.RootAuth(), controller.ReviewWithdrawal)
+				agentRoute.GET("/fraud/alerts", middleware.RootAuth(), controller.AdminListFraudAlerts)
+				agentRoute.POST("/fraud/scan", middleware.RootAuth(), controller.AdminScanFraud)
+				agentRoute.POST("/fraud/review", middleware.RootAuth(), controller.AdminReviewFraudAlert)
+				agentRoute.GET("/risk/list", middleware.RootAuth(), controller.AdminListRiskUsers)
+				agentRoute.POST("/risk/apply", middleware.RootAuth(), controller.AdminApplyRiskControls)
+				agentRoute.POST("/risk/remove", middleware.RootAuth(), controller.AdminRemoveRiskControls)
+			}
+
+			// Supplier marketplace: ordinary users can apply and inspect their
+			// application; channel/earnings operations require SupplierAuth and
+			// all review/settlement/payment actions remain Root-only.
+			supplierRoute := userRoute.Group("/supplier")
+			{
+				supplierRoute.POST("/apply", middleware.UserAuth(), controller.SupplierApply)
+				supplierRoute.GET("/profile", middleware.UserAuth(), controller.SupplierProfile)
+				supplierRoute.PUT("/payout-info", middleware.UserAuth(), controller.SupplierUpdatePayoutInfo)
+				supplierRoute.POST("/fetch-models", middleware.UserAuth(), controller.FetchModels)
+				supplierRoute.GET("/applications", middleware.UserAuth(), controller.SupplierListChannels)
+				supplierRoute.GET("/channels", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierListChannels)
+				supplierRoute.POST("/channel", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierSubmitChannel)
+				supplierRoute.PUT("/channel/:id", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierUpdateChannel)
+				supplierRoute.GET("/earnings", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierEarnings)
+				supplierRoute.GET("/earnings/daily", middleware.UserAuth(), middleware.SupplierAuth(), controller.SupplierEarningsDaily)
+				supplierRoute.GET("/admin/list", middleware.RootAuth(), controller.AdminListSuppliers)
+				supplierRoute.POST("/admin/review", middleware.RootAuth(), controller.AdminReviewSupplier)
+				supplierRoute.GET("/admin/channel/pending", middleware.RootAuth(), controller.AdminListPendingChannels)
+				supplierRoute.POST("/admin/channel/approve", middleware.RootAuth(), controller.AdminApproveSupplierChannel)
+				supplierRoute.POST("/admin/channel/reject", middleware.RootAuth(), controller.AdminRejectSupplierChannel)
+				supplierRoute.GET("/admin/rate/pending", middleware.RootAuth(), controller.AdminListRateChanges)
+				supplierRoute.POST("/admin/rate/review", middleware.RootAuth(), controller.AdminReviewRateChange)
+				supplierRoute.GET("/admin/settlement", middleware.RootAuth(), controller.AdminSupplierSettlement)
+				supplierRoute.POST("/admin/pay", middleware.RootAuth(), controller.AdminPaySupplier)
+				supplierRoute.POST("/admin/confiscate", middleware.RootAuth(), controller.AdminConfiscateSupplier)
 			}
 		}
 
@@ -193,6 +288,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			optionRoute.GET("/", controller.GetOptions)
 			optionRoute.PUT("/", controller.UpdateOption)
+			optionRoute.PUT("/payment", controller.UpdatePaymentOptions)
 			optionRoute.POST("/payment_compliance", controller.ConfirmPaymentCompliance)
 			optionRoute.GET("/channel_affinity_cache", controller.GetChannelAffinityCacheStats)
 			optionRoute.DELETE("/channel_affinity_cache", controller.ClearChannelAffinityCache)
@@ -241,10 +337,12 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.GET("/auto-groups", controller.GetTokenAutoGroups)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
-			tokenRoute.POST("/", controller.AddToken)
-			tokenRoute.PUT("/", controller.UpdateToken)
-			tokenRoute.DELETE("/:id", controller.DeleteToken)
-			tokenRoute.POST("/batch", controller.DeleteTokenBatch)
+			// Child accounts can mutate keys only when the parent explicitly grants
+			// the api_keys sub-permission; primary accounts continue to pass through.
+			tokenRoute.POST("/", middleware.SubPermission("api_keys"), controller.AddToken)
+			tokenRoute.PUT("/", middleware.SubPermission("api_keys"), controller.UpdateToken)
+			tokenRoute.DELETE("/:id", middleware.SubPermission("api_keys"), controller.DeleteToken)
+			tokenRoute.POST("/batch", middleware.SubPermission("api_keys"), controller.DeleteTokenBatch)
 			tokenRoute.POST("/batch/keys", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKeysBatch)
 		}
 
@@ -272,11 +370,11 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
 		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
-		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
+		logRoute.GET("/self/stat", middleware.UserAuth(), middleware.SubPermission("usage_logs"), controller.GetLogsSelfStat)
 		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), controller.GetChannelAffinityUsageCacheStats)
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
-		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
-		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
+		logRoute.GET("/self", middleware.UserAuth(), middleware.SubPermission("usage_logs"), controller.GetUserLogs)
+		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SubPermission("usage_logs"), middleware.SearchRateLimit(), controller.SearchUserLogs)
 
 		systemTaskRoute := apiRouter.Group("/system-task")
 		systemTaskRoute.Use(middleware.RootAuth())
@@ -296,6 +394,7 @@ func SetApiRouter(router *gin.Engine) {
 
 		dataRoute := apiRouter.Group("/data")
 		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)
+		dataRoute.GET("/channel", middleware.AdminAuth(), controller.GetChannelQuotaDates)
 		dataRoute.GET("/users", middleware.AdminAuth(), controller.GetQuotaDatesByUser)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 		dataRoute.GET("/flow", middleware.AdminAuth(), controller.GetAllFlowQuotaDates)
