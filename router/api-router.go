@@ -120,7 +120,7 @@ func SetApiRouter(router *gin.Engine) {
 				// A child account cannot self-delete; the parent remains the final
 				// authority over the child lifecycle.
 				selfRoute.DELETE("/self", middleware.RejectSubAccount(), controller.DeleteSelf)
-				selfRoute.GET("/token", middleware.DisableCache(), controller.GenerateAccessToken)
+				selfRoute.GET("/token", middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("access-token"), middleware.DisableCache(), controller.GenerateAccessToken)
 				selfRoute.GET("/passkey", controller.PasskeyStatus)
 				selfRoute.POST("/passkey/register/begin", middleware.DisableCache(), controller.PasskeyRegisterBegin)
 				selfRoute.POST("/passkey/register/finish", middleware.DisableCache(), controller.PasskeyRegisterFinish)
@@ -145,7 +145,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestWaffoPay)
 				selfRoute.POST("/waffo-pancake/amount", controller.RequestWaffoPancakeAmount)
 				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), middleware.RejectSubAccount(), controller.RequestWaffoPancakePay)
-				selfRoute.POST("/aff_transfer", middleware.RejectSubAccount(), controller.TransferAffQuota)
+				selfRoute.POST("/aff_transfer", middleware.UserCriticalRateLimit("aff-transfer"), middleware.RejectSubAccount(), controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 				selfRoute.PUT("/storage_setting", middleware.CriticalRateLimit(), controller.UpdateUserStorageSetting)
 				selfRoute.DELETE("/storage_setting", controller.DeleteUserStorageSetting)
