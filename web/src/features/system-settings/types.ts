@@ -240,7 +240,10 @@ export type ModelSettings = {
   AutomaticRetryStatusCodes: string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
-  'monitor_setting.channel_test_mode': 'scheduled_all' | 'passive_recovery'
+  'monitor_setting.channel_test_mode':
+    | 'scheduled_all'
+    | 'auto_ban_only'
+    | 'passive_recovery'
   'reliability_setting.rate_limit_cooldown_enabled': boolean
   'reliability_setting.rate_limit_cooldown_default_seconds': number
   'reliability_setting.rate_limit_cooldown_max_seconds': number

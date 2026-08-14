@@ -39,6 +39,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -206,7 +207,7 @@ function Sidebar({
           data-sidebar='sidebar'
           data-slot='sidebar'
           data-mobile='true'
-          className='bg-sidebar text-sidebar-foreground w-(--sidebar-width) max-w-none p-0 sm:max-w-none [&>button]:hidden'
+          className='bg-sidebar text-sidebar-foreground pointer-events-auto z-60 w-(--sidebar-width) max-w-none p-0 sm:max-w-none [&>button]:hidden'
           style={
             {
               '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
@@ -529,6 +530,7 @@ function SidebarMenuButton({
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar()
+  const tooltipEnabled = Boolean(tooltip) && !isMobile && state === 'collapsed'
   const comp = useRender({
     defaultTagName: 'button',
     props: mergeProps<'button'>(
@@ -537,7 +539,7 @@ function SidebarMenuButton({
       },
       props
     ),
-    render: !tooltip ? render : <TooltipTrigger render={render} />,
+    render: tooltipEnabled ? <TooltipTrigger render={render} /> : render,
     state: {
       slot: 'sidebar-menu-button',
       sidebar: 'menu-button',
@@ -546,7 +548,7 @@ function SidebarMenuButton({
     },
   })
 
-  if (!tooltip) {
+  if (!tooltipEnabled || !tooltip) {
     return comp
   }
 
@@ -557,15 +559,17 @@ function SidebarMenuButton({
   }
 
   return (
-    <Tooltip>
-      {comp}
-      <TooltipContent
-        side='right'
-        align='center'
-        hidden={state !== 'collapsed' || isMobile}
-        {...tooltip}
-      />
-    </Tooltip>
+    <TooltipProvider delay={0}>
+      <Tooltip>
+        {comp}
+        <TooltipContent
+          side='right'
+          align='center'
+          hidden={state !== 'collapsed' || isMobile}
+          {...tooltip}
+        />
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 

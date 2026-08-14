@@ -48,6 +48,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 import { applyUpstreamOverwrite } from '../../api'
@@ -117,6 +118,7 @@ export function UpstreamConflictDialog({
   } = useModels()
   const isMobile = useIsMobile()
   const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounce(search, 200)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [pageSize, setPageSize] = useState(20)
@@ -149,7 +151,7 @@ export function UpstreamConflictDialog({
 
   const totalModels = upstreamConflicts.length
   const totalFields = conflictRows.length
-  const normalizedSearch = search.trim().toLowerCase()
+  const normalizedSearch = debouncedSearch.trim().toLowerCase()
 
   const { matchingModelNames, visibleRowIds } = useMemo(() => {
     if (!normalizedSearch) {

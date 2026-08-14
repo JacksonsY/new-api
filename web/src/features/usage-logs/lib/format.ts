@@ -167,6 +167,25 @@ export function parseLogOther(other: string): LogOtherData | null {
   }
 }
 
+export function getReasoningEffortVariant(
+  effort: string | undefined
+): StatusVariant {
+  switch (effort?.trim().toLowerCase()) {
+    case 'max':
+    case 'xhigh':
+    case 'high':
+      return 'destructive'
+    case 'medium':
+      return 'warning'
+    case 'low':
+    case 'minimal':
+      return 'success'
+    case 'none':
+    default:
+      return 'neutral'
+  }
+}
+
 /**
  * Get time color based on duration (in seconds)
  */

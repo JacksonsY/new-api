@@ -177,6 +177,7 @@ export function ApiKeysTable() {
         searchPlaceholder: t('Filter by name...'),
         hasAdditionalFilters: Boolean(tokenFilterInput.trim()),
         onReset: () => setTokenFilterInput(''),
+        searchDebounceMs: 500,
         additionalSearch: (
           <Input
             placeholder={t('Filter by API key...')}

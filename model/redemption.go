@@ -8,7 +8,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
 
@@ -182,13 +181,7 @@ func Redeem(key string, userId int) (quota int, err error) {
 		common.SysError("redemption failed: " + err.Error())
 		return 0, ErrRedeemFailed
 	}
-	// 事务提交成功后同步 Redis 额度缓存（与签到 cacheIncrUserQuota 一致，异步不阻塞）。
-	quotaAdded := redemption.Quota
-	gopool.Go(func() {
-		if cerr := cacheIncrUserQuota(userId, int64(quotaAdded)); cerr != nil {
-			common.SysLog("failed to sync user quota cache after redemption: " + cerr.Error())
-		}
-	})
+	syncCreditUserQuotaCache(userId, redemption.Quota, "redemption")
 	RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
 	return redemption.Quota, nil
 }
