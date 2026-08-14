@@ -11,30 +11,32 @@ const (
 )
 
 type Midjourney struct {
-	Id            int    `json:"id"`
-	Code          int    `json:"code"`
-	UserId        int    `json:"user_id" gorm:"index"`
-	ParentId      int    `json:"parent_id" gorm:"type:int;default:0"` // >>> jzlh-sub 子账号计费快照：MJ 退款回主号钱包判据（0=非子号）
-	Action        string `json:"action" gorm:"type:varchar(40);index"`
-	MjId          string `json:"mj_id" gorm:"index"`
-	Prompt        string `json:"prompt"`
-	PromptEn      string `json:"prompt_en"`
-	Description   string `json:"description"`
-	State         string `json:"state"`
-	SubmitTime    int64  `json:"submit_time" gorm:"index"`
-	StartTime     int64  `json:"start_time" gorm:"index"`
-	FinishTime    int64  `json:"finish_time" gorm:"index"`
-	ImageUrl      string `json:"image_url"`
-	VideoUrl      string `json:"video_url"`
-	VideoUrls     string `json:"video_urls"`
-	Status        string `json:"status" gorm:"type:varchar(20);index"`
-	Progress      string `json:"progress" gorm:"type:varchar(30);index"`
-	FailReason    string `json:"fail_reason"`
-	ChannelId     int    `json:"channel_id"`
-	Quota         int    `json:"quota"`
-	BillingStatus int    `json:"-" gorm:"index"`
-	Buttons       string `json:"buttons"`
-	Properties    string `json:"properties"`
+	Id               int    `json:"id"`
+	Code             int    `json:"code"`
+	UserId           int    `json:"user_id" gorm:"index"`
+	ParentId         int    `json:"parent_id" gorm:"type:int;default:0"` // >>> jzlh-sub 子账号计费快照：MJ 退款回主号钱包判据（0=非子号）
+	Action           string `json:"action" gorm:"type:varchar(40);index"`
+	MjId             string `json:"mj_id" gorm:"index"`
+	Prompt           string `json:"prompt"`
+	PromptEn         string `json:"prompt_en"`
+	Description      string `json:"description"`
+	State            string `json:"state"`
+	SubmitTime       int64  `json:"submit_time" gorm:"index"`
+	StartTime        int64  `json:"start_time" gorm:"index"`
+	FinishTime       int64  `json:"finish_time" gorm:"index"`
+	ImageUrl         string `json:"image_url"`
+	VideoUrl         string `json:"video_url"`
+	VideoUrls        string `json:"video_urls"`
+	Status           string `json:"status" gorm:"type:varchar(20);index"`
+	Progress         string `json:"progress" gorm:"type:varchar(30);index"`
+	FailReason       string `json:"fail_reason"`
+	ChannelId        int    `json:"channel_id"`
+	Quota            int    `json:"quota"`
+	BillingStatus    int    `json:"-" gorm:"index"`
+	Buttons          string `json:"buttons"`
+	Properties       string `json:"properties"`
+	TokenId          int    `json:"-" gorm:"default:0"`
+	BillingChannelId int    `json:"-" gorm:"default:0"`
 }
 
 // TaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
@@ -197,8 +199,10 @@ func (midjourney *Midjourney) FinishBilling(quota int) error {
 		lastErr = DB.Model(&Midjourney{}).
 			Where("id = ?", midjourney.Id).
 			Updates(map[string]interface{}{
-				"quota":          quota,
-				"billing_status": MidjourneyBillingReady,
+				"quota":              quota,
+				"billing_status":     MidjourneyBillingReady,
+				"token_id":           midjourney.TokenId,
+				"billing_channel_id": midjourney.BillingChannelId,
 			}).Error
 		if lastErr == nil {
 			midjourney.Quota = quota
@@ -210,6 +214,19 @@ func (midjourney *Midjourney) FinishBilling(quota int) error {
 		}
 	}
 	return fmt.Errorf("finish midjourney billing task_id=%d mj_id=%q: %w", midjourney.Id, midjourney.MjId, lastErr)
+}
+
+func (midjourney *Midjourney) UpdateBillingState() error {
+	return DB.Model(midjourney).
+		Select("quota", "token_id", "billing_channel_id").
+		Updates(midjourney).Error
+}
+
+func (midjourney *Midjourney) GetBillingChannelId() int {
+	if midjourney.BillingChannelId > 0 {
+		return midjourney.BillingChannelId
+	}
+	return midjourney.ChannelId
 }
 
 // UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).

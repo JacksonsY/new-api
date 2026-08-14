@@ -461,9 +461,27 @@ func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
 	return nil
 }
 
-func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (err error) {
+type postConsumeQuotaResult struct {
+	FundingApplied bool
+	TokenApplied   bool
+}
+
+func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) error {
+	_, err := postConsumeQuotaWithResultAndRollback(relayInfo, quota, preConsumedQuota, sendEmail)
+	return err
+}
+
+func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (result postConsumeQuotaResult, err error) {
+	return postConsumeQuotaWithResultMode(relayInfo, quota, preConsumedQuota, sendEmail, false)
+}
+
+func postConsumeQuotaWithResultAndRollback(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (result postConsumeQuotaResult, err error) {
+	return postConsumeQuotaWithResultMode(relayInfo, quota, preConsumedQuota, sendEmail, true)
+}
+
+func postConsumeQuotaWithResultMode(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool, rollbackOnTokenFailure bool) (result postConsumeQuotaResult, err error) {
 	if relayInfo == nil {
-		return errors.New("relay info is missing")
+		return result, errors.New("relay info is missing")
 	}
 
 	// >>> jzlh-sub 子号：钱包扣/退对象=主号钱包（付款人），日志/统计仍归子号（relayInfo.UserId）
@@ -476,12 +494,12 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 	usingSubscription := relayInfo.BillingSource == BillingSourceSubscription
 	if usingSubscription {
 		if relayInfo.SubscriptionId == 0 {
-			return errors.New("subscription id is missing")
+			return result, errors.New("subscription id is missing")
 		}
 		delta := int64(quota)
 		if delta != 0 {
 			if err := model.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, delta); err != nil {
-				return err
+				return result, err
 			}
 			relayInfo.SubscriptionPostDelta += delta
 		}
@@ -493,9 +511,10 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 			err = model.IncreaseUserQuota(payerUserId, -quota, false)
 		}
 		if err != nil {
-			return err
+			return result, err
 		}
 	}
+	result.FundingApplied = true
 
 	if !relayInfo.IsPlayground {
 		if quota > 0 {
@@ -506,6 +525,9 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -quota)
 		}
 		if err != nil {
+			if !rollbackOnTokenFailure {
+				return result, err
+			}
 			var rollbackErr error
 			if usingSubscription {
 				rollbackErr = model.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, -int64(quota))
@@ -520,10 +542,11 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 				rollbackErr = model.DecreaseUserQuotaIfEnough(payerUserId, -quota)
 			}
 			if rollbackErr != nil {
-				return &quotaRollbackError{operationErr: err, rollbackErr: rollbackErr}
+				return result, &quotaRollbackError{operationErr: err, rollbackErr: rollbackErr}
 			}
-			return err
+			return result, err
 		}
+		result.TokenApplied = true
 	}
 
 	// jzlh-sub: 子号(parent_id>0)个人钱包不参与计费,跳过个人低额通知(否则每请求误报)
@@ -533,7 +556,7 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 		}
 	}
 
-	return nil
+	return result, nil
 }
 
 type quotaRollbackError struct {

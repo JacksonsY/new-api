@@ -217,38 +217,7 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 				// 第二条 preStatus 已是 FAILURE，UpdateWithStatus("FAILURE") 在 PG/SQLite
 				// (matched=affected)或 MySQL(任一字段变化)下仍 won=true，会再退一次款、余额
 				// 凭空增发。与 Suno 轮询退款(967c3132b)同款守卫。
-				// >>> jzlh-sub 子号 MJ 失败退款回主号钱包（付款人快照），绝不回子号钱包
-				// （否则是「池→子号钱包」套现通道）；同步回退子号月/日周期计数。
-				refundPayerUserId := task.UserId
-				if task.ParentId != 0 {
-					refundPayerUserId = task.ParentId
-					if e := model.AddSubAccountPeriodUsage(task.UserId, -task.Quota); e != nil {
-						logger.LogError(ctx, "fail to revert sub-account period usage: "+e.Error())
-					}
-				}
-				err = model.IncreaseUserQuota(refundPayerUserId, task.Quota, false)
-				if err != nil {
-					logger.LogError(ctx, "fail to increase user quota: "+err.Error())
-				}
-				// 回退用户已用额度统计，避免退款后「剩余 + 已用」虚增（与异步任务退款一致）。
-				// 渠道侧成本口径回退需要原始扣费的 groupRatio 快照，但 Midjourney 结构没有
-				// Group/BillingContext 字段（group_ratio 只写进了消费日志 other，未落任务表），
-				// 无可靠来源，硬猜会漂移；渠道 used_quota 仅统计口径、不涉资金，留待 MJ 任务
-				// 补 groupRatio 快照后再回退。
-				model.DecreaseUserUsedQuota(task.UserId, task.Quota)
-				model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
-					UserId:    task.UserId,
-					ParentId:  task.ParentId, // jzlh-sub 退款日志归属子号链路，缺失会误入分润冲正分支
-					LogType:   model.LogTypeRefund,
-					Content:   "",
-					ChannelId: task.ChannelId,
-					ModelName: service.CovertMjpActionToModelName(task.Action),
-					Quota:     task.Quota,
-					Other: map[string]interface{}{
-						"task_id": task.MjId,
-						"reason":  "构图失败",
-					},
-				})
+				service.RefundMidjourneyQuota(ctx, task, "构图失败")
 			}
 		}
 	}
