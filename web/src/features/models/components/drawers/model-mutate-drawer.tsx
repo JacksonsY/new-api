@@ -336,6 +336,7 @@ export function ModelMutateDrawer({
         '100-199,300-399,401-407,409-499,500-503,505-523,525-599',
       'monitor_setting.auto_test_channel_enabled': false,
       'monitor_setting.auto_test_channel_minutes': 10,
+      'monitor_setting.channel_test_concurrency': 1,
       'monitor_setting.channel_test_mode': 'scheduled_all',
       'reliability_setting.rate_limit_cooldown_enabled': true,
       'reliability_setting.rate_limit_cooldown_default_seconds': 30,

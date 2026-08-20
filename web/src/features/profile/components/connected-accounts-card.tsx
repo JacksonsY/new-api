@@ -48,12 +48,12 @@ import {
   buildGitHubOAuthUrl,
   buildLinuxDOOAuthUrl,
   buildOIDCOAuthUrl,
+  type CustomOAuthBinding,
 } from '@/lib/oauth'
 
 import {
   getSelfOAuthBindings,
   unbindCustomOAuth,
-  type CustomOAuthBinding,
 } from '../api'
 import type { UserProfile, BindingItem } from '../types'
 import { EmailBindDialog } from './dialogs/email-bind-dialog'
@@ -112,7 +112,6 @@ export function ConnectedAccountsCard({
   const customProviders = status?.custom_oauth_providers as
     | CustomOAuthProviderInfo[]
     | undefined
-
   const fetchCustomBindings = useCallback(async () => {
     if (!customProviders || customProviders.length === 0) return
     try {
@@ -480,7 +479,7 @@ export function ConnectedAccountsCard({
 
           {customProviders?.map((provider) => {
             const binding = customBindings.find(
-              (b) => b.provider_id === String(provider.id)
+              (b) => b.provider_id === Number(provider.id)
             )
             const isBound = !!binding
             return (
@@ -501,7 +500,7 @@ export function ConnectedAccountsCard({
                     </div>
                     <p className='text-muted-foreground truncate text-xs'>
                       {isBound
-                        ? binding?.external_id || t('Bound')
+                        ? binding?.provider_user_id || t('Bound')
                         : t('Not bound')}
                     </p>
                   </div>
