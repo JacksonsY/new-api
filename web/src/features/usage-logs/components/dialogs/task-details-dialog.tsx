@@ -24,6 +24,8 @@ import {
   Music,
   Video,
 } from 'lucide-react'
+import { Shield01Icon, Wrench01Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -42,8 +44,10 @@ import {
   taskActionMapper,
   taskStatusMapper,
 } from '../../lib/mappers'
+import { resolveTaskDetailAccess } from '../../lib/task-details'
 import type { TaskLog } from '../../types'
 import { AudioClipCard, type AudioClip } from './audio-preview-dialog'
+import { PluginAuthorLink } from '../plugin-author-link'
 
 const VIDEO_ACTIONS = new Set<string>([
   TASK_ACTIONS.GENERATE,
@@ -149,7 +153,6 @@ function resolveVideoUrl(log: TaskLog): string {
   }
   return ''
 }
-
 function DetailRow(props: {
   label: React.ReactNode
   value: React.ReactNode
@@ -277,6 +280,7 @@ function AudioPreview({ clips }: { clips: AudioClip[] }) {
 interface TaskDetailsDialogProps {
   log: TaskLog
   isAdmin: boolean
+  isRoot?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -341,6 +345,9 @@ export function TaskDetailsDialog(props: TaskDetailsDialogProps) {
   }, [log])
 
   const hasFailReason = !!log.fail_reason && log.fail_reason.trim() !== ''
+  const access = resolveTaskDetailAccess(log, isAdmin, props.isRoot ?? false)
+  const plugin = access.plugin
+  const runtime = access.runtime
 
   return (
     <Dialog
@@ -627,6 +634,55 @@ export function TaskDetailsDialog(props: TaskDetailsDialogProps) {
             </pre>
           </DetailSection>
         )}
+
+        {isAdmin && plugin ? (
+          <DetailSection
+            label={t('Task Plugin')}
+            icon={
+              <HugeiconsIcon
+                icon={Shield01Icon}
+                className='size-3.5 text-blue-500'
+                strokeWidth={2}
+              />
+            }
+          >
+            <DetailRow label={t('Name')} value={plugin.name || plugin.key} />
+            <DetailRow label={t('Plugin key')} value={plugin.key} mono />
+            <DetailRow label={t('Version')} value={plugin.version || '-'} mono />
+            {plugin.author ? (
+              <DetailRow
+                label={t('Plugin author')}
+                value={<PluginAuthorLink author={plugin.author} showUrl />}
+              />
+            ) : null}
+          </DetailSection>
+        ) : null}
+
+        {isAdmin && props.isRoot && (runtime || access.upstreamTaskId || access.nodeName) ? (
+          <DetailSection
+            label={t('Root Diagnostics')}
+            icon={
+              <HugeiconsIcon
+                icon={Wrench01Icon}
+                className='size-3.5 text-amber-500'
+                strokeWidth={2}
+              />
+            }
+          >
+            {runtime ? (
+              <>
+                <DetailRow label={t('API Version')} value={String(runtime.api_version)} mono />
+                <DetailRow label={t('Plugin Generation')} value={String(runtime.generation)} mono />
+              </>
+            ) : null}
+            {access.upstreamTaskId ? (
+              <DetailRow label={t('Upstream Task ID')} value={access.upstreamTaskId} mono />
+            ) : null}
+            {access.nodeName ? (
+              <DetailRow label={t('Node Name')} value={access.nodeName} mono />
+            ) : null}
+          </DetailSection>
+        ) : null}
       </div>
     </Dialog>
   )

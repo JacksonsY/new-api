@@ -101,6 +101,20 @@ type Channel struct {
 	Keys []string `json:"-" gorm:"-"`
 }
 
+// IsTaskPlugin reports whether a channel is backed by the task-plugin
+// protocol. Type 61 was used by the upstream release before this fork's
+// NewAPI channel occupied that persisted ID, so a task_plugin_key setting is a
+// safe compatibility discriminator for legacy rows and API payloads.
+func (channel *Channel) IsTaskPlugin() bool {
+	if channel == nil {
+		return false
+	}
+	if channel.Type == constant.ChannelTypeTaskPlugin {
+		return true
+	}
+	return channel.Type == constant.ChannelTypeNewAPI && strings.TrimSpace(channel.GetSetting().TaskPluginKey) != ""
+}
+
 type ChannelInfo struct {
 	IsMultiKey             bool                  `json:"is_multi_key"`                        // 是否多Key模式
 	MultiKeySize           int                   `json:"multi_key_size"`                      // 多Key模式下的Key数量
@@ -487,6 +501,15 @@ func SearchChannels(keyword string, group string, model string, idSort bool, sor
 	return channels, nil
 }
 
+// GetChannelById loads a channel directly from the database, bypassing the
+// in-memory channel cache.
+//
+// WARNING: do NOT call this on request hot paths (middleware, distribution,
+// relay submit/retry, polling). Every call is a synchronous DB query and will
+// not see cache-only state. Use CacheGetChannel instead: it serves from the
+// in-memory cache and falls back to this function automatically when
+// MemoryCacheEnabled is false. Direct use is appropriate only where fresh DB
+// state is required, e.g. admin CRUD, channel testing, or cache (re)building.
 func GetChannelById(id int, selectAll bool) (*Channel, error) {
 	channel := &Channel{Id: id}
 	var err error = nil
@@ -578,7 +601,7 @@ func (channel *Channel) GetBaseURL() string {
 	}
 	url := *channel.BaseURL
 	if url == "" {
-		url = constant.ChannelBaseURLs[channel.Type]
+		url = constant.GetChannelBaseURL(channel.Type)
 	}
 	return url
 }

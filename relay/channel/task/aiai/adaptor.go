@@ -314,6 +314,30 @@ func (r submitResponse) taskID() string {
 	return ""
 }
 
+// ParseResponse adapts the legacy AIAI response parser to the transport-only
+// task interface used by the plugin runtime. The old DoResponse method remains
+// for compatibility with callers outside the current relay pipeline.
+func (a *TaskAdaptor) ParseResponse(_ *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*channel.TaskSubmitResponse, *taskdto.TaskError) {
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+	}
+	_ = resp.Body.Close()
+
+	var parsed submitResponse
+	if err := common.Unmarshal(responseBody, &parsed); err != nil {
+		return nil, service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
+	}
+	if msg := parsed.errMessage(); strings.TrimSpace(msg) != "" {
+		return nil, service.TaskErrorWrapper(errors.New(msg), "upstream_error", http.StatusBadRequest)
+	}
+	upstreamID := parsed.taskID()
+	if upstreamID == "" {
+		return nil, service.TaskErrorWrapper(fmt.Errorf("task_id is empty, body: %s", responseBody), "invalid_response", http.StatusInternalServerError)
+	}
+	return &channel.TaskSubmitResponse{UpstreamTaskID: upstreamID, TaskData: responseBody}, nil
+}
+
 func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {

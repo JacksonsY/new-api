@@ -71,21 +71,28 @@ func isNonSPARequestPath(requestURI string) bool {
 	return false
 }
 
-func SetWebRouter(router *gin.Engine, assets WebAssets) {
+func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatchers ...gin.HandlerFunc) {
 	frontendFS := common.EmbedFolder(assets.BuildFS, "web/dist")
 
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middleware.GlobalWebRateLimit())
 	router.Use(middleware.Cache())
 	router.Use(static.Serve("/", frontendFS))
-	router.NoRoute(func(c *gin.Context) {
-		c.Set(middleware.RouteTagKey, "web")
-		if isNonSPARequestPath(c.Request.RequestURI) {
-			// 未注册的后端/运维路径返回 JSON 404，禁止回退 HTML。
-			controller.RelayNotFound(c)
-			return
-		}
-		c.Header("Cache-Control", "no-cache")
-		c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
-	})
+	handlers := make([]gin.HandlerFunc, 0, 6)
+	if len(pluginDispatchers) > 0 && pluginDispatchers[0] != nil {
+		handlers = append(handlers, pluginDispatchers[0])
+	}
+	handlers = append(handlers,
+		func(c *gin.Context) {
+			c.Set(middleware.RouteTagKey, "web")
+			if isNonSPARequestPath(c.Request.RequestURI) {
+				// 未注册的后端/运维路径返回 JSON 404，禁止回退 HTML。
+				controller.RelayNotFound(c)
+				return
+			}
+			c.Header("Cache-Control", "no-cache")
+			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
+		},
+	)
+	router.NoRoute(handlers...)
 }

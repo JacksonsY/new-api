@@ -56,12 +56,14 @@ const (
 	ChannelTypeReplicate      = 56
 	ChannelTypeCodex          = 57
 	ChannelTypeAdvancedCustom = 58
-	// Keep existing persisted channel type IDs stable. AIAI and Sub2API are
-	// fork-specific types already stored in user databases.
-	ChannelTypeAiai    = 59
-	ChannelTypeSub2API = 60
-	ChannelTypeNewAPI  = 61
-	ChannelTypeDummy   // this one is only for count, do not add any channel after this
+	// Keep existing persisted channel type IDs stable. AIAI, Sub2API, and NewAPI
+	// are fork-specific types already stored in user databases; Task Plugin is
+	// therefore assigned the next free ID.
+	ChannelTypeAiai       = 59
+	ChannelTypeSub2API    = 60
+	ChannelTypeNewAPI     = 61
+	ChannelTypeTaskPlugin = 62
+	ChannelTypeDummy      // this one is only for count, do not add any channel after this
 
 )
 
@@ -128,6 +130,14 @@ var ChannelBaseURLs = []string{
 	"",                                          //59 AIAI
 	"",                                          //60 Sub2API
 	"",                                          //61 New API
+	"",                                          //62 Task Plugin
+}
+
+func GetChannelBaseURL(channelType int) string {
+	if channelType < 0 || channelType >= len(ChannelBaseURLs) {
+		return ""
+	}
+	return ChannelBaseURLs[channelType]
 }
 
 var ChannelTypeNames = map[int]string{
@@ -189,6 +199,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeAiai:           "AIAI",
 	ChannelTypeSub2API:        "Sub2API",
 	ChannelTypeNewAPI:         "New API",
+	ChannelTypeTaskPlugin:     "Task Plugin",
 }
 
 func GetChannelTypeName(channelType int) string {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -17,23 +18,32 @@ import (
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
 // 实际扣费已由 BillingSession（PreConsumeBilling + SettleBilling）完成。
-func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
+func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, taskArgs ...*model.Task) {
+	var task *model.Task
+	if len(taskArgs) > 0 {
+		task = taskArgs[0]
+	}
 	tokenName := c.GetString("token_name")
 	logContent := fmt.Sprintf("操作 %s", info.Action)
 	// 支持任务仅按次计费
 	if common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
 		logContent = fmt.Sprintf("%s，按次计费", logContent)
 	} else {
+		var contents []string
 		if otherRatios := info.PriceData.OtherRatios(); len(otherRatios) > 0 {
-			var contents []string
 			for key, ra := range otherRatios {
 				if 1.0 != ra {
 					contents = append(contents, fmt.Sprintf("%s: %.2f", key, ra))
 				}
 			}
-			if len(contents) > 0 {
-				logContent = fmt.Sprintf("%s, 计算参数：%s", logContent, strings.Join(contents, ", "))
+		}
+		if snap := info.TieredBillingSnapshot; snap != nil {
+			for key, value := range snap.UsageFacts {
+				contents = append(contents, fmt.Sprintf("%s: %v", key, value))
 			}
+		}
+		if len(contents) > 0 {
+			logContent = fmt.Sprintf("%s, 计算参数：%s", logContent, strings.Join(contents, ", "))
 		}
 	}
 	other := make(map[string]interface{})
@@ -62,6 +72,15 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 			info.ChannelId, info.TaskRelayInfo.PublicTaskID, "initial", info.PriceData.Quota,
 		)
 	}
+	if snap := info.TieredBillingSnapshot; snap != nil {
+		other["billing_mode"] = "tiered_expr"
+		other["expr_b64"] = base64.StdEncoding.EncodeToString([]byte(snap.ExprString))
+		other["matched_tier"] = snap.EstimatedTier
+		if len(snap.UsageFacts) > 0 {
+			other["usage_facts"] = snap.UsageFacts
+		}
+	}
+	appendTaskLogInfo(task, other)
 	attachQuotaSaturation(c, info, other)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ParentId:                    info.ParentId, // >>> jzlh-sub
@@ -161,13 +180,48 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 				other[k] = v
 			}
 		}
+		if snap := bc.TieredSnapshot; snap != nil {
+			other["billing_mode"] = "tiered_expr"
+			other["expr_b64"] = base64.StdEncoding.EncodeToString([]byte(snap.ExprString))
+			other["matched_tier"] = snap.EstimatedTier
+			if len(snap.UsageFacts) > 0 {
+				other["usage_facts"] = snap.UsageFacts
+			}
+		}
 	}
 	props := task.Properties
 	if props.UpstreamModelName != "" && props.UpstreamModelName != props.OriginModelName {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = props.UpstreamModelName
 	}
+	appendTaskLogInfo(task, other)
 	return other
+}
+
+func appendTaskLogInfo(task *model.Task, other map[string]interface{}) {
+	if task == nil || other == nil {
+		return
+	}
+	if task.TaskID != "" {
+		other["task_id"] = task.TaskID
+	}
+	if task.PrivateData.Execution != nil {
+		AppendTaskPluginAuditInfo(other, task.PrivateData.Execution.TaskPlugin)
+	}
+	if task.PrivateData.UpstreamTaskID == "" && task.PrivateData.NodeName == "" {
+		return
+	}
+	rootInfo, ok := other["root_info"].(map[string]interface{})
+	if !ok || rootInfo == nil {
+		rootInfo = map[string]interface{}{}
+		other["root_info"] = rootInfo
+	}
+	if task.PrivateData.UpstreamTaskID != "" {
+		rootInfo["upstream_task_id"] = task.PrivateData.UpstreamTaskID
+	}
+	if task.PrivateData.NodeName != "" {
+		rootInfo["node_name"] = task.PrivateData.NodeName
+	}
 }
 
 func taskBillingContextPriceData(bc *model.TaskBillingContext) *types.PriceData {
@@ -248,7 +302,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
 // clamps 可选：若计算 actualQuota 时发生额度饱和，将其记入日志 admin_info（仅管理员可见）。
 func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string, clamps ...*common.QuotaClamp) {
-	if actualQuota <= 0 {
+	if actualQuota < 0 {
 		return
 	}
 	preConsumedQuota := task.Quota
@@ -331,9 +385,13 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。
 // 上游返回 completionTokens 时区分输入和输出计费；仅返回 totalTokens 时保留历史语义。
-func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens, completionTokens int) {
+func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int, completionTokensArg ...int) bool {
+	completionTokens := 0
+	if len(completionTokensArg) > 0 {
+		completionTokens = completionTokensArg[0]
+	}
 	if totalTokens <= 0 && completionTokens <= 0 {
-		return
+		return false
 	}
 
 	modelName := taskModelName(task)
@@ -351,7 +409,7 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		var hasRatioSetting bool
 		modelRatio, hasRatioSetting, _ = ratio_setting.GetModelRatio(modelName)
 		if !hasRatioSetting {
-			return
+			return false
 		}
 
 		group := task.Group
@@ -362,7 +420,7 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 			}
 		}
 		if group == "" {
-			return
+			return false
 		}
 
 		finalGroupRatio = ratio_setting.GetGroupRatio(group)
@@ -371,7 +429,14 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		}
 	}
 	if modelRatio <= 0 {
-		return
+		// Older task rows may carry a billing context without the model ratio;
+		// fall back to the current ratio setting rather than silently skipping
+		// completion-token settlement.
+		var ok bool
+		modelRatio, ok, _ = ratio_setting.GetModelRatio(modelName)
+		if !ok || modelRatio <= 0 {
+			return false
+		}
 	}
 
 	// 计算 OtherRatios 乘积（视频折扣、时长等）
@@ -396,4 +461,5 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	reason := fmt.Sprintf("token重算：totalTokens=%d, inputTokens=%d, completionTokens=%d, modelRatio=%.2f, completionRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f",
 		totalTokens, inputTokens, completionTokens, modelRatio, completionRatio, finalGroupRatio, otherMultiplier)
 	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
+	return true
 }

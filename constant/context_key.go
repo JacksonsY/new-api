@@ -15,7 +15,8 @@ const (
 	ContextKeyTokenKey               ContextKey = "token_key"
 	ContextKeyTokenId                ContextKey = "token_id"
 	ContextKeyTokenGroup             ContextKey = "token_group"
-	ContextKeyTokenSpecificChannelId ContextKey = "specific_channel_id"
+	ContextKeyOriginTasks            ContextKey = "origin_tasks"
+	ContextKeyChannelConstraints     ContextKey = "channel_constraints"
 	ContextKeyTokenModelLimitEnabled ContextKey = "token_model_limit_enabled"
 	ContextKeyTokenModelLimit        ContextKey = "token_model_limit"
 	ContextKeyTokenCrossGroupRetry   ContextKey = "token_cross_group_retry"
@@ -47,15 +48,15 @@ const (
 	ContextKeyAutoGroupRetryIndex ContextKey = "auto_group_retry_index"
 
 	/* user related keys */
-	ContextKeyUserId      ContextKey = "id"
-	ContextKeyUserSetting ContextKey = "user_setting"
-	ContextKeyUserQuota   ContextKey = "user_quota"
-	ContextKeyUserStatus  ContextKey = "user_status"
-	ContextKeyUserEmail   ContextKey = "user_email"
-	ContextKeyUserGroup   ContextKey = "user_group"
+	ContextKeyUserId       ContextKey = "id"
+	ContextKeyUserSetting  ContextKey = "user_setting"
+	ContextKeyUserQuota    ContextKey = "user_quota"
+	ContextKeyUserStatus   ContextKey = "user_status"
+	ContextKeyUserEmail    ContextKey = "user_email"
+	ContextKeyUserGroup    ContextKey = "user_group"
 	ContextKeyUserParentId ContextKey = "user_parent_id" // >>> jzlh-sub 子账号计费付款人解析（=主号 id，0=非子号）
-	ContextKeyUsingGroup  ContextKey = "group"
-	ContextKeyUserName    ContextKey = "username"
+	ContextKeyUsingGroup   ContextKey = "group"
+	ContextKeyUserName     ContextKey = "username"
 
 	ContextKeyLocalCountTokens ContextKey = "local_count_tokens"
 
