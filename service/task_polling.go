@@ -629,7 +629,7 @@ func truncateBase64(s string) string {
 // Data 为空/非 JSON 对象/无 status 字段时原样返回，不新增字段。
 // 用 map[string]json.RawMessage 保留其余字段的原始字节，避免 float64
 // 往返丢精度；marshal/unmarshal 均走 common.* 包装。
-// 注意：seedance 等平台回吐时按 task.Status 重新映射 status，不受此影响；
+// 轮询适配器回吐时按 task.Status 重新映射 status，不受此影响；
 // 本函数只让"直接原样回吐 task.Data"的路径的内嵌 status 与终态一致。
 func patchDataStatus(data json.RawMessage, status string) json.RawMessage {
 	if len(data) == 0 {

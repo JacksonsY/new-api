@@ -101,20 +101,6 @@ type Channel struct {
 	Keys []string `json:"-" gorm:"-"`
 }
 
-// IsTaskPlugin reports whether a channel is backed by the task-plugin
-// protocol. Type 61 was used by the upstream release before this fork's
-// NewAPI channel occupied that persisted ID, so a task_plugin_key setting is a
-// safe compatibility discriminator for legacy rows and API payloads.
-func (channel *Channel) IsTaskPlugin() bool {
-	if channel == nil {
-		return false
-	}
-	if channel.Type == constant.ChannelTypeTaskPlugin {
-		return true
-	}
-	return channel.Type == constant.ChannelTypeNewAPI && strings.TrimSpace(channel.GetSetting().TaskPluginKey) != ""
-}
-
 type ChannelInfo struct {
 	IsMultiKey             bool                  `json:"is_multi_key"`                        // 是否多Key模式
 	MultiKeySize           int                   `json:"multi_key_size"`                      // 多Key模式下的Key数量

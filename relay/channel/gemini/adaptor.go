@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
@@ -61,74 +60,7 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 	return nil, errors.New("not implemented")
 }
 
-func isGeminiImageModel(model string) bool {
-	if model_setting.IsGeminiModelSupportImagine(model) {
-		return true
-	}
-	if strings.HasPrefix(model, "imagen") {
-		return false
-	}
-	return strings.Contains(model, "nano-banana") ||
-		strings.Contains(model, "flash-image") ||
-		strings.Contains(model, "pro-image") ||
-		strings.Contains(model, "image-generation")
-}
-
-func geminiImageAspectRatio(size string) string {
-	size = strings.TrimSpace(size)
-	if size == "" {
-		return ""
-	}
-	if strings.Contains(size, ":") {
-		return size
-	}
-	switch size {
-	case "1536x1024":
-		return "3:2"
-	case "1024x1536":
-		return "2:3"
-	case "1024x1792":
-		return "9:16"
-	case "1792x1024":
-		return "16:9"
-	case "256x256", "512x512", "1024x1024":
-		return "1:1"
-	default:
-		return ""
-	}
-}
-
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
-	if info.RelayMode == constant.RelayModeImagesGenerations && isGeminiImageModel(info.UpstreamModelName) {
-		n := int(lo.FromPtrOr(request.N, uint(1)))
-		chatRequest := dto.GeneralOpenAIRequest{
-			Model:    request.Model,
-			Messages: []dto.Message{{Role: "user", Content: request.Prompt}},
-			N:        &n,
-		}
-		if aspectRatio := geminiImageAspectRatio(request.Size); aspectRatio != "" {
-			extraBody, err := common.Marshal(map[string]any{
-				"google": map[string]any{
-					"image_config": map[string]any{"aspect_ratio": aspectRatio},
-				},
-			})
-			if err != nil {
-				return nil, err
-			}
-			chatRequest.ExtraBody = extraBody
-		}
-		converted, err := a.ConvertOpenAIRequest(c, info, &chatRequest)
-		if err != nil {
-			return nil, err
-		}
-		// Pattern-detected model variants (for example nano-banana-2) may not
-		// be present in the exact supported-model table used by the converter.
-		// Force IMAGE so an image-generation request cannot silently become text.
-		if geminiReq, ok := converted.(*dto.GeminiChatRequest); ok {
-			geminiReq.GenerationConfig.ResponseModalities = []string{"TEXT", "IMAGE"}
-		}
-		return converted, nil
-	}
 	if !strings.HasPrefix(info.UpstreamModelName, "imagen") {
 		return nil, errors.New("not supported model for image generation, only imagen models are supported")
 	}
@@ -344,9 +276,6 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 
 	if strings.HasPrefix(info.UpstreamModelName, "imagen") {
 		return GeminiImageHandler(c, info, resp)
-	}
-	if info.RelayMode == constant.RelayModeImagesGenerations && isGeminiImageModel(info.UpstreamModelName) {
-		return ChatImageHandler(c, info, resp)
 	}
 
 	// check if the model is an embedding model

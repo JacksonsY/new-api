@@ -46,8 +46,6 @@ var defaultGeminiSettings = GeminiSettings{
 		"gemini-2.5-flash-image",
 		"gemini-3.1-flash-image",
 		"gemini-3.1-flash-image-preview",
-		"nano-banana",
-		"nano-banana-pro",
 	},
 	ThinkingAdapterEnabled:                false,
 	ThinkingAdapterBudgetTokensPercentage: 0.6,

@@ -13,11 +13,6 @@ const (
 	TaskActionFirstTailToVideo = "first_tail_to_video"
 	TaskActionReferenceToVideo = "reference_to_video"
 	TaskActionRemix            = "remix"
-	// Deprecated aliases kept for built-in adaptors and persisted clients.
-	TaskActionGenerate          = TaskActionImageToVideo
-	TaskActionTextGenerate      = TaskActionTextToVideo
-	TaskActionFirstTailGenerate = TaskActionFirstTailToVideo
-	TaskActionReferenceGenerate = TaskActionReferenceToVideo
 )
 
 var legacyTaskActionAliases = map[string]string{

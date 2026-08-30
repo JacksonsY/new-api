@@ -25,7 +25,6 @@ import {
 } from './dynamic-price'
 import {
   getBillingTypeLabel,
-  isPerSecondVideoModel,
   isTokenBasedModel,
 } from './model-helpers'
 import { formatPrice, formatRequestPrice, stripTrailingZeros } from './price'
@@ -97,7 +96,7 @@ function modelPriceCells(model: PricingModel, options: PricingCsvOptions) {
   }
 
   if (!isTokenBasedModel(model)) {
-    const unit = isPerSecondVideoModel(model) ? t('second') : t('request')
+    const unit = t('request')
     const fixed = stripTrailingZeros(
       formatRequestPrice(
         model,

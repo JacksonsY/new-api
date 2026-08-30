@@ -16,12 +16,10 @@ func ResponseOpenAI2Gemini(openAIResponse *dto.OpenAITextResponse, info convmeta
 		Candidates:       make([]dto.GeminiChatCandidate, 0, len(openAIResponse.Choices)),
 		HasUsageMetadata: true,
 		UsageMetadata: dto.GeminiUsageMetadata{
-			PromptTokenCount: openAIResponse.PromptTokens,
-			// Gemini 语义与 OpenAI 一致：promptTokenCount 含缓存，cachedContentTokenCount 是其子集
-			CachedContentTokenCount: openAIResponse.PromptTokensDetails.CachedTokens,
-			CandidatesTokenCount:    openAIResponse.CompletionTokens,
-			TotalTokenCount:         totalTokens,
-			BillingUsage:            openAIBillingUsageFromUsage(&openAIResponse.Usage),
+			PromptTokenCount:     openAIResponse.PromptTokens,
+			CandidatesTokenCount: openAIResponse.CompletionTokens,
+			TotalTokenCount:      totalTokens,
+			BillingUsage:         openAIBillingUsageFromUsage(&openAIResponse.Usage),
 		},
 	}
 	if metadata, ok := geminiBillingMetadataFromOpenAIUsage(&openAIResponse.Usage); ok {
@@ -126,8 +124,6 @@ func StreamResponseOpenAI2Gemini(openAIResponse *dto.ChatCompletionsStreamRespon
 
 	if openAIResponse.Usage != nil {
 		geminiResponse.UsageMetadata.PromptTokenCount = openAIResponse.Usage.PromptTokens
-		// promptTokenCount 含缓存，cachedContentTokenCount 是其子集（与 OpenAI 语义一致）
-		geminiResponse.UsageMetadata.CachedContentTokenCount = openAIResponse.Usage.PromptTokensDetails.CachedTokens
 		geminiResponse.UsageMetadata.CandidatesTokenCount = openAIResponse.Usage.CompletionTokens
 		geminiResponse.UsageMetadata.TotalTokenCount = openAIResponse.Usage.TotalTokens
 		geminiResponse.UsageMetadata.BillingUsage = openAIBillingUsageFromUsage(openAIResponse.Usage)

@@ -56,14 +56,10 @@ const (
 	ChannelTypeReplicate      = 56
 	ChannelTypeCodex          = 57
 	ChannelTypeAdvancedCustom = 58
-	// Keep existing persisted channel type IDs stable. AIAI, Sub2API, and NewAPI
-	// are fork-specific types already stored in user databases; Task Plugin is
-	// therefore assigned the next free ID.
-	ChannelTypeAiai       = 59
-	ChannelTypeSub2API    = 60
-	ChannelTypeNewAPI     = 61
-	ChannelTypeTaskPlugin = 62
-	ChannelTypeDummy      // this one is only for count, do not add any channel after this
+	ChannelTypeSub2API        = 59
+	ChannelTypeNewAPI         = 60
+	ChannelTypeTaskPlugin     = 61
+	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
 
@@ -127,10 +123,9 @@ var ChannelBaseURLs = []string{
 	"https://api.replicate.com",                 //56
 	"https://chatgpt.com",                       //57
 	"",                                          //58
-	"",                                          //59 AIAI
-	"",                                          //60 Sub2API
-	"",                                          //61 New API
-	"",                                          //62 Task Plugin
+	"",                                          //59
+	"",                                          //60
+	"",                                          //61
 }
 
 func GetChannelBaseURL(channelType int) string {
@@ -196,7 +191,6 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeReplicate:      "Replicate",
 	ChannelTypeCodex:          "ChatGPT Subscription (Codex)",
 	ChannelTypeAdvancedCustom: "Advanced Custom",
-	ChannelTypeAiai:           "AIAI",
 	ChannelTypeSub2API:        "Sub2API",
 	ChannelTypeNewAPI:         "New API",
 	ChannelTypeTaskPlugin:     "Task Plugin",

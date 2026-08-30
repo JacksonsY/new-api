@@ -16,12 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type {
-  PlaygroundConfig,
-  ParameterEnabled,
-  VideoModelConfig,
-  VideoModelType,
-} from './types'
+import type { PlaygroundConfig, ParameterEnabled } from './types'
 
 // Message constants
 export const MESSAGE_ROLES = {
@@ -92,133 +87,6 @@ export const MESSAGE_ACTION_BUTTON_STYLES = {
   BASE: 'size-7 text-muted-foreground hover:text-foreground',
   DELETE: 'size-7 text-muted-foreground hover:text-destructive',
   ICON: 'size-4',
-} as const
-
-// Video generation constants
-export const VIDEO_API_ENDPOINTS = {
-  SUBMIT: '/v1/video/generations',
-  STATUS: (taskId: string) => `/v1/video/generations/${taskId}`,
-} as const
-
-// Video models are served by the `ali` channel and identified by model name
-// prefix, so both the 1.0 and 1.1 families are matched.
-export const VIDEO_MODELS: VideoModelConfig[] = [
-  {
-    model: 'happyhorse-1.0-t2v',
-    label: 'Text-to-Video',
-    type: 'text-to-video',
-    requiresImage: false,
-    requiresVideo: false,
-    supportedSizes: ['720P', '1080P'],
-    durationRange: [2, 15],
-  },
-  {
-    model: 'happyhorse-1.1-t2v',
-    label: 'Text-to-Video',
-    type: 'text-to-video',
-    requiresImage: false,
-    requiresVideo: false,
-    supportedSizes: ['720P', '1080P'],
-    durationRange: [2, 15],
-  },
-  {
-    model: 'happyhorse-1.0-i2v',
-    label: 'Image-to-Video',
-    type: 'image-to-video',
-    requiresImage: true,
-    requiresVideo: false,
-    supportedSizes: ['720P', '1080P'],
-    durationRange: [2, 15],
-  },
-  {
-    model: 'happyhorse-1.1-i2v',
-    label: 'Image-to-Video',
-    type: 'image-to-video',
-    requiresImage: true,
-    requiresVideo: false,
-    supportedSizes: ['720P', '1080P'],
-    durationRange: [2, 15],
-  },
-  {
-    model: 'happyhorse-1.0-r2v',
-    label: 'Reference-to-Video',
-    type: 'reference-to-video',
-    requiresImage: true,
-    requiresVideo: false,
-    supportedSizes: ['720P', '1080P'],
-    durationRange: [2, 15],
-  },
-  {
-    model: 'happyhorse-1.1-r2v',
-    label: 'Reference-to-Video',
-    type: 'reference-to-video',
-    requiresImage: true,
-    requiresVideo: false,
-    supportedSizes: ['720P', '1080P'],
-    durationRange: [2, 15],
-  },
-  {
-    model: 'happyhorse-1.0-video-edit',
-    label: 'Video Edit',
-    type: 'video-edit',
-    requiresImage: false,
-    requiresVideo: true,
-    supportedSizes: ['720P', '1080P'],
-    durationRange: [2, 15],
-  },
-  // 豆包 Seedance 2.0(aiai 渠道,按秒计费):原生字段 resolution/duration,
-  // 支持 extra_body.real_person_mode 真人模式。分辨率档位与 aiai 价目表一致。
-  {
-    model: 'doubao-seedance-2.0',
-    label: 'Text-to-Video',
-    type: 'text-to-video',
-    requiresImage: false,
-    requiresVideo: false,
-    supportedSizes: ['480P', '720P', '1080P', '4K'],
-    durationRange: [4, 15],
-    family: 'seedance',
-  },
-  {
-    model: 'doubao-seedance-2.0-mini',
-    label: 'Text-to-Video',
-    type: 'text-to-video',
-    requiresImage: false,
-    requiresVideo: false,
-    supportedSizes: ['480P', '720P'],
-    durationRange: [4, 15],
-    family: 'seedance',
-  },
-  {
-    model: 'doubao-seedance-2.0-fast',
-    label: 'Text-to-Video',
-    type: 'text-to-video',
-    requiresImage: false,
-    requiresVideo: false,
-    supportedSizes: ['480P', '720P'],
-    durationRange: [4, 15],
-    family: 'seedance',
-  },
-]
-
-export const VIDEO_MODEL_TYPE_LABELS: Record<VideoModelType, string> = {
-  'text-to-video': 'T2V',
-  'image-to-video': 'I2V',
-  'reference-to-video': 'R2V',
-  'video-edit': 'Edit',
-}
-
-export const VIDEO_POLLING_INTERVAL = 5000
-
-// Cap the persisted queue so localStorage cannot grow without bound
-export const VIDEO_TASK_HISTORY_LIMIT = 50
-
-// 轮询上限。上游任务被清理、密钥被删等情况下状态查询会一直失败，没有上限的话
-// 只要标签页开着就会以固定频率永远轮询下去，任务也永远停在进行中。
-// 240 次 × 5 秒 = 20 分钟，远超正常出片时间。
-export const VIDEO_MAX_POLL_ATTEMPTS = 240
-
-export const STORAGE_KEYS_VIDEO = {
-  TASK_QUEUE: 'playground_video_tasks',
 } as const
 
 // Message action labels

@@ -16,30 +16,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// normalizeXAIUsage 把 xAI 的 usage 归一到本仓库计费口径。
-// xAI 的 completion_tokens 不含 reasoning_tokens
-// (total = prompt + completion + reasoning)，用 total-prompt 重算把 reasoning
-// 计入 completion（计费按 CompletionTokens），再回填 text tokens 明细。
-// 流式与非流式两条路径共用此函数，避免口径分叉。
-// 保留 total<=prompt 的兜底：异常上游数据下不产生负值 completion。
-func normalizeXAIUsage(usage *dto.Usage) {
-	if usage == nil {
-		return
-	}
-	if usage.TotalTokens > usage.PromptTokens {
-		usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
-	}
-	// grok reasoning 模型偶发返回 reasoning_tokens 超过有效输出的异常 usage
-	// （见 grok-4-fast-reasoning 负 text_output_tokens 报告），钳 0 避免 text 明细
-	// 变负：对齐项目「TextTokens 非负」的既有不变量（calculateAudioQuota 亦 max(_,0)），
-	// 并防止日志详情 text_output 展示负数。计费按 CompletionTokens（非负）不受影响。
-	textTokens := usage.CompletionTokens - usage.CompletionTokenDetails.ReasoningTokens
-	if textTokens < 0 {
-		textTokens = 0
-	}
-	usage.CompletionTokenDetails.TextTokens = textTokens
-}
-
 func streamResponseXAI2OpenAI(xAIResp *dto.ChatCompletionsStreamResponse, usage *dto.Usage) *dto.ChatCompletionsStreamResponse {
 	if xAIResp == nil {
 		return nil
@@ -78,11 +54,9 @@ func xAIStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		// 把 xAI 的usage转换为 OpenAI 的usage
 		if xAIResp.Usage != nil {
 			containStreamUsage = true
-			// 整 struct 拷贝（与 openai.handleLastResponse 同款）保留
-			// prompt_tokens_details.cached_tokens 等明细；只重建三个标量
-			// 会把流式请求的缓存命中 token 全部丢掉，导致按全价计费。
-			*usage = *xAIResp.Usage
-			normalizeXAIUsage(usage)
+			usage.PromptTokens = xAIResp.Usage.PromptTokens
+			usage.TotalTokens = xAIResp.Usage.TotalTokens
+			usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
 		}
 
 		openaiResponse := streamResponseXAI2OpenAI(xAIResp, usage)
@@ -115,7 +89,10 @@ func xAIHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	normalizeXAIUsage(xaiResponse.Usage)
+	if xaiResponse.Usage != nil {
+		xaiResponse.Usage.CompletionTokens = xaiResponse.Usage.TotalTokens - xaiResponse.Usage.PromptTokens
+		xaiResponse.Usage.CompletionTokenDetails.TextTokens = xaiResponse.Usage.CompletionTokens - xaiResponse.Usage.CompletionTokenDetails.ReasoningTokens
+	}
 
 	// new body
 	encodeJson, err := common.Marshal(xaiResponse)

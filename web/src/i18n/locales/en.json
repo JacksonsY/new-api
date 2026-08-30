@@ -5639,7 +5639,6 @@
     "Task failed: API Key invalid": "Task \"{{prompt}}...\" failed: API Key invalid",
     "Task failed: cannot restore key": "Task \"{{prompt}}...\" failed: cannot restore key",
     "Task billing": "Task billing",
-    "Task Details": "Task Details",
     "Task History": "Task History",
     "Task ID": "Task ID",
     "Task ID:": "Task ID:",

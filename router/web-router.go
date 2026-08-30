@@ -25,7 +25,6 @@ type WebAssets struct {
 // 注意：前端控制台路由是 /dashboard 与 /dashboard/$section（如 /dashboard/overview）。
 // 这里只能拦截 OpenAI 兼容账单 API 前缀 /dashboard/billing，不能把整个 /dashboard
 // 标成 non-SPA，否则登录后跳转会拿到 JSON 404 而不是 SPA HTML。
-// /seedance 是本 fork 的 Seedance(火山 ARK)视频入口，一并纳入。
 var nonSPAPathPrefixes = []string{
 	"/api",
 	"/v1",
@@ -37,7 +36,6 @@ var nonSPAPathPrefixes = []string{
 	"/suno",
 	"/kling",
 	"/jimeng",
-	"/seedance",
 	"/dashboard/billing",
 	"/healthz",
 	"/livez",

@@ -21,7 +21,6 @@ func TestIsNonSPARequestPath(t *testing.T) {
 		"/suno/submit",
 		"/kling/v1/videos/text2video",
 		"/jimeng/",
-		"/seedance/v1/video",
 		"/dashboard/billing/usage",
 		"/frontend-healthz",
 		"/readyz",

@@ -28,7 +28,7 @@
     "candidatesTokenCount": 5,
     "totalTokenCount": 15,
     "thoughtsTokenCount": 0,
-    "cachedContentTokenCount": 3,
+    "cachedContentTokenCount": 0,
     "promptTokensDetails": null,
     "toolUsePromptTokensDetails": null,
     "candidatesTokensDetails": null,

@@ -36,9 +36,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/siliconflow"
 	"github.com/QuantumNous/new-api/relay/channel/sub2api"
 	"github.com/QuantumNous/new-api/relay/channel/submodel"
-	taskaiai "github.com/QuantumNous/new-api/relay/channel/task/aiai"
 	jspluginadaptor "github.com/QuantumNous/new-api/relay/channel/task/jsplugin"
-	taskxai "github.com/QuantumNous/new-api/relay/channel/task/xai"
 	"github.com/QuantumNous/new-api/relay/channel/tencent"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/relay/channel/volcengine"
@@ -188,12 +186,6 @@ func TaskPlatformUnavailableError(platform constant.TaskPlatform) (string, strin
 }
 
 func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
-	if platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAiai)) {
-		return &taskaiai.TaskAdaptor{}
-	}
-	if platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeXai)) {
-		return &taskxai.TaskAdaptor{}
-	}
 	plugin, ok := ResolveTaskPluginForPlatform(pluginruntime.DefaultRegistry.Generation(), platform)
 	if !ok {
 		return nil
@@ -231,7 +223,7 @@ func getTaskAdaptorForRequest(c *gin.Context, platform constant.TaskPlatform) (c
 	generation := pluginruntime.DefaultRegistry.Generation()
 	plugin, ok := ResolveTaskPluginForPlatform(generation, platform)
 	if !ok {
-		return platform, GetTaskAdaptor(platform)
+		return platform, nil
 	}
 	if c != nil {
 		c.Set(pluginruntime.ContextKeyPinnedPlugin, pluginruntime.PinnedPlugin{

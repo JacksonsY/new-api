@@ -34,7 +34,6 @@ import { parseTags } from '../lib/filters'
 import {
   formatContextLength,
   getBillingTypeLabel,
-  isPerSecondVideoModel,
   isTokenBasedModel,
 } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
@@ -125,7 +124,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           usdExchangeRate,
           props.selectedGroup
         )}
-        /{isPerSecondVideoModel(props.model) ? t('second') : t('request')}
+        /{t('request')}
       </>
     )
   }

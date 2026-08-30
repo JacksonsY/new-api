@@ -36,7 +36,6 @@ var defaultVendorRules = map[string]string{
 	"kling":       "快手",
 	"jimeng":      "即梦",
 	"vidu":        "Vidu",
-	"happyhorse":  "HappyHorse",
 	"nano-banana": "NanoBanana",
 }
 
@@ -66,7 +65,6 @@ var defaultVendorIcons = map[string]string{
 	"即梦":         "Jimeng.Color",
 	"Vidu":       "Vidu",
 	"百炼":         "Bailian.Color",
-	"HappyHorse": "HappyHorse",
 	"NanoBanana": "NanoBanana.Color",
 	"微软":         "AzureAI",
 	"Microsoft":  "AzureAI",

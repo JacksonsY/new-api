@@ -35,7 +35,6 @@ import { parseTags } from '../lib/filters'
 import {
   formatContextLength,
   getBillingTypeLabel,
-  isPerSecondVideoModel,
   isTokenBasedModel,
 } from '../lib/model-helpers'
 import {
@@ -146,7 +145,7 @@ function renderPriceSummaryCell(
   }
 
   if (!isTokenBasedModel(model)) {
-    const unit = isPerSecondVideoModel(model) ? t('second') : t('request')
+    const unit = t('request')
     return (
       <div className='text-right'>
         <p className='text-sm font-medium tabular-nums'>

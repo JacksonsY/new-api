@@ -40,18 +40,8 @@ type Pricing struct {
 	BillingUsageSchema     map[string]jsplugin.UsageFieldSchema `json:"billing_usage_schema,omitempty"`
 	BillingUsageExamples   []jsplugin.UsageExample              `json:"billing_usage_examples,omitempty"`
 	// ContextLength 上下文窗口(token)，取自模型元数据；0 表示未标注。
-	PricingVersion         string                 `json:"pricing_version,omitempty"`
-	VideoResolutionPricing []VideoResolutionPrice `json:"video_resolution_pricing,omitempty"`
-	ContextLength          int                    `json:"context_length,omitempty"`
-}
-
-// VideoResolutionPrice 视频模型某分辨率档的每秒价（元/秒），用于定价页展示。
-// 价 = 该模型 ModelPrice(基准每秒价) × 分辨率倍率；WithRef 为「带参考视频(视频编辑)」
-// 的每秒系数（实际计费还需乘 Max(参考+生成时长, 最低计费时长)）。
-type VideoResolutionPrice struct {
-	Resolution string   `json:"resolution"`
-	NoRef      float64  `json:"no_ref"`
-	WithRef    *float64 `json:"with_ref,omitempty"`
+	PricingVersion string `json:"pricing_version,omitempty"`
+	ContextLength  int    `json:"context_length,omitempty"`
 }
 
 type PricingVendor struct {
@@ -420,29 +410,6 @@ func updatePricing() {
 		if findPrice {
 			pricing.ModelPrice = modelPrice
 			pricing.QuotaType = 1
-			tiers, ok := ratio_setting.GetVideoResolutionRatios(model)
-			if !ok {
-				// 带路由前缀的本地名（如 "A/doubao-seedance-2.0"）：分辨率倍率注册在干净上游名下，
-				// 剥掉前缀再查一次（与适配器 upstreamModelKey 一致），否则前缀模型定价页不显示分档表。
-				if i := strings.LastIndex(model, "/"); i >= 0 {
-					tiers, ok = ratio_setting.GetVideoResolutionRatios(model[i+1:])
-				}
-			}
-			if ok {
-				prices := make([]VideoResolutionPrice, 0, len(tiers))
-				for _, tier := range tiers {
-					entry := VideoResolutionPrice{
-						Resolution: tier.Resolution,
-						NoRef:      modelPrice * tier.NoRefRatio,
-					}
-					if tier.HasWithRef {
-						withRef := modelPrice * tier.WithRefRatio
-						entry.WithRef = &withRef
-					}
-					prices = append(prices, entry)
-				}
-				pricing.VideoResolutionPricing = prices
-			}
 		} else {
 			modelRatio, _, _ := ratio_setting.GetModelRatio(model)
 			pricing.ModelRatio = modelRatio
