@@ -210,8 +210,14 @@ func ApplyChannelGroupFilter(query *gorm.DB, group string) *gorm.DB {
 }
 
 // Value implements driver.Valuer interface
+// 必须返回 string 而非 []byte:PG simple protocol 下 []byte 参数按 bytea
+// 编码,写 json 列会触发 SQLSTATE 22P02。
 func (c ChannelInfo) Value() (driver.Value, error) {
-	return common.Marshal(&c)
+	b, err := common.Marshal(&c)
+	if err != nil {
+		return nil, err
+	}
+	return string(b), nil
 }
 
 // Scan implements sql.Scanner interface
@@ -219,25 +225,17 @@ func (c ChannelInfo) Value() (driver.Value, error) {
 // 旧实现 value.([]byte) 静默失败后 Unmarshal(nil) 报错——手工 SQL/外部工具/
 // 跨库迁移写入的 TEXT 行会炸；补 string/nil 分支（源自 Ritel-T/OpusClaw 同类修复）
 func (c *ChannelInfo) Scan(value interface{}) error {
-	switch v := value.(type) {
-	case nil:
-		*c = ChannelInfo{}
-		return nil
-	case []byte:
-		if len(v) == 0 {
-			*c = ChannelInfo{}
-			return nil
-		}
-		return common.Unmarshal(v, c)
-	case string:
-		if v == "" {
-			*c = ChannelInfo{}
-			return nil
-		}
-		return common.UnmarshalJsonStr(v, c)
+	switch value.(type) {
+	case nil, []byte, string:
 	default:
 		return fmt.Errorf("cannot scan type %T into ChannelInfo", value)
 	}
+	bytesValue := jsonScanBytes(value)
+	if len(bytesValue) == 0 {
+		*c = ChannelInfo{}
+		return nil
+	}
+	return common.Unmarshal(bytesValue, c)
 }
 
 func (channel *Channel) GetKeys() []string {
@@ -1161,6 +1159,9 @@ func (channel *Channel) ValidateSettings() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := channelOtherSettings.ValidateToolLossPolicy(); err != nil {
+		return err
 	}
 	if channel.Type == constant.ChannelTypeAdvancedCustom {
 		if channelOtherSettings.AdvancedCustom == nil {

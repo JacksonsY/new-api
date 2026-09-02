@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 )
 
 const (
@@ -16,7 +17,7 @@ const (
 )
 
 type openRouterRequestReasoning struct {
-	Enabled   bool   `json:"enabled"`
+	Enabled   *bool  `json:"enabled,omitempty"`
 	Effort    string `json:"effort,omitempty"`
 	MaxTokens int    `json:"max_tokens,omitempty"`
 	Exclude   bool   `json:"exclude,omitempty"`
@@ -39,6 +40,10 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info con
 	if claudeRequest.Stream != nil {
 		openAIRequest.Stream = kitutil.GetPointer(*claudeRequest.Stream)
 	}
+	reasoningIntent, effectiveEffort, err := claudeRequestReasoningIntent(&claudeRequest, info)
+	if err != nil {
+		return nil, reasoning.AsClientError(err)
+	}
 
 	isOpenRouter := convmeta.OptionsOf(info).OpenRouterDialect
 	if isOpenRouter {
@@ -46,17 +51,21 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info con
 			effortBytes, _ := kitutil.Marshal(effort)
 			openAIRequest.Verbosity = effortBytes
 		}
-		if claudeRequest.Thinking != nil {
+		if !reasoningIntent.IsEmpty() {
 			var reasoningConfig openRouterRequestReasoning
-			if claudeRequest.Thinking.Type == "enabled" {
+			disabled := reasoningIntent.Mode == reasoning.ModeDisabled || reasoningIntent.Effort == reasoning.EffortNone
+			enabled := !disabled
+			reasoningConfig.Enabled = &enabled
+			if enabled && reasoningIntent.BudgetTokens != nil && reasoningIntent.Mode != reasoning.ModeAdaptive {
 				reasoningConfig = openRouterRequestReasoning{
-					Enabled:   true,
-					MaxTokens: claudeRequest.Thinking.GetBudgetTokens(),
+					Enabled:   &enabled,
+					MaxTokens: *reasoningIntent.BudgetTokens,
 				}
-			} else if claudeRequest.Thinking.Type == "adaptive" {
-				reasoningConfig = openRouterRequestReasoning{
-					Enabled: true,
-				}
+			} else if enabled {
+				reasoningConfig.Effort = string(reasoning.EffectiveEffort(reasoningIntent))
+			}
+			if reasoningIntent.IncludeThoughts != nil {
+				reasoningConfig.Exclude = !*reasoningIntent.IncludeThoughts
 			}
 			reasoningJSON, err := kitutil.Marshal(reasoningConfig)
 			if err != nil {
@@ -64,25 +73,23 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info con
 			}
 			openAIRequest.Reasoning = reasoningJSON
 		}
-	} else if info != nil {
-		// 把 Claude 客户端的 effort 透传给 OpenAI 上游(issue #5922)，仅对 OpenAI 推理
-		// 模型(O 系列/GPT-5)设置——gpt-4o 等非推理模型带 reasoning_effort 会被上游 400。
-		// 不按模型硬编码降级 effort：OpenAI 合法值(none/minimal/low/medium/high/xhigh/max)
-		// 与 Claude 同名，但各模型具体支持哪些档是模型相关、难以可靠核实；硬降级会静默
-		// 篡改客户端的明确选择(如把 xhigh 悄悄变成 high)。宁可原样透传、让目标模型自身
-		// 校验(不支持则返回明确 400)，也不静默改写。GetEfforts 取 output_config.effort。
-		// 安全访问器：UpstreamModelName 由 *ChannelMeta 提升，info.ChannelMeta 为 nil 会解引用。
-		if openAIRequest.ReasoningEffort == "" {
-			upstream := convmeta.UpstreamModelName(info)
-			if dto.IsOpenAIReasoningOModel(upstream) || dto.IsOpenAIGPT5Model(upstream) {
-				openAIRequest.ReasoningEffort = claudeRequest.GetEfforts()
+	} else {
+		if err := reasoning.ApplyToOpenAIChat(&openAIRequest, reasoningIntent); err != nil {
+			return nil, reasoning.AsClientError(err)
+		}
+		if info != nil {
+			// Keep the outgoing -thinking suffix so a cascaded downstream
+			// new-api can recover reasoning intent from the model name. This
+			// is an emission-side policy, not converter-side suffix parsing.
+			thinkingSuffix := "-thinking"
+			if strings.HasSuffix(info.GetOriginModelName(), thinkingSuffix) &&
+				!strings.HasSuffix(openAIRequest.Model, thinkingSuffix) {
+				openAIRequest.Model = openAIRequest.Model + thinkingSuffix
 			}
 		}
-		thinkingSuffix := "-thinking"
-		if strings.HasSuffix(info.GetOriginModelName(), thinkingSuffix) &&
-			!strings.HasSuffix(openAIRequest.Model, thinkingSuffix) {
-			openAIRequest.Model = openAIRequest.Model + thinkingSuffix
-		}
+	}
+	if info != nil && effectiveEffort != "" {
+		info.SetReasoningEffort(string(effectiveEffort))
 	}
 
 	if len(claudeRequest.StopSequences) == 1 {
