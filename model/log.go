@@ -140,22 +140,7 @@ func formatUserLogs(logs []*Log, startIdx int) {
 		logs[i].ChannelRatio = 0
 		logs[i].ChannelQuota = 0
 		logs[i].SupplierId = 0
-		var otherMap map[string]interface{}
-		otherMap, _ = common.StrToMap(logs[i].Other)
-		if otherMap != nil {
-			// Remove admin-only debug fields.
-			delete(otherMap, "admin_info")
-			// Remove diagnostics reserved for root.
-			delete(otherMap, "root_info")
-			// Remove operation-audit details (operator/route info), admin-only.
-			delete(otherMap, "audit_info")
-			// delete(otherMap, "reject_reason")
-			// Keep stream_status visible to log owners; it is not admin-only.
-			// 上游真实模型名属于供应链信息，普通用户不可见（管理员日志视图保留）
-			delete(otherMap, "upstream_model_name")
-			delete(otherMap, "is_model_mapped")
-		}
-		logs[i].Other = common.MapToJsonStr(otherMap)
+		logs[i].Other = formatLogOtherJSON(logs[i].Other, logOtherVisibilityUser)
 	}
 	assignDisplayLogIds(logs, startIdx)
 }
@@ -164,12 +149,15 @@ func formatUserLogs(logs []*Log, startIdx int) {
 // admin_info. Root callers must not pass their results through this formatter.
 func FormatAdminLogs(logs []*Log) {
 	for i := range logs {
-		otherMap, _ := common.StrToMap(logs[i].Other)
-		if otherMap == nil {
-			continue
-		}
-		delete(otherMap, "root_info")
-		logs[i].Other = common.MapToJsonStr(otherMap)
+		logs[i].Other = formatLogOtherJSON(logs[i].Other, logOtherVisibilityAdmin)
+	}
+}
+
+// FormatRootLogs normalizes legacy metadata into the current scoped shape
+// without removing root-only diagnostics.
+func FormatRootLogs(logs []*Log) {
+	for i := range logs {
+		logs[i].Other = formatLogOtherJSON(logs[i].Other, logOtherVisibilityRoot)
 	}
 }
 
@@ -215,10 +203,9 @@ func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo m
 		Content:   content,
 	}
 	if len(adminInfo) > 0 {
-		other := map[string]interface{}{
-			"admin_info": adminInfo,
-		}
-		log.Other = common.MapToJsonStr(other)
+		other := NewLogOther()
+		other.MergeAdmin(adminInfo)
+		log.Other = other.JSONString()
 	}
 	if err := createLog(log); err != nil {
 		common.SysLog("failed to record log: " + err.Error())
@@ -243,11 +230,9 @@ func buildOpField(action string, params map[string]interface{}) map[string]inter
 // content 为英文兜底文本（用于导出）；action+params 供前端本地化渲染。
 // extra 可携带 login_method、user_agent 等附加信息（普通用户可见）。
 func RecordLoginLog(userId int, username string, content string, ip string, action string, params map[string]interface{}, extra map[string]interface{}) {
-	other := map[string]interface{}{}
-	for k, v := range extra {
-		other[k] = v
-	}
-	other["op"] = buildOpField(action, params)
+	other := NewLogOther()
+	other.MergePublic(extra)
+	other.SetPublic("op", buildOpField(action, params))
 	log := &Log{
 		UserId:    userId,
 		Username:  username,
@@ -255,7 +240,7 @@ func RecordLoginLog(userId int, username string, content string, ip string, acti
 		Type:      LogTypeLogin,
 		Content:   content,
 		Ip:        ip,
-		Other:     common.MapToJsonStr(other),
+		Other:     other.JSONString(),
 	}
 	if err := createLog(log); err != nil {
 		common.SysLog("failed to record login log: " + err.Error())
@@ -270,15 +255,10 @@ func RecordLoginLog(userId int, username string, content string, ip string, acti
 // auditInfo 存放路由/方法/结果等中间件兜底信息（写入 Other.audit_info，普通用户查询时剥离）。
 func RecordOperationAuditLog(logUserId int, content string, ip string, action string, params map[string]interface{}, adminInfo map[string]interface{}, auditInfo map[string]interface{}) {
 	username, _ := GetUsernameById(logUserId, false)
-	other := map[string]interface{}{
-		"op": buildOpField(action, params),
-	}
-	if len(adminInfo) > 0 {
-		other["admin_info"] = adminInfo
-	}
-	if len(auditInfo) > 0 {
-		other["audit_info"] = auditInfo
-	}
+	other := NewLogOther()
+	other.SetPublic("op", buildOpField(action, params))
+	other.MergeAdmin(adminInfo)
+	other.MergeAudit(auditInfo)
 	log := &Log{
 		UserId:    logUserId,
 		Username:  username,
@@ -286,7 +266,7 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 		Type:      LogTypeManage,
 		Content:   content,
 		Ip:        ip,
-		Other:     common.MapToJsonStr(other),
+		Other:     other.JSONString(),
 	}
 	if err := createLog(log); err != nil {
 		common.SysLog("failed to record operation audit log: " + err.Error())
@@ -295,17 +275,15 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 
 func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
 	username, _ := GetUsernameById(userId, false)
-	adminInfo := map[string]interface{}{
+	other := NewLogOther()
+	other.MergeAdmin(map[string]interface{}{
 		"server_ip":               common.GetIp(),
 		"node_name":               common.NodeName,
 		"caller_ip":               callerIp,
 		"payment_method":          paymentMethod,
 		"callback_payment_method": callbackPaymentMethod,
 		"version":                 common.Version,
-	}
-	other := map[string]interface{}{
-		"admin_info": adminInfo,
-	}
+	})
 	log := &Log{
 		UserId:    userId,
 		Username:  username,
@@ -313,7 +291,7 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 		Type:      LogTypeTopup,
 		Content:   content,
 		Ip:        callerIp,
-		Other:     common.MapToJsonStr(other),
+		Other:     other.JSONString(),
 	}
 	err := createLog(log)
 	if err != nil {
@@ -322,12 +300,12 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 }
 
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
-	isStream bool, group string, other map[string]interface{}) {
+	isStream bool, group string, other *LogOther) {
 	logger.LogInfo(c, fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, common.LocalLogPreview(content)))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
-	otherStr := common.MapToJsonStr(other)
+	otherStr := other.JSONString()
 	// 判断是否需要记录 IP
 	needRecordIp := false
 	if settingMap, err := GetUserSetting(userId, false); err == nil {
@@ -375,17 +353,17 @@ type RecordConsumeLogParams struct {
 	// PromptTokens 不含缓存 token，需把 cache_read/cache_creation 加回后写入此处，
 	// 避免数据看板总 TOKEN 数漏算缓存；OpenAI 语义下与 Prompt+Completion 相同。
 	// 缺省 0 时 RecordConsumeLog 回退 Prompt+Completion，保持旧调用点兼容。
-	TotalTokens    int                    `json:"total_tokens"`
-	ModelName      string                 `json:"model_name"`
-	TokenName      string                 `json:"token_name"`
-	Quota          int                    `json:"quota"`
-	Content        string                 `json:"content"`
-	TokenId        int                    `json:"token_id"`
-	UseTimeSeconds int                    `json:"use_time_seconds"`
-	IsStream       bool                   `json:"is_stream"`
-	Group          string                 `json:"group"`
-	Other          map[string]interface{} `json:"other"`
-	ParentId       int                    `json:"parent_id"` // >>> jzlh-sub >0=子号消费,归属主号聚合 + 排除代理分润
+	TotalTokens    int       `json:"total_tokens"`
+	ModelName      string    `json:"model_name"`
+	TokenName      string    `json:"token_name"`
+	Quota          int       `json:"quota"`
+	Content        string    `json:"content"`
+	TokenId        int       `json:"token_id"`
+	UseTimeSeconds int       `json:"use_time_seconds"`
+	IsStream       bool      `json:"is_stream"`
+	Group          string    `json:"group"`
+	Other          *LogOther `json:"other"`
+	ParentId       int       `json:"parent_id"` // >>> jzlh-sub >0=子号消费,归属主号聚合 + 排除代理分润
 
 	// CommissionSourceKey links asynchronous task refunds to the exact initial
 	// commission owner. Empty keeps the request-id source used by sync relays.
@@ -395,8 +373,15 @@ type RecordConsumeLogParams struct {
 
 // groupRatioFromLogOther 从日志 other 取该笔消费生效的分组倍率（用户专属倍率
 // 生效时 group_ratio 已是覆盖后的值）。缺失或非正值按 1 兜底，等价旧口径。
-func groupRatioFromLogOther(other map[string]interface{}) float64 {
-	if ratio, ok := other["group_ratio"].(float64); ok && ratio > 0 {
+func groupRatioFromLogOther(other any) float64 {
+	var values map[string]any
+	switch value := other.(type) {
+	case *LogOther:
+		values = value.Snapshot()
+	case map[string]interface{}:
+		values = value
+	}
+	if ratio, ok := values["group_ratio"].(float64); ok && ratio > 0 {
 		return ratio
 	}
 	return 1
@@ -456,7 +441,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
-	otherStr := common.MapToJsonStr(params.Other)
+	otherStr := params.Other.JSONString()
 	// 渠道计费倍率 + 渠道成本快照：用于管理员维度的渠道成本统计，与用户扣费无关。
 	// 成本基数为原始费用（实付 ÷ 生效分组倍率），见 channelCostQuota。
 	channelRatio := 1.0
@@ -541,7 +526,7 @@ type RecordTaskBillingLogParams struct {
 	Quota              int
 	TokenId            int
 	Group              string
-	Other              map[string]interface{}
+	Other              *LogOther
 	NodeName           string // 任务发起节点；为空时回退当前节点
 	CommissionEventKey string // 同一任务内可重放且唯一的计费状态迁移标识
 	ParentId           int    // >>> jzlh-sub >0=子号任务,归属主号聚合 + 排除代理分润
@@ -554,7 +539,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	// jzlh-sub: 子号(parent_id>0)任务消费/退款均不计代理分润（决策 R，对称）。
 	if params.Quota > 0 && params.ParentId == 0 {
 		taskKey := ""
-		if tid, ok := params.Other["task_id"].(string); ok && tid != "" {
+		if tid, ok := params.Other.Snapshot()["task_id"].(string); ok && tid != "" {
 			eventKey := params.CommissionEventKey
 			if eventKey == "" {
 				eventKey = fmt.Sprintf("%d", params.LogType)
@@ -618,7 +603,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		SupplierId:      supplierId,
 		TokenId:         params.TokenId,
 		Group:           params.Group,
-		Other:           common.MapToJsonStr(params.Other),
+		Other:           params.Other.JSONString(),
 	}
 	err := createLog(log)
 	if err != nil {

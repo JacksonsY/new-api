@@ -33,6 +33,7 @@ type TaskSubmitResult struct {
 	Platform       constant.TaskPlatform
 	Quota          int
 	Immediate      *relaycommon.TaskInfo
+	PluginState    []byte
 	//PerCallPrice   types.PriceData
 }
 
@@ -401,6 +402,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		Platform:       platform,
 		Quota:          finalQuota,
 		Immediate:      parsed.Immediate,
+		PluginState:    parsed.PluginState,
 	}, nil
 }
 
@@ -502,7 +504,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 				return
 			}
 			// 计量经 header 透传给下游（中转套娃），保持 body 为纯 OpenAI 标准结构
-			if ti, perr := adaptor.ParseTaskResult(originTask.Data); perr == nil && ti != nil && ti.TotalTokens > 0 {
+			if ti, perr := adaptor.ParseTaskResult(originTask, nil, originTask.Data); perr == nil && ti != nil && ti.TotalTokens > 0 {
 				if usageJSON, merr := common.Marshal(map[string]int{
 					"completion_tokens": ti.CompletionTokens,
 					"total_tokens":      ti.TotalTokens,
@@ -550,10 +552,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		return nil
 	}
 
-	resp, err := adaptor.FetchTask(baseURL, channelModel.Key, map[string]any{
-		"task_id": task.GetUpstreamTaskID(),
-		"action":  constant.NormalizeTaskAction(task.Action),
-	}, proxy)
+	resp, err := adaptor.FetchTask(baseURL, channelModel.Key, task, proxy)
 	if err != nil || resp == nil {
 		return nil
 	}
@@ -563,7 +562,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		return nil
 	}
 
-	ti, err := adaptor.ParseTaskResult(body)
+	ti, err := adaptor.ParseTaskResult(task, resp, body)
 	if err != nil || ti == nil {
 		return nil
 	}
